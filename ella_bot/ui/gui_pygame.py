@@ -94,6 +94,8 @@ class EllaGUIApp:
         self.message = "Press Start or Space to begin reading."
         self.latest_attempt: Optional[AttemptViewModel] = None
         self.worker_thread: Optional[threading.Thread] = None
+        self.error_log: List[str] = []  # Track errors for debugging
+        self.max_errors = 5  # Show last 5 errors
 
         self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 
@@ -256,8 +258,13 @@ class EllaGUIApp:
                     self.event_queue.put(("message", "Try again on the same item."))
 
         except Exception as exc:
+            error_msg = str(exc)
+            self.error_log.append(error_msg)
+            if len(self.error_log) > self.max_errors:
+                self.error_log.pop(0)
             self.event_queue.put(("state", "retry"))
-            self.event_queue.put(("message", f"Error: {exc}"))
+            self.event_queue.put(("message", f"Error: {error_msg}"))
+            self.event_queue.put(("error", error_msg))
 
     def _drain_event_queue(self) -> None:
         while True:
@@ -274,6 +281,9 @@ class EllaGUIApp:
                     self.animator.set_state(payload, reset=True)
             elif event == "message" and isinstance(payload, str):
                 self.message = payload
+            elif event == "error" and isinstance(payload, str):
+                # Error logging already handled, just ensure it's tracked
+                pass
             elif event == "attempt_ready" and isinstance(payload, AttemptViewModel):
                 self.latest_attempt = payload
 
@@ -415,6 +425,21 @@ class EllaGUIApp:
 
         msg_rect = pygame_module.Rect(feedback_panel.left + 20, feedback_panel.top + 68, feedback_panel.width - 40, 58)
         self._draw_wrapped_text(self.message, self.font_small, self.config.text_secondary, msg_rect, line_spacing=4)
+
+        # Error log panel (bottom right corner)
+        if self.error_log:
+            error_panel_height = 140
+            error_panel = pygame_module.Rect(width - 320, height - error_panel_height - 10, 310, error_panel_height)
+            pygame_module.draw.rect(self.screen, self.config.danger, error_panel, border_radius=12, width=2)
+            pygame_module.draw.rect(self.screen, (30, 20, 20), error_panel, border_radius=12)
+            
+            error_title = self.font_small.render(f"Errors ({len(self.error_log)})", True, self.config.danger)
+            self.screen.blit(error_title, (error_panel.left + 12, error_panel.top + 8))
+            
+            error_text_rect = pygame_module.Rect(error_panel.left + 12, error_panel.top + 32, error_panel.width - 24, error_panel_height - 44)
+            # Show last 3 errors
+            error_display = "\n".join(self.error_log[-3:])
+            self._draw_wrapped_text(error_display, self.font_small, (255, 180, 180), error_text_rect, line_spacing=2)
 
         if self.latest_attempt is None:
             hint = self.font_body.render("No attempt yet.", True, self.config.text_secondary)

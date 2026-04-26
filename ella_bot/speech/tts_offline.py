@@ -96,6 +96,36 @@ class MacSayTTS(BaseTTS):
         subprocess.run(cmd, check=False)
 
 
+class ReSpeakerTTS(BaseTTS):
+    """Offline TTS for ReSpeaker hardware on Raspberry Pi.
+    
+    Routes audio through ReSpeaker's speaker output.
+    Install: sudo apt install alsa-utils
+    """
+
+    def __init__(self, config: Optional[TTSConfig] = None):
+        self.config = config or TTSConfig()
+        # Check if espeak is available (primary) or fall back to aplay + wav generation
+        self.espeak_binary = shutil.which("espeak-ng") or shutil.which("espeak")
+        if not self.espeak_binary:
+            raise RuntimeError(
+                "espeak-ng/espeak required for ReSpeaker TTS. Install with: sudo apt install espeak-ng"
+            )
+
+    def speak(self, text: str) -> None:
+        """Use espeak with ReSpeaker audio output via ALSA."""
+        cmd = [self.espeak_binary, "-s", str(self.config.rate)]
+        if self.config.voice:
+            cmd.extend(["-v", self.config.voice])
+        cmd.append(text)
+
+        if self.config.non_blocking:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+
+        subprocess.run(cmd, check=False)
+
+
 def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
     name = engine_name.lower()
 
@@ -105,6 +135,8 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         return Pyttsx3TTS(config=config)
     if name == "say":
         return MacSayTTS(config=config)
+    if name == "respeaker":
+        return ReSpeakerTTS(config=config)
     if name == "auto":
         if platform.system() == "Darwin":
             try:
@@ -114,6 +146,20 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
                     return Pyttsx3TTS(config=config)
                 except Exception:
                     return EspeakTTS(config=config)
+
+        # On Linux, check for ReSpeaker hardware first
+        try:
+            # Check if ReSpeaker kernel driver is loaded
+            result = subprocess.run(
+                ["lsmod"], capture_output=True, text=True, check=False
+            )
+            if "seeed_voicecard" in result.stdout or "ac108" in result.stdout:
+                try:
+                    return ReSpeakerTTS(config=config)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         try:
             return EspeakTTS(config=config)

@@ -71,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tts-engine",
         default="auto",
-        choices=["auto", "espeak", "pyttsx3", "say"],
+        choices=["auto", "espeak", "pyttsx3", "say", "respeaker"],
         help="TTS backend for audio feedback.",
     )
     parser.add_argument("--tts-rate", type=int, default=150, help="Words-per-minute speech rate for TTS")
