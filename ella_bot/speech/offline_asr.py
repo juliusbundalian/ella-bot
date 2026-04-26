@@ -51,7 +51,7 @@ class VoskASR(BaseASR):
     def __init__(
         self,
         model_path: str,
-        sample_rate: int = 16000,
+        sample_rate: int | None = None,
         listen_seconds: int = 4,
         input_device: int | None = None,
     ):
@@ -69,6 +69,13 @@ class VoskASR(BaseASR):
             raise RuntimeError(
                 "VoskASR dependencies missing. Install with: pip install vosk sounddevice"
             ) from exc
+
+        if self.sample_rate is None:
+            if self.input_device is not None:
+                device_info = sd.query_devices(self.input_device, "input")
+                self.sample_rate = int(device_info.get("default_samplerate", 16000))
+            else:
+                self.sample_rate = 16000
 
         model = vosk.Model(self.model_path)
         recognizer = vosk.KaldiRecognizer(model, self.sample_rate)

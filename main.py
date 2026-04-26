@@ -67,6 +67,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional sounddevice input device index (see sounddevice query).",
     )
+    parser.add_argument(
+        "--sample-rate",
+        type=int,
+        default=None,
+        help="Optional microphone sample rate for ASR input. If omitted, the device default rate is used.",
+    )
     parser.add_argument("--audio-feedback", action="store_true", help="Speak feedback aloud with offline TTS")
     parser.add_argument(
         "--tts-engine",
@@ -169,6 +175,7 @@ def build_asr(args: argparse.Namespace):
         model_path = resolve_existing_path(args.vosk_model, fallback_dir="models")
         return VoskASR(
             model_path=str(model_path),
+            sample_rate=args.sample_rate,
             listen_seconds=args.listen_seconds,
             input_device=args.input_device,
         )
