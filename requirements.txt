@@ -1,0 +1,8 @@
+# Base prototype uses Python standard library only.
+# Optional dependencies for mic ASR are listed in README:
+# vosk
+# sounddevice
+# Optional dependency for GUI mode:
+# pygame-ce
+# Optional dependency for automatic pronunciation coaching:
+# pronouncing
