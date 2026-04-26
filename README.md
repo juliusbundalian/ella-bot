@@ -13,6 +13,7 @@ From this folder:
 ```bash
 source .venv/bin/activate && python main.py \
 	--gui \
+	--use-mic \
 	--vosk-model ./models/vosk-model-small-en-us-0.15 \
 	--listen-seconds 5 \
 	--audio-feedback \
@@ -52,19 +53,21 @@ arecord -l  # Check microphone device
 aplay -l    # Check speaker device
 ```
 
-4. Run with ReSpeaker (auto-detection):
+4. Run with ReSpeaker (auto-detection) using the detected device index and optional sample rate:
 ```bash
 source .venv/bin/activate && python main.py \
 	--gui \
+	--use-mic \
 	--vosk-model ./models/vosk-model-small-en-us-0.15 \
 	--listen-seconds 5 \
 	--audio-feedback \
 	--tts-engine auto \
-	--input-device 2 \
+	--input-device 1 \
+	--sample-rate 48000 \
 	--pronunciation-overrides ./config/pronunciation_overrides.json
 ```
 
-Note: Adjust `--input-device` based on your `arecord -l` output. For ReSpeaker 2-mic HAT, it's typically device 2.
+Note: Adjust `--input-device` based on your `sounddevice.query_devices()` output. For ReSpeaker 2-mic HAT, the device index may be `1`.
 
 ## Optional Start Level
 
