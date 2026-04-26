@@ -67,6 +67,24 @@ source .venv/bin/activate && python main.py \
 	--pronunciation-overrides ./config/pronunciation_overrides.json
 ```
 
+## MacOS
+
+You can run and test this on Mac using the following command:
+
+```bash
+cd /Users/juliusjervinbundalian/Documents/ella-bot/ella-bot
+source ../.venv/bin/activate && python main.py \
+  --gui \
+  --use-mic \
+  --vosk-model ./models/vosk-model-small-en-us-0.15 \
+  --listen-seconds 5 \
+  --audio-feedback \
+  --tts-engine say \
+  --tts-voice Samantha \
+  --tts-rate 125 \
+  --pronunciation-overrides ./config/pronunciation_overrides.json
+```
+
 Note: Adjust `--input-device` based on your `sounddevice.query_devices()` output. For ReSpeaker 2-mic HAT, the device index may be `1`.
 
 ## Optional Start Level
