@@ -11,6 +11,9 @@ class GUIConfig:
     fullscreen: bool = False
     fps: int = 60
     animation_fps: int = 10
+    speaking_fps: int = 5
+    loading_fps: int = 8
+    processing_fps: int = 2
     title: str = "E.L.L.A. Reading Assistant"
     assets_dir: Path = Path("./assets")
 

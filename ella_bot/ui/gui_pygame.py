@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import queue
 import threading
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -91,13 +92,71 @@ class EllaGUIApp:
         self.level_goal = len(self.level_pools.get(self.current_level, []))
 
         self.state = "idle"
-        self.message = "Press Start or Space to begin reading."
+        self.message = ""
         self.latest_attempt: Optional[AttemptViewModel] = None
         self.worker_thread: Optional[threading.Thread] = None
+        self.startup_thread: Optional[threading.Thread] = None
         self.error_log: List[str] = []  # Track errors for debugging
         self.max_errors = 5  # Show last 5 errors
+        self.idle_timeout_seconds = 10
+        self.last_activity_monotonic = time.monotonic()
+        self.prompt_active = False
+        self.show_menu = False
+        self.pressed_button: Optional[str] = None  # Track which menu button is pressed
+        self.show_exit_confirm: bool = False
+
+        # Confirmation dialog button rects (created during render)
+        self.menu_confirm_yes_button = None
+        self.menu_confirm_no_button = None
 
         self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
+
+    def _touch_activity(self) -> None:
+        self.last_activity_monotonic = time.monotonic()
+
+    def _current_item_number(self) -> int:
+        return self.level_indices.get(self.current_level, 0) + 1
+
+    def _build_start_announcement(self) -> str:
+        target_sentence = self.expected_sentence.strip() or "the next item"
+        return (
+            f"We are about to begin. You are on level {self._display_level_name()}, "
+            f"item {self._current_item_number()}. First, read: {target_sentence}."
+        )
+
+    def _prompt_font(self, pygame_module):
+        width, height = self.screen.get_size()
+        if len(self.expected_sentence) <= 3:
+            return pygame_module.font.SysFont("Avenir Next", max(72, int(height * 0.28)))
+        if len(self.expected_sentence.split()) <= 6:
+            return pygame_module.font.SysFont("Avenir Next", max(54, int(height * 0.12)))
+        return pygame_module.font.SysFont("Avenir Next", max(42, int(height * 0.08)))
+
+    def _startup_sequence(self) -> None:
+        self.event_queue.put(("state", "warmup"))
+        self.event_queue.put(("message", ""))
+        time.sleep(2)
+
+        self.event_queue.put(("state", "speaking"))
+        self.event_queue.put(("message", ""))
+
+        if self.tts is not None:
+            try:
+                self.tts.speak(
+                    "Hello, I am Ella, your offline reading assistant. I am ready when you are."
+                )
+            except Exception as exc:
+                self.event_queue.put(("error", str(exc)))
+
+        self.event_queue.put(("show_menu", True))
+
+    def _update_idle_state(self) -> None:
+        if self.state != "listening" or self.prompt_active:
+            return
+
+        if time.monotonic() - self.last_activity_monotonic >= self.idle_timeout_seconds:
+            self.event_queue.put(("state", "idle"))
+            self.event_queue.put(("message", ""))
 
     def _pick_sentence_for_level(self, level: str) -> str:
         pool = self.level_pools.get(level, [])
@@ -166,8 +225,13 @@ class EllaGUIApp:
         pygame.init()
         pygame.font.init()
 
-        flags = pygame.FULLSCREEN if self.config.fullscreen else 0
-        self.screen = pygame.display.set_mode((self.config.width, self.config.height), flags)
+        fullscreen = True if not self.config.fullscreen else self.config.fullscreen
+        if fullscreen:
+            flags = pygame.FULLSCREEN
+            self.screen = pygame.display.set_mode((0, 0), flags)
+        else:
+            flags = 0
+            self.screen = pygame.display.set_mode((self.config.width, self.config.height), flags)
         pygame.display.set_caption(self.config.title)
 
         self.clock = pygame.time.Clock()
@@ -182,13 +246,21 @@ class EllaGUIApp:
             assets_dir=self.config.assets_dir,
             frame_size=avatar_size,
             animation_fps=self.config.animation_fps,
+            speaking_fps=self.config.speaking_fps,
+            loading_fps=self.config.loading_fps,
+            processing_fps=self.config.processing_fps,
         )
+        self.animator.set_state("warmup", reset=True)
+
+        self.startup_thread = threading.Thread(target=self._startup_sequence, daemon=True)
+        self.startup_thread.start()
 
         self.running = True
         while self.running:
             now_ms = pygame.time.get_ticks()
             self._handle_pygame_events(pygame)
             self._drain_event_queue()
+            self._update_idle_state()
             self.animator.update(now_ms)
             self._render(pygame)
             pygame.display.flip()
@@ -200,18 +272,31 @@ class EllaGUIApp:
         if self.worker_thread and self.worker_thread.is_alive():
             return
 
+        self.prompt_active = True
+
         self.worker_thread = threading.Thread(target=self._attempt_worker, daemon=True)
         self.worker_thread.start()
 
     def _attempt_worker(self) -> None:
+        self.event_queue.put(("state", "speaking"))
+        self.event_queue.put(("message", ""))
+
+        if self.audio_feedback and self.tts is not None:
+            try:
+                self.tts.speak(self._build_start_announcement())
+            except Exception as exc:
+                self.event_queue.put(("error", str(exc)))
+
         self.event_queue.put(("state", "listening"))
-        self.event_queue.put(("message", "Listening... please read the sentence aloud."))
+        self.event_queue.put(("message", ""))
 
         try:
             target_sentence = self.expected_sentence
             asr_result = self.asr.transcribe(expected_sentence=target_sentence)
+            self.prompt_active = False
             self.event_queue.put(("state", "processing"))
-            self.event_queue.put(("message", "Analyzing your reading..."))
+            self.event_queue.put(("message", "Validating your reading..."))
+            time.sleep(2.0)
 
             validation = validate_spoken_text(target_sentence, asr_result.transcript)
             spoken_tokens = normalize(asr_result.transcript)
@@ -257,6 +342,10 @@ class EllaGUIApp:
                 else:
                     self.event_queue.put(("message", "Try again on the same item."))
 
+            time.sleep(0.6)
+            self.event_queue.put(("state", "listening"))
+            self.event_queue.put(("message", ""))
+
         except Exception as exc:
             error_msg = str(exc)
             self.error_log.append(error_msg)
@@ -265,6 +354,8 @@ class EllaGUIApp:
             self.event_queue.put(("state", "retry"))
             self.event_queue.put(("message", f"Error: {error_msg}"))
             self.event_queue.put(("error", error_msg))
+        finally:
+            self.prompt_active = False
 
     def _drain_event_queue(self) -> None:
         while True:
@@ -275,9 +366,8 @@ class EllaGUIApp:
 
             if event == "state" and isinstance(payload, str):
                 self.state = payload
-                if payload in {"idle", "success", "retry"}:
-                    self.animator.set_state(payload if payload != "idle" else "neutral", reset=True)
-                elif payload in {"listening", "processing", "speaking"}:
+                self._touch_activity()
+                if payload in {"idle", "warmup", "listening", "processing", "speaking", "success", "retry"}:
                     self.animator.set_state(payload, reset=True)
             elif event == "message" and isinstance(payload, str):
                 self.message = payload
@@ -286,27 +376,79 @@ class EllaGUIApp:
                 pass
             elif event == "attempt_ready" and isinstance(payload, AttemptViewModel):
                 self.latest_attempt = payload
+            elif event == "show_menu" and isinstance(payload, bool):
+                self.show_menu = payload
 
     def _handle_pygame_events(self, pygame_module) -> None:
         for event in pygame_module.event.get():
             if event.type == pygame_module.QUIT:
                 self.running = False
+            elif event.type == pygame_module.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    if self.show_menu:
+                        self._handle_menu_button_down(event.pos)
+                    else:
+                        self._handle_click(event.pos)
+            elif event.type == pygame_module.MOUSEBUTTONUP:
+                if event.button == 1:  # Left click release
+                    if self.show_menu:
+                        self._handle_menu_button_up(event.pos)
+                    self.pressed_button = None
             elif event.type == pygame_module.KEYDOWN:
                 if event.key == pygame_module.K_ESCAPE:
                     self.running = False
                 elif event.key == pygame_module.K_SPACE:
+                    self._touch_activity()
                     self._start_attempt()
                 elif event.key == pygame_module.K_r:
+                    self._touch_activity()
                     self._speak_last_feedback()
-            elif event.type == pygame_module.MOUSEBUTTONDOWN and event.button == 1:
-                self._handle_click(event.pos)
+
+    def _handle_menu_button_down(self, mouse_pos: tuple[int, int]) -> None:
+        """Handle mouse button down on menu buttons."""
+        # If confirmation dialog is visible, check its buttons first
+        if self.show_exit_confirm:
+            if hasattr(self, 'menu_confirm_yes_button') and self.menu_confirm_yes_button.collidepoint(mouse_pos):
+                self.pressed_button = "confirm_yes"
+                return
+            if hasattr(self, 'menu_confirm_no_button') and self.menu_confirm_no_button.collidepoint(mouse_pos):
+                self.pressed_button = "confirm_no"
+                return
+
+        if hasattr(self, 'menu_start_button') and self.menu_start_button.collidepoint(mouse_pos):
+            self.pressed_button = "start"
+        elif hasattr(self, 'menu_tutorial_button') and self.menu_tutorial_button.collidepoint(mouse_pos):
+            self.pressed_button = "tutorial"
+        elif hasattr(self, 'menu_settings_button') and self.menu_settings_button.collidepoint(mouse_pos):
+            self.pressed_button = "settings"
+        elif hasattr(self, 'menu_exit_button') and self.menu_exit_button.collidepoint(mouse_pos):
+            self.pressed_button = "exit"
+
+    def _handle_menu_button_up(self, mouse_pos: tuple[int, int]) -> None:
+        """Handle mouse button up on menu buttons - trigger action if still over button."""
+        if self.pressed_button == "start" and hasattr(self, 'menu_start_button') and self.menu_start_button.collidepoint(mouse_pos):
+            self.show_menu = False
+            self._start_attempt()
+        elif self.pressed_button == "tutorial" and hasattr(self, 'menu_tutorial_button') and self.menu_tutorial_button.collidepoint(mouse_pos):
+            self.message = "Tutorial coming soon!"
+        elif self.pressed_button == "settings" and hasattr(self, 'menu_settings_button') and self.menu_settings_button.collidepoint(mouse_pos):
+            self.message = "Settings coming soon!"
+        elif self.pressed_button == "exit" and hasattr(self, 'menu_exit_button') and self.menu_exit_button.collidepoint(mouse_pos):
+            # Show confirmation dialog instead of exiting immediately
+            self.show_exit_confirm = True
+        elif self.pressed_button == "confirm_yes" and hasattr(self, 'menu_confirm_yes_button') and self.menu_confirm_yes_button.collidepoint(mouse_pos):
+            # User confirmed exit
+            self.running = False
+        elif self.pressed_button == "confirm_no" and hasattr(self, 'menu_confirm_no_button') and self.menu_confirm_no_button.collidepoint(mouse_pos):
+            # Cancel exit
+            self.show_exit_confirm = False
 
     def _handle_click(self, mouse_pos: tuple[int, int]) -> None:
-        if self.start_button.collidepoint(mouse_pos):
+        if hasattr(self, 'start_button') and self.start_button.collidepoint(mouse_pos):
             self._start_attempt()
-        elif self.replay_button.collidepoint(mouse_pos):
+        elif hasattr(self, 'replay_button') and self.replay_button.collidepoint(mouse_pos):
             self._speak_last_feedback()
-        elif self.quit_button.collidepoint(mouse_pos):
+        elif hasattr(self, 'quit_button') and self.quit_button.collidepoint(mouse_pos):
             self.running = False
 
     def _speak_last_feedback(self) -> None:
@@ -382,119 +524,170 @@ class EllaGUIApp:
         self._draw_gradient(pygame_module)
         width, height = self.screen.get_size()
 
-        card_color = self.config.card
-        sentence_rect = pygame_module.Rect(40, 26, width - 80, 132)
-        avatar_panel = pygame_module.Rect(40, 168, int(width * 0.46), height - 248)
-        feedback_panel = pygame_module.Rect(avatar_panel.right + 24, 168, width - avatar_panel.right - 64, height - 248)
-        actions_rect = pygame_module.Rect(40, height - 70, width - 80, 40)
+        if self.show_menu:
+            self._render_menu(pygame_module)
+            return
 
-        pygame_module.draw.rect(self.screen, card_color, sentence_rect, border_radius=24)
-        pygame_module.draw.rect(self.screen, card_color, avatar_panel, border_radius=24)
-        pygame_module.draw.rect(self.screen, card_color, feedback_panel, border_radius=24)
+        if self.prompt_active:
+            prompt_padding = 72
+            prompt_rect = pygame_module.Rect(
+                prompt_padding,
+                prompt_padding,
+                width - prompt_padding * 2,
+                height - prompt_padding * 2,
+            )
 
-        title = self.font_title.render("E.L.L.A.", True, self.config.text_primary)
-        level_label = self._display_level_name()
-        subtitle = self.font_subtitle.render("AI Reading Assistant", True, self.config.text_secondary)
-        level_badge = self.font_small.render(f"Level: {level_label}", True, self.config.accent)
-        self.screen.blit(title, (sentence_rect.left + 22, sentence_rect.top + 14))
-        self.screen.blit(subtitle, (sentence_rect.left + 24, sentence_rect.top + 58))
-        self.screen.blit(level_badge, (sentence_rect.left + 24, sentence_rect.top + 88))
-
-        sentence_label = self.font_small.render("Read this sentence:", True, self.config.text_secondary)
-        self.screen.blit(sentence_label, (sentence_rect.left + 430, sentence_rect.top + 14))
-
-        sentence_text_rect = pygame_module.Rect(sentence_rect.left + 430, sentence_rect.top + 42, sentence_rect.width - 450, 72)
-        self._draw_wrapped_text(self.expected_sentence, self.font_body, self.config.text_primary, sentence_text_rect)
-
-        avatar_frame = self.animator.current_frame()
-        avatar_target = avatar_frame.get_rect(center=avatar_panel.center)
-        self.screen.blit(avatar_frame, avatar_target)
-
-        status_color = self.config.accent
-        if self.state in {"retry"}:
-            status_color = self.config.danger
-        elif self.state in {"processing"}:
-            status_color = self.config.warn
-
-        status = self.font_subtitle.render(f"State: {self.state}", True, status_color)
-        self.screen.blit(status, (feedback_panel.left + 20, feedback_panel.top + 16))
-
-        progress_text = f"{level_label}, {self.completed_in_level} out of {self.level_goal} completed"
-        progress = self.font_small.render(progress_text, True, self.config.text_secondary)
-        self.screen.blit(progress, (feedback_panel.left + 20, feedback_panel.top + 44))
-
-        msg_rect = pygame_module.Rect(feedback_panel.left + 20, feedback_panel.top + 68, feedback_panel.width - 40, 58)
-        self._draw_wrapped_text(self.message, self.font_small, self.config.text_secondary, msg_rect, line_spacing=4)
-
-        # Error log panel (bottom right corner)
-        if self.error_log:
-            error_panel_height = 140
-            error_panel = pygame_module.Rect(width - 320, height - error_panel_height - 10, 310, error_panel_height)
-            pygame_module.draw.rect(self.screen, self.config.danger, error_panel, border_radius=12, width=2)
-            pygame_module.draw.rect(self.screen, (30, 20, 20), error_panel, border_radius=12)
-            
-            error_title = self.font_small.render(f"Errors ({len(self.error_log)})", True, self.config.danger)
-            self.screen.blit(error_title, (error_panel.left + 12, error_panel.top + 8))
-            
-            error_text_rect = pygame_module.Rect(error_panel.left + 12, error_panel.top + 32, error_panel.width - 24, error_panel_height - 44)
-            # Show last 3 errors
-            error_display = "\n".join(self.error_log[-3:])
-            self._draw_wrapped_text(error_display, self.font_small, (255, 180, 180), error_text_rect, line_spacing=2)
-
-        if self.latest_attempt is None:
-            hint = self.font_body.render("No attempt yet.", True, self.config.text_secondary)
-            self.screen.blit(hint, (feedback_panel.left + 20, feedback_panel.top + 130))
-        else:
-            attempt = self.latest_attempt
-            y = feedback_panel.top + 130
-
-            level = self.font_body.render(f"Feedback: {attempt.feedback.level_message}", True, self.config.text_primary)
-            self.screen.blit(level, (feedback_panel.left + 20, y))
-            y += 44
-
-            accuracy = self.font_small.render(
-                f"Accuracy: {attempt.validation.accuracy * 100:.1f}%    WER: {attempt.validation.wer:.2f}",
+            level_text = self.font_subtitle.render(
+                f"Level {self._display_level_name()}  |  Item {self._current_item_number()}",
                 True,
                 self.config.text_secondary,
             )
-            self.screen.blit(accuracy, (feedback_panel.left + 20, y))
-            y += 34
+            self.screen.blit(level_text, (prompt_rect.left, prompt_rect.top))
 
-            spoken_label = self.font_small.render("Spoken:", True, self.config.text_secondary)
-            self.screen.blit(spoken_label, (feedback_panel.left + 20, y))
-            y += 24
-            spoken_rect = pygame_module.Rect(feedback_panel.left + 20, y, feedback_panel.width - 40, 48)
-            self._draw_wrapped_text(attempt.spoken_sentence or "(silence)", self.font_small, self.config.text_primary, spoken_rect, 2)
-            y += 58
+            prompt_font = self._prompt_font(pygame_module)
+            prompt_top = prompt_rect.top + 72
+            prompt_text_rect = pygame_module.Rect(
+                prompt_rect.left,
+                prompt_top,
+                prompt_rect.width,
+                prompt_rect.height - 72,
+            )
+            self._draw_wrapped_text(self.expected_sentence, prompt_font, self.config.text_primary, prompt_text_rect, line_spacing=14)
+            return
 
-            target_label = self.font_small.render("Target (highlighted):", True, self.config.text_secondary)
-            self.screen.blit(target_label, (feedback_panel.left + 20, y))
-            y += 24
-            target_rect = pygame_module.Rect(feedback_panel.left + 20, y, feedback_panel.width - 40, 56)
-            self._draw_wrapped_text(attempt.highlighted_expected, self.font_small, self.config.text_primary, target_rect, 2)
-            y += 66
+        avatar_frame = self.animator.current_frame()
+        frame_w = max(1, avatar_frame.get_width())
+        frame_h = max(1, avatar_frame.get_height())
+        scale = max(width / frame_w, height / frame_h)
 
-            if attempt.feedback.pronunciation_hints:
-                hints_label = self.font_small.render("Pronunciation support:", True, self.config.text_secondary)
-                self.screen.blit(hints_label, (feedback_panel.left + 20, y))
-                y += 24
-                for hint in attempt.feedback.pronunciation_hints[:2]:
-                    hint_rect = pygame_module.Rect(feedback_panel.left + 34, y, feedback_panel.width - 54, 42)
-                    self._draw_wrapped_text(f"- {hint}", self.font_small, self.config.text_primary, hint_rect, 2)
-                    y += 40
+        target_size = (
+            max(1, int(frame_w * scale)),
+            max(1, int(frame_h * scale)),
+        )
+        rendered_frame = pygame_module.transform.smoothscale(avatar_frame, target_size)
+        avatar_target = rendered_frame.get_rect(center=(width // 2, height // 2))
+        self.screen.blit(rendered_frame, avatar_target)
 
-        self.start_button = pygame_module.Rect(actions_rect.left, actions_rect.top, 180, actions_rect.height)
-        self.replay_button = pygame_module.Rect(actions_rect.left + 196, actions_rect.top, 180, actions_rect.height)
-        self.quit_button = pygame_module.Rect(actions_rect.right - 120, actions_rect.top, 120, actions_rect.height)
+    def _render_menu(self, pygame_module) -> None:
+        """Render the main menu with Start, Tutorial, and Settings buttons."""
+        width, height = self.screen.get_size()
+        
+        # Custom menu colors for touch screen
+        menu_bg_color = (245, 205, 214)  # #F5CDD6
+        button_bg_color = (248, 111, 150)  # #F86F96
+        button_text_color = (255, 255, 255)  # White
+        button_outline_color = (0, 0, 0)  # Black
+        
+        # Fill background with custom color
+        self.screen.fill(menu_bg_color)
+        
+        # Draw title
+        title_surf = self.font_title.render("Welcome to E.L.L.A.", True, (0, 0, 0))
+        title_rect = title_surf.get_rect(center=(width // 2, int(height * 0.15)))
+        self.screen.blit(title_surf, title_rect)
+        
+        # Draw menu buttons - larger for touch screen
+        button_width = 320
+        button_height = 110
+        button_y_start = int(height * 0.30)
+        button_spacing = 130
+        center_x = width // 2
+        
+        # Start button
+        self.menu_start_button = pygame_module.Rect(
+            center_x - button_width // 2,
+            button_y_start,
+            button_width,
+            button_height
+        )
+        self._draw_menu_button(pygame_module, self.menu_start_button, "Start", "start", button_bg_color, button_text_color, button_outline_color)
+        
+        # Tutorial button
+        self.menu_tutorial_button = pygame_module.Rect(
+            center_x - button_width // 2,
+            button_y_start + button_spacing,
+            button_width,
+            button_height
+        )
+        self._draw_menu_button(pygame_module, self.menu_tutorial_button, "Tutorial", "tutorial", button_bg_color, button_text_color, button_outline_color)
+        
+        # Settings button
+        self.menu_settings_button = pygame_module.Rect(
+            center_x - button_width // 2,
+            button_y_start + button_spacing * 2,
+            button_width,
+            button_height
+        )
+        self._draw_menu_button(pygame_module, self.menu_settings_button, "Settings", "settings", button_bg_color, button_text_color, button_outline_color)
 
-        pygame_module.draw.rect(self.screen, self.config.accent, self.start_button, border_radius=12)
-        pygame_module.draw.rect(self.screen, (64, 100, 121), self.replay_button, border_radius=12)
-        pygame_module.draw.rect(self.screen, (126, 81, 87), self.quit_button, border_radius=12)
+        # Exit button (bottom)
+        self.menu_exit_button = pygame_module.Rect(
+            center_x - button_width // 2,
+            button_y_start + button_spacing * 3,
+            button_width,
+            button_height
+        )
+        self._draw_menu_button(pygame_module, self.menu_exit_button, "Exit", "exit", button_bg_color, button_text_color, button_outline_color)
 
-        start_txt = self.font_small.render("Start (Space)", True, (255, 255, 255))
-        replay_txt = self.font_small.render("Replay (R)", True, (255, 255, 255))
-        quit_txt = self.font_small.render("Quit (Esc)", True, (255, 255, 255))
+        # If exit confirmation requested, draw overlay dialog
+        if self.show_exit_confirm:
+            # Semi-opaque overlay
+            overlay = pygame_module.Surface((width, height), pygame_module.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.screen.blit(overlay, (0, 0))
 
-        self.screen.blit(start_txt, start_txt.get_rect(center=self.start_button.center))
-        self.screen.blit(replay_txt, replay_txt.get_rect(center=self.replay_button.center))
-        self.screen.blit(quit_txt, quit_txt.get_rect(center=self.quit_button.center))
+            dialog_w = int(width * 0.8)
+            dialog_h = int(height * 0.32)
+            dialog_x = (width - dialog_w) // 2
+            dialog_y = (height - dialog_h) // 2
+            dialog_rect = pygame_module.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
+            # Dialog background
+            pygame_module.draw.rect(self.screen, (255, 255, 255), dialog_rect, border_radius=12)
+            pygame_module.draw.rect(self.screen, (0, 0, 0), dialog_rect, width=6, border_radius=12)
+
+            # Dialog text
+            msg = "Are you sure you want to exit?"
+            msg_font = pygame_module.font.SysFont("Avenir Next", 28, bold=True)
+            msg_surf = msg_font.render(msg, True, (0, 0, 0))
+            msg_rect = msg_surf.get_rect(center=(width // 2, dialog_y + int(dialog_h * 0.35)))
+            self.screen.blit(msg_surf, msg_rect)
+
+            # Yes/No buttons
+            btn_w = 160
+            btn_h = 70
+            btn_y = dialog_y + dialog_h - btn_h - 24
+            yes_rect = pygame_module.Rect((width // 2) - btn_w - 12, btn_y, btn_w, btn_h)
+            no_rect = pygame_module.Rect((width // 2) + 12, btn_y, btn_w, btn_h)
+            self.menu_confirm_yes_button = yes_rect
+            self.menu_confirm_no_button = no_rect
+
+            # Yes button (use pressed state)
+            yes_bg = (251, 165, 193) if self.pressed_button == "confirm_yes" else button_bg_color
+            pygame_module.draw.rect(self.screen, yes_bg, yes_rect, border_radius=12)
+            pygame_module.draw.rect(self.screen, button_outline_color, yes_rect, width=6, border_radius=12)
+            yes_text = self.font_body.render("Yes", True, (255, 255, 255))
+            self.screen.blit(yes_text, yes_text.get_rect(center=yes_rect.center))
+
+            # No button
+            no_bg = (251, 165, 193) if self.pressed_button == "confirm_no" else button_bg_color
+            pygame_module.draw.rect(self.screen, no_bg, no_rect, border_radius=12)
+            pygame_module.draw.rect(self.screen, button_outline_color, no_rect, width=6, border_radius=12)
+            no_text = self.font_body.render("No", True, (255, 255, 255))
+            self.screen.blit(no_text, no_text.get_rect(center=no_rect.center))
+
+    def _draw_menu_button(self, pygame_module, rect, text: str, button_id: str, bg_color: tuple[int, int, int], text_color: tuple[int, int, int], outline_color: tuple[int, int, int]) -> None:
+        """Draw a menu button with text."""
+        # Check if button is pressed and use pressed color
+        pressed_color = (251, 165, 193)  # #FBA5C1
+        current_bg_color = pressed_color if self.pressed_button == button_id else bg_color
+        
+        # Draw button background
+        pygame_module.draw.rect(self.screen, current_bg_color, rect, border_radius=15)
+        # Draw thicker button outline
+        pygame_module.draw.rect(self.screen, outline_color, rect, width=6, border_radius=15)
+        
+        # Draw button text - use larger font for touch screen
+        button_font = pygame_module.font.SysFont("Avenir Next", 48, bold=True)
+        text_surf = button_font.render(text, True, text_color)
+        text_rect = text_surf.get_rect(center=rect.center)
+        self.screen.blit(text_surf, text_rect)
