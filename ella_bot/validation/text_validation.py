@@ -28,6 +28,34 @@ _WORD_RE = re.compile(r"[a-zA-Z']+")
 def normalize(text: str) -> List[str]:
     return [token.lower() for token in _WORD_RE.findall(text)]
 
+ASR_HOMOPHONES: Dict[str, set[str]] = {
+    "a": {"uh", "ah"},
+    "b": {"bee", "be"},
+    "c": {"see", "sea"},
+    "d": {"dee", "the"},
+    "e": {"ee"},
+    "f": {"ef", "eff"},
+    "g": {"jee", "gee"},
+    "h": {"aitch"},
+    "i": {"eye", "aye"},
+    "j": {"jay"},
+    "k": {"kay"},
+    "l": {"el", "ell"},
+    "m": {"em"},
+    "n": {"en", "in", "an"},
+    "o": {"oh", "owe"},
+    "p": {"pee", "pea"},
+    "q": {"cue", "queue"},
+    "r": {"are", "our"},
+    "s": {"es", "ess", "is", "as"},
+    "t": {"tee", "tea"},
+    "u": {"you", "ewe"},
+    "v": {"vee"},
+    "w": {"doubleyou"},
+    "x": {"ex"},
+    "y": {"why"},
+    "z": {"zee"}
+}
 
 def align_words(expected: List[str], spoken: List[str]) -> List[AlignmentToken]:
     n, m = len(expected), len(spoken)
@@ -43,7 +71,8 @@ def align_words(expected: List[str], spoken: List[str]) -> List[AlignmentToken]:
 
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            cost_sub = 0 if expected[i - 1] == spoken[j - 1] else 1
+            is_match = expected[i - 1] == spoken[j - 1] or spoken[j - 1] in ASR_HOMOPHONES.get(expected[i - 1], set())
+            cost_sub = 0 if is_match else 1
             choices = [
                 (dp[i - 1][j] + 1, (i - 1, j, "del")),
                 (dp[i][j - 1] + 1, (i, j - 1, "ins")),
