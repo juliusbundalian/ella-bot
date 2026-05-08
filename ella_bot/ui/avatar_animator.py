@@ -13,11 +13,18 @@ class AvatarAnimator:
         assets_dir: Path,
         frame_size: tuple[int, int],
         animation_fps: int = 10,
+        speaking_fps: int = 5,
+        loading_fps: int = 8,
+        processing_fps: int = 4,
     ) -> None:
         self.pg = pygame_module
         self.assets_dir = assets_dir
         self.frame_size = frame_size
         self.animation_interval_ms = max(40, int(1000 / max(1, animation_fps)))
+        self.speaking_interval_ms = max(40, int(1000 / max(1, speaking_fps)))
+        self.loading_interval_ms = max(40, int(1000 / max(1, loading_fps)))
+        self.processing_interval_ms = max(40, int(1000 / max(1, processing_fps)))
+        self.listening_interval_ms = 4000
 
         self.animations: Dict[str, List] = {}
         self.current_state = "neutral"
@@ -30,9 +37,45 @@ class AvatarAnimator:
 
     @staticmethod
     def _is_mouth_animated_state(state: str) -> bool:
-        return state == "speaking"
+        return state in {"warmup", "speaking", "processing", "listening"}
+
+    def _state_interval_ms(self, state: str) -> int:
+        if state == "processing":
+            return self.processing_interval_ms
+        if state == "listening":
+            return self.listening_interval_ms
+        if state == "speaking":
+            return self.speaking_interval_ms
+        if state == "warmup":
+            return self.loading_interval_ms
+        return self.animation_interval_ms
+
+    def _faces_base_dir(self) -> Path | None:
+        for candidate in (self.assets_dir / "faces", self.assets_dir.parent / "faces"):
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _faces_state_dirs(self) -> Dict[str, Path]:
+        base = self._faces_base_dir()
+        if base is None:
+            return {}
+
+        return {
+            "warmup": base / "warmup",
+            "idle": base / "idle",
+            "neutral": base / "idle",
+            "listening": base / "listening",
+            "speaking": base / "speaking",
+            "processing": base / "thinking",
+            "success": base / "warmup",
+            "retry": base / "error",
+        }
 
     def _state_dirs(self) -> Dict[str, Path]:
+        if self._faces_base_dir() is not None:
+            return self._faces_state_dirs()
+
         base = self.assets_dir / "avatars" / "ella_default"
         return {
             "neutral": base / "neutral",
@@ -122,7 +165,8 @@ class AvatarAnimator:
             self.last_tick_ms = now_ms
             return
 
-        if now_ms - self.last_tick_ms >= self.animation_interval_ms:
+        interval_ms = self._state_interval_ms(self.current_state)
+        if now_ms - self.last_tick_ms >= interval_ms:
             self.frame_index = (self.frame_index + 1) % len(frames)
             self.last_tick_ms = now_ms
 
