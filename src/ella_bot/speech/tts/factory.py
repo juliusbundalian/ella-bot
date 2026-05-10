@@ -51,23 +51,27 @@ class Pyttsx3TTS(BaseTTS):
     def __init__(self, config: Optional[TTSConfig] = None):
         self.config = config or TTSConfig()
         try:
-            pyttsx3 = importlib.import_module("pyttsx3")
+            importlib.import_module("pyttsx3")
         except Exception as exc:
             raise RuntimeError("pyttsx3 is not installed. Run: pip install pyttsx3") from exc
 
-        self.engine = pyttsx3.init()
-        self.engine.setProperty("rate", self.config.rate)
+    def speak(self, text: str) -> None:
+        import pyttsx3
+        # Initialize locally per-call to avoid cross-thread COM errors on Windows
+        engine = pyttsx3.init()
+        engine.setProperty("rate", self.config.rate)
 
         if self.config.voice:
-            for voice in self.engine.getProperty("voices"):
+            for voice in engine.getProperty("voices"):
                 if self.config.voice.lower() in str(voice.name).lower() or self.config.voice in str(voice.id):
-                    self.engine.setProperty("voice", voice.id)
+                    engine.setProperty("voice", voice.id)
                     break
 
-    def speak(self, text: str) -> None:
-        self.engine.say(text)
-        # pyttsx3 is inherently blocking for runAndWait in most backends.
-        self.engine.runAndWait()
+        engine.say(text)
+        engine.runAndWait()
+        
+        # Explicitly delete engine to free COM references
+        del engine
 
 
 class MacSayTTS(BaseTTS):
