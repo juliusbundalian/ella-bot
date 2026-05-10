@@ -24,7 +24,7 @@ from ella_bot.validation.validators import (
     validate_spoken_text,
 )
 from ella_bot.utils.file_utils import get_project_root
-
+from ella_bot.config.app_config import load_settings
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="E.L.L.A. offline reading assistant prototype")
@@ -99,6 +99,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fullscreen", action="store_true", help="Launch GUI in fullscreen mode")
     parser.add_argument("--gui-width", type=int, default=1280, help="GUI window width (ignored in fullscreen)")
     parser.add_argument("--gui-height", type=int, default=720, help="GUI window height (ignored in fullscreen)")
+    
+    settings = load_settings()
+    parser.set_defaults(**settings)
+    
     return parser.parse_args()
 
 
