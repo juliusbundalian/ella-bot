@@ -1,0 +1,2 @@
+[console_scripts]
+ella-bot = ella_bot.cli.main:main

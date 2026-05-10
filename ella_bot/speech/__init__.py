@@ -1,1 +1,0 @@
-"""Speech module for E.L.L.A."""
