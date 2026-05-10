@@ -2,58 +2,24 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
-from ella_bot.validation.feedback import (
-    build_feedback,
-    build_spoken_feedback_with_coaching,
-)
 from ella_bot.speech.asr.simulated import SimulatedASR
 from ella_bot.speech.asr.vosk_engine import VoskASR
 from ella_bot.speech.tts.base import TTSConfig
 from ella_bot.speech.tts.factory import build_tts
-from ella_bot.ui.console.console_ui import render_result
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.app import EllaGUIApp
-from ella_bot.validation.validators import (
-    build_highlighted_expected,
-    normalize,
-    spoken_word_confidence_map,
-    validate_spoken_text,
-)
 from ella_bot.utils.file_utils import get_project_root
 from ella_bot.config.app_config import load_settings
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="E.L.L.A. offline reading assistant prototype")
-    parser.add_argument("--expected", help="Expected sentence")
-    parser.add_argument(
-        "--sentence-file",
-        default="./config/sample_sentences.txt",
-        help="Path to a text file containing one practice sentence per line.",
-    )
-    parser.add_argument(
-        "--sentence-id",
-        type=int,
-        default=1,
-        help="1-based index into sentence file when --expected is omitted.",
-    )
-    parser.add_argument(
-        "--random-sentence",
-        action="store_true",
-        help="Choose a random sentence from sentence file when --expected is omitted.",
-    )
-    parser.add_argument(
-        "--list-sentences",
-        action="store_true",
-        help="Print available sample sentences from sentence file and exit.",
-    )
     parser.add_argument(
         "--start-level",
-        default="easy",
-        choices=["easy", "medium-a", "medium-b", "medium-c", "hard"],
+        default="1a",
+        choices=["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"],
         help="Starting level for GUI progression mode.",
     )
     parser.add_argument(
@@ -126,40 +92,6 @@ def load_pronunciation_overrides(path: str) -> Dict[str, str]:
     return overrides
 
 
-def load_sample_sentences(path: str) -> List[str]:
-    file_path = resolve_existing_path(path, fallback_dir="config")
-    if not file_path.exists():
-        return []
-
-    try:
-        lines = file_path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return []
-
-    sentences = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-    return sentences
-
-
-def resolve_expected_sentence(args: argparse.Namespace) -> str:
-    if args.expected and args.expected.strip():
-        return args.expected.strip()
-
-    sentences = load_sample_sentences(args.sentence_file)
-    if not sentences:
-        raise ValueError(
-            "No expected sentence provided and no sample sentences found. "
-            "Use --expected or provide --sentence-file with sentences."
-        )
-
-    if args.random_sentence:
-        return random.choice(sentences)
-
-    index = max(1, args.sentence_id)
-    if index > len(sentences):
-        index = len(sentences)
-    return sentences[index - 1]
-
-
 def resolve_existing_path(path: str, fallback_dir: str | None = None) -> Path:
     """Resolve user-provided paths with optional project-folder fallback."""
     candidate = Path(path)
@@ -200,57 +132,13 @@ def build_tts_if_enabled(args: argparse.Namespace):
     )
 
 
-def run_console(args: argparse.Namespace) -> None:
-    asr = build_asr(args)
-    asr_result = asr.transcribe(expected_sentence=args.expected)
-
-    validation = validate_spoken_text(args.expected, asr_result.transcript)
-
-    spoken_tokens = normalize(asr_result.transcript)
-    confidences = [w.confidence for w in asr_result.words][: len(spoken_tokens)]
-    conf_map = spoken_word_confidence_map(spoken_tokens, confidences)
-
-    feedback = build_feedback(validation=validation, spoken_confidence_by_word=conf_map)
-
-    highlighted = build_highlighted_expected(validation.alignment)
-    output = render_result(
-        expected_sentence=args.expected,
-        spoken_sentence=asr_result.transcript,
-        highlighted_expected=highlighted,
-        validation=validation,
-        feedback=feedback,
-    )
-    print(output)
-
-    if args.audio_feedback:
-        overrides = load_pronunciation_overrides(args.pronunciation_overrides)
-        tts = build_tts_if_enabled(args)
-        if tts is None:
-            return
-
-        spoken_lines = build_spoken_feedback_with_coaching(
-            feedback=feedback,
-            overrides=overrides,
-            expected_sentence=args.expected,
-            max_hints=2,
-        )
-
-        for line in spoken_lines:
-            tts.speak(line)
-
-
 def run_gui(args: argparse.Namespace) -> None:
-    hard_sentences = load_sample_sentences(args.sentence_file)
-    if not hard_sentences and args.expected:
-        hard_sentences = [args.expected]
-
     gui = EllaGUIApp(
-        expected_sentence=args.expected,
+        expected_sentence="",
         asr=build_asr(args),
         tts=build_tts_if_enabled(args),
         audio_feedback=args.audio_feedback,
         pronunciation_overrides=load_pronunciation_overrides(args.pronunciation_overrides),
-        hard_sentences=hard_sentences,
         start_level=args.start_level,
         config=GUIConfig(
             width=args.gui_width,
@@ -264,22 +152,8 @@ def run_gui(args: argparse.Namespace) -> None:
 def main() -> None:
     args = parse_args()
 
-    if args.list_sentences:
-        sentences = load_sample_sentences(args.sentence_file)
-        if not sentences:
-            print("No sample sentences found.")
-            return
-        for idx, sentence in enumerate(sentences, start=1):
-            print(f"{idx}. {sentence}")
-        return
-
-    args.expected = resolve_expected_sentence(args)
-
     try:
-        if args.gui:
-            run_gui(args)
-        else:
-            run_console(args)
+        run_gui(args)
     except Exception as exc:
         print(f"[Runtime error] {exc}")
 
