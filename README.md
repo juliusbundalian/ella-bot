@@ -11,7 +11,7 @@ This project runs an offline reading assistant GUI with:
 From this folder:
 
 ```bash
-source .venv/bin/activate && python main.py \
+source .venv/bin/activate && ella-bot \
 	--gui \
 	--use-mic \
 	--vosk-model ./models/vosk-model-small-en-us-0.15 \
@@ -55,7 +55,7 @@ aplay -l    # Check speaker device
 
 4. Run with ReSpeaker (auto-detection) using the detected device index and optional sample rate:
 ```bash
-source .venv/bin/activate && python main.py \
+source .venv/bin/activate && ella-bot \
 	--gui \
 	--use-mic \
 	--vosk-model ./models/vosk-model-small-en-us-0.15 \
@@ -75,14 +75,14 @@ You can run this on Windows using either Command Prompt (cmd) or PowerShell. Ens
 ```cmd
 cd ella-bot
 .venv\Scripts\activate
-python main.py --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
+ella-bot --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
 ```
 
 ### Using PowerShell
 ```powershell
 cd ella-bot
 .\.venv\Scripts\activate
-python main.py --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
+ella-bot --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
 ```
 
 Note: `pyttsx3` is recommended for TTS on Windows.
@@ -93,7 +93,7 @@ You can run and test this on Mac using the following command:
 
 ```bash
 cd /Users/juliusjervinbundalian/Documents/ella-bot/ella-bot
-source ../.venv/bin/activate && python main.py \
+source ../.venv/bin/activate && ella-bot \
   --gui \
   --use-mic \
   --vosk-model ./models/vosk-model-small-en-us-0.15 \
@@ -122,7 +122,7 @@ You can start at a specific level:
 Example:
 
 ```bash
-source .venv/bin/activate && python main.py \
+source .venv/bin/activate && ella-bot \
 	--gui \
 	--start-level medium-b \
 	--vosk-model ./models/vosk-model-small-en-us-0.15 \
