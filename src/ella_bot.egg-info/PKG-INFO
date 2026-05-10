@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: ella_bot
+Version: 0.1.0
+Summary: E.L.L.A. Offline Reading Assistant
+Requires-Python: >=3.9
+Requires-Dist: vosk
+Requires-Dist: sounddevice
+Requires-Dist: pygame-ce
+Requires-Dist: pyttsx3
+Requires-Dist: pronouncing
