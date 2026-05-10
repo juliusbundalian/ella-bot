@@ -24,3 +24,7 @@ htmlcov/
 # IDE/editor
 .vscode/
 .idea/
+
+models/
+piper/
+sounds/

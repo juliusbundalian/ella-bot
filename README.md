@@ -67,6 +67,26 @@ source .venv/bin/activate && python main.py \
 	--pronunciation-overrides ./config/pronunciation_overrides.json
 ```
 
+## Windows
+
+You can run this on Windows using either Command Prompt (cmd) or PowerShell. Ensure you are in the `ella-bot` directory first.
+
+### Using Command Prompt (cmd)
+```cmd
+cd ella-bot
+.venv\Scripts\activate
+python main.py --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
+```
+
+### Using PowerShell
+```powershell
+cd ella-bot
+.\.venv\Scripts\activate
+python main.py --gui --use-mic --vosk-model .\models\vosk-model-small-en-us-0.15 --listen-seconds 5 --audio-feedback --tts-engine pyttsx3 --tts-rate 150 --pronunciation-overrides .\config\pronunciation_overrides.json
+```
+
+Note: `pyttsx3` is recommended for TTS on Windows.
+
 ## MacOS
 
 You can run and test this on Mac using the following command:
