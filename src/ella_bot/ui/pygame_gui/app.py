@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
 from ella_bot.ui.pygame_gui.config import GUIConfig
+from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene, AttemptViewModel
 
@@ -148,18 +149,6 @@ class EllaGUIApp:
         self.active_scene = self.scenes[scene_name]
         self.active_scene.on_enter()
 
-    def _startup_sequence(self) -> None:
-        self.event_queue.put(("state", "warmup"))
-        self.event_queue.put(("message", ""))
-        time.sleep(2)
-        self.event_queue.put(("state", "speaking"))
-        self.event_queue.put(("message", ""))
-        if self.tts is not None:
-            try:
-                self.tts.speak("Hello, I am Ella, your offline reading assistant. I am ready when you are.")
-            except Exception as exc:
-                self.event_queue.put(("error", str(exc)))
-
     def run(self) -> None:
         try:
             import pygame
@@ -197,13 +186,11 @@ class EllaGUIApp:
         self.animator.set_state("warmup", reset=True)
 
         self.scenes = {
+            "intro": IntroScene(self),
             "main_menu": MainMenuScene(self),
             "reading_prompt": ReadingPromptScene(self),
         }
-        self.switch_scene("main_menu")
-
-        startup_thread = threading.Thread(target=self._startup_sequence, daemon=True)
-        startup_thread.start()
+        self.switch_scene("intro")
 
         self.running = True
         while self.running:
