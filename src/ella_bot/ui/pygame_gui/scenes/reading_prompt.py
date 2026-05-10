@@ -1,6 +1,7 @@
 import time
 import queue
 import threading
+import re
 import pygame
 from dataclasses import dataclass
 from typing import Optional
@@ -104,7 +105,12 @@ class ReadingPromptScene(BaseScene):
 
         if self.app.audio_feedback and self.app.tts is not None:
             try:
-                self.app.tts.speak(self.app._build_start_announcement())
+                announcement = self.app._build_start_announcement()
+                target_item = self.app.expected_sentence.strip()
+                target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
+                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                announcement_with_overrides = pattern.sub(target_override, announcement)
+                self.app.tts.speak(announcement_with_overrides)
             except Exception as exc:
                 self.app.event_queue.put(("error", str(exc)))
 
@@ -120,6 +126,11 @@ class ReadingPromptScene(BaseScene):
             time.sleep(2.0)
 
             validation = validate_spoken_text(target_sentence, asr_result.transcript)
+            print(f"\n{'='*60}")
+            print(f"Expected: {target_sentence}")
+            print(f"You said:  {asr_result.transcript}")
+            print(f"Accuracy: {validation.accuracy:.1%}, WER: {validation.wer:.2f}")
+            print(f"{'='*60}\n")
             spoken_tokens = normalize(asr_result.transcript)
             confidences = [w.confidence for w in asr_result.words][: len(spoken_tokens)]
             conf_map = spoken_word_confidence_map(spoken_tokens, confidences)
@@ -127,7 +138,7 @@ class ReadingPromptScene(BaseScene):
 
             highlighted = build_highlighted_expected(validation.alignment)
             view_model = AttemptViewModel(
-                expected_sentence=target_sentence,
+                expected_sentence=self.app.expected_sentence,
                 spoken_sentence=asr_result.transcript,
                 highlighted_expected=highlighted,
                 validation=validation,
@@ -136,12 +147,15 @@ class ReadingPromptScene(BaseScene):
             self.app.event_queue.put(("attempt_ready", view_model))
 
             if self.app.audio_feedback and self.app.tts is not None:
-                spoken_lines = build_spoken_feedback_with_coaching(
-                    feedback=feedback,
-                    overrides=self.app.pronunciation_overrides,
-                    expected_sentence=target_sentence,
-                    max_hints=2,
-                )
+                try:
+                    spoken_lines = build_spoken_feedback_with_coaching(
+                        feedback=feedback,
+                        overrides=self.app.pronunciation_overrides,
+                        expected_sentence=self.app.expected_sentence,
+                        max_hints=2,
+                    )
+                except Exception:
+                    spoken_lines = [feedback.level_message]
 
                 for line in spoken_lines:
                     self.app.event_queue.put(("state", "speaking"))
@@ -168,7 +182,13 @@ class ReadingPromptScene(BaseScene):
             self.app.event_queue.put(("message", ""))
 
         except Exception as exc:
+            import traceback
             error_msg = str(exc)
+            tb = traceback.format_exc()
+            print(f"\n{'='*60}")
+            print(f"ERROR DURING VALIDATION:")
+            print(tb)
+            print(f"{'='*60}\n")
             self.error_log.append(error_msg)
             if len(self.error_log) > self.max_errors:
                 self.error_log.pop(0)
@@ -184,12 +204,15 @@ class ReadingPromptScene(BaseScene):
 
         def _worker() -> None:
             feedback = self.app.latest_attempt.feedback
-            lines = build_spoken_feedback_with_coaching(
-                feedback=feedback,
-                overrides=self.app.pronunciation_overrides,
-                expected_sentence=self.app.latest_attempt.expected_sentence,
-                max_hints=2,
-            )
+            try:
+                lines = build_spoken_feedback_with_coaching(
+                    feedback=feedback,
+                    overrides=self.app.pronunciation_overrides,
+                    expected_sentence=self.app.latest_attempt.expected_sentence,
+                    max_hints=2,
+                )
+            except Exception:
+                lines = [feedback.level_message]
 
             for line in lines:
                 self.app.event_queue.put(("state", "speaking"))
