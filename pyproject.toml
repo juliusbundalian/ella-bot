@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ella_bot"
+version = "0.1.0"
+description = "E.L.L.A. Offline Reading Assistant"
+requires-python = ">=3.9"
+dependencies = [
+    # we leave this empty or minimal to rely on requirements.txt for now, or copy them over
+    "vosk",
+    "sounddevice",
+    "pygame-ce",
+    "pyttsx3",
+    "pronouncing"
+]
+
+[project.scripts]
+ella-bot = "ella_bot.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ella_bot*"]
