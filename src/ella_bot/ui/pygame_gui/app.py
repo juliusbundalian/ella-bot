@@ -7,14 +7,14 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from ella_bot.feedback.feedback_engine import (
+from ella_bot.validation.feedback import (
     FeedbackResult,
     build_feedback,
     build_spoken_feedback_with_coaching,
 )
-from ella_bot.ui.avatar_animator import AvatarAnimator
-from ella_bot.ui.gui_config import GUIConfig
-from ella_bot.validation.text_validation import (
+from ella_bot.ui.pygame_gui.animator import AvatarAnimator
+from ella_bot.ui.pygame_gui.config import GUIConfig
+from ella_bot.validation.validators import (
     ValidationResult,
     build_highlighted_expected,
     normalize,

@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Dict, List, Mapping
 
-from ella_bot.validation.text_validation import ValidationResult
+from ella_bot.validation.validators import ValidationResult
 
 try:
     import pronouncing

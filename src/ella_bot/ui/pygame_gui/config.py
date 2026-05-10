@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from src.ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.utils.file_utils import resolve_asset_path
 
 
 @dataclass

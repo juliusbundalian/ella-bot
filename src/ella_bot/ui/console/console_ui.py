@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ella_bot.feedback.feedback_engine import FeedbackResult
-from ella_bot.validation.text_validation import ValidationResult
+from ella_bot.validation.feedback import FeedbackResult
+from ella_bot.validation.validators import ValidationResult
 
 
 def render_result(
