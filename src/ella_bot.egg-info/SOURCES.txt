@@ -43,10 +43,15 @@ src/ella_bot/ui/pygame_gui/__init__.py
 src/ella_bot/ui/pygame_gui/animator.py
 src/ella_bot/ui/pygame_gui/app.py
 src/ella_bot/ui/pygame_gui/config.py
+src/ella_bot/ui/pygame_gui/scene.py
+src/ella_bot/ui/pygame_gui/ui_helpers.py
 src/ella_bot/ui/pygame_gui/components/__init__.py
 src/ella_bot/ui/pygame_gui/components/button.py
 src/ella_bot/ui/pygame_gui/components/dialog.py
 src/ella_bot/ui/pygame_gui/components/menu.py
+src/ella_bot/ui/pygame_gui/scenes/intro.py
+src/ella_bot/ui/pygame_gui/scenes/main_menu.py
+src/ella_bot/ui/pygame_gui/scenes/reading_prompt.py
 src/ella_bot/utils/__init__.py
 src/ella_bot/utils/audio.py
 src/ella_bot/utils/file_utils.py
