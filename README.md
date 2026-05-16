@@ -60,7 +60,7 @@ tts_engine = auto
 tts_rate = 160
 pronunciation_overrides = ./config/pronunciation_overrides.json
 # Kokoro Settings
-kokoro_model = kokoro-v1.0.onnx
+kokoro_model = kokoro-v1.0.int8.onnx
 kokoro_voices = voices-v1.0.bin
 
 [GUI]
@@ -87,7 +87,7 @@ pip install kokoro-onnx sounddevice
 
 2. **Download Model Files**:
 Place the following files in your `models/` directory:
-- `kokoro-v1.0.onnx`
+- `kokoro-v1.0.int8.onnx` (Recommended for speed)
 - `voices-v1.0.bin`
 
 3. **Enable in Settings**:
