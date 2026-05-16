@@ -20,12 +20,37 @@ class FeedbackResult:
     pronunciation_hints: List[str]
 
 
+import random
+
+_CORRECT_PHRASES = [
+    "Excellent work! That was perfect!",
+    "Great job! You read that really well!",
+    "Wonderful! You got it!",
+    "That's right! Amazing reading!",
+    "Perfect! I knew you could do it!",
+]
+
+_ALMOST_PHRASES = [
+    "So close! You're almost there, just a tiny bit more.",
+    "Really good try! You've almost got it.",
+    "Nice effort! Let's try that one more time.",
+    "That was good! You're really close — let's try again.",
+]
+
+_RETRY_PHRASES = [
+    "Hmm, let's give that another shot. You can do it!",
+    "That's okay! Let's try reading it again.",
+    "Don't worry, let's have another go at it!",
+    "It's tricky, I know. Let's try one more time!",
+]
+
+
 def score_to_level(accuracy: float) -> str:
     if accuracy >= 0.95:
-        return "Correct!"
+        return random.choice(_CORRECT_PHRASES)
     if accuracy >= 0.75:
-        return "Almost there!"
-    return "Try again"
+        return random.choice(_ALMOST_PHRASES)
+    return random.choice(_RETRY_PHRASES)
 
 
 def simple_syllable_split(word: str) -> str:
@@ -55,6 +80,16 @@ def pronunciation_hints(
     validation: ValidationResult,
     spoken_confidence_by_word: Dict[str, float],
 ) -> List[str]:
+    _INCORRECT_HINTS = [
+        "Hmm, let's work on the word, {word}. Can you say it again?",
+        "Let's take another look at, {word}. Give it another try!",
+        "The word, {word}, is a little tricky. Let's practice it!",
+    ]
+    _MISSING_HINTS = [
+        "I think you skipped the word, {word}. Try including it this time!",
+        "Don't forget, {word}! Let's make sure we say every word.",
+    ]
+
     hints: List[str] = []
 
     for expected, spoken in validation.incorrect_words:
@@ -62,10 +97,12 @@ def pronunciation_hints(
         similarity = SequenceMatcher(None, expected, spoken).ratio()
 
         if conf < 0.65 or similarity < 0.7:
-            hints.append(f"Let's try the word '{expected}' again.")
+            template = random.choice(_INCORRECT_HINTS)
+            hints.append(template.format(word=expected))
 
     for missing in validation.missing_words:
-        hints.append(f"You missed the word '{missing}'. Try saying it clearly.")
+        template = random.choice(_MISSING_HINTS)
+        hints.append(template.format(word=missing))
 
     # Keep feedback brief for children.
     return hints[:4]
@@ -149,11 +186,7 @@ def build_spoken_feedback_with_coaching(
     expected_sentence: str = "",
     max_hints: int = 2,
 ) -> List[str]:
-    """Build spoken lines and add explicit pronunciation coaching for matched words.
-
-    This is stronger than plain text replacement because it adds separate coaching lines,
-    e.g. "Say this word like, tay buhl".
-    """
+    """Build spoken lines and add explicit pronunciation coaching for matched words."""
     lines = build_spoken_feedback_with_overrides(
         feedback=feedback,
         overrides=overrides,
@@ -162,17 +195,24 @@ def build_spoken_feedback_with_coaching(
 
     sentence_line = _sanitize_for_tts(expected_sentence)
     if sentence_line:
-        lines.append(_sanitize_for_tts(f"Listen to the full sentence, {sentence_line}."))
+        lines.append(_sanitize_for_tts(f"Alright, let me read the sentence for you. {sentence_line}."))
 
     coaching: List[str] = []
+    _COACHING_TEMPLATES = [
+        "Say it with me, {spoken_form}!",
+        "The word sounds like, {spoken_form}. Can you try that?",
+        "Listen carefully, {spoken_form}. Now you try!",
+    ]
     for hint in feedback.pronunciation_hints[:max_hints]:
-        match = re.search(r"'([A-Za-z]+)'", hint)
+        # Match words from comma-separated template format: "..., word. ..."
+        match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
         if not match:
             continue
         word = match.group(1).lower()
         spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
         if spoken_form:
-            coaching.append(_sanitize_for_tts(f"Say this word like, {spoken_form}."))
+            template = random.choice(_COACHING_TEMPLATES)
+            coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
 
     return lines + coaching[:max_hints]
 

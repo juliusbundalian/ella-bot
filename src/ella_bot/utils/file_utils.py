@@ -14,4 +14,8 @@ def resolve_config_path(relative_path: str) -> Path:
 
 def resolve_model_path(relative_path: str) -> Path:
     """Resolves a path relative to the models directory."""
-    return get_project_root() / "models" / relative_path
+    return get_project_root() / "models" / Path(relative_path).name
+
+def resolve_piper_path(relative_path: str) -> Path:
+    """Resolves a path relative to the piper directory."""
+    return get_project_root() / "piper" / Path(relative_path).name

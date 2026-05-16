@@ -8,19 +8,34 @@ This project runs an offline reading assistant GUI with:
 
 ## Installation
 
+**Requirements**: Python 3.10 or higher (Required for Kokoro TTS).
+
 Ensure you have created a virtual environment and installed the package:
 ```bash
+# Create environment (ensure you are using Python 3.10+)
+# TIP: On Windows, use 'py -3.14 -m venv .venv' to pick a specific version
 python -m venv .venv
 # On Windows use: .\.venv\Scripts\activate
 source .venv/bin/activate
+
+# Upgrade pip and install
+python -m pip install --upgrade pip
 pip install -e .
+```
+
+## Quick Start (Windows)
+
+To quickly activate the virtual environment and start the assistant, run:
+```powershell
+.\.venv\Scripts\activate
+ella-bot
 ```
 
 ## Running the Assistant
 
-Because the project uses a centralized configuration file, running the app is extremely simple!
+Ensure your virtual environment is activated before running the app. If you haven't installed the package yet, see the [Installation](#installation) section.
 
-From your terminal (with your virtual environment activated), simply run:
+From your terminal, simply run:
 ```bash
 ella-bot
 ```
@@ -42,8 +57,11 @@ listen_seconds = 5
 [TTS]
 audio_feedback = True
 tts_engine = auto
-tts_rate = 150
+tts_rate = 160
 pronunciation_overrides = ./config/pronunciation_overrides.json
+# Kokoro Settings
+kokoro_model = kokoro-v1.0.onnx
+kokoro_voices = voices-v1.0.bin
 
 [GUI]
 gui = True
@@ -59,10 +77,24 @@ If you want to temporarily override a setting without modifying your `settings.i
 ella-bot --start-level hard --tts-rate 200 --fullscreen
 ```
 
+### Voice Quality (Kokoro TTS) ✅
+For the most natural, human-like voice, we recommend using **Kokoro TTS**. 
+
+1. **Install Dependencies**:
+```bash
+pip install kokoro-onnx sounddevice
+```
+
+2. **Download Model Files**:
+Place the following files in your `models/` directory:
+- `kokoro-v1.0.onnx`
+- `voices-v1.0.bin`
+
+3. **Enable in Settings**:
+Set `tts_engine = kokoro` in `config/settings.ini` or run with `--tts-engine kokoro`.
+
 ### Platform-Specific TTS Notes
-- **Windows**: The config defaults to `auto` which uses `pyttsx3`.
-- **macOS**: The config defaults to `auto` which uses the built-in `say` command.
-- **Linux**: The config defaults to `auto` which uses `espeak`. Ensure it is installed (`sudo apt install espeak-ng`).
+- **Windows/Linux/macOS**: Setting `tts_engine = auto` will automatically prioritize **Kokoro** (if models are found), then **Piper**, and finally system voices (`pyttsx3`, `say`, or `espeak`).
 
 ## ReSpeaker Setup (Raspberry Pi)
 

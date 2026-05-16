@@ -10,6 +10,7 @@ src/ella_bot.egg-info/top_level.txt
 src/ella_bot/cli/__init__.py
 src/ella_bot/cli/main.py
 src/ella_bot/config/__init__.py
+src/ella_bot/config/app_config.py
 src/ella_bot/config/base.py
 src/ella_bot/config/defaults.py
 src/ella_bot/config/loader.py
@@ -32,7 +33,9 @@ src/ella_bot/speech/tts/base.py
 src/ella_bot/speech/tts/factory.py
 src/ella_bot/speech/tts/engines/__init__.py
 src/ella_bot/speech/tts/engines/espeak.py
+src/ella_bot/speech/tts/engines/kokoro.py
 src/ella_bot/speech/tts/engines/mac_say.py
+src/ella_bot/speech/tts/engines/piper.py
 src/ella_bot/speech/tts/engines/pyttsx3.py
 src/ella_bot/speech/tts/engines/respeaker.py
 src/ella_bot/ui/__init__.py
@@ -43,10 +46,15 @@ src/ella_bot/ui/pygame_gui/__init__.py
 src/ella_bot/ui/pygame_gui/animator.py
 src/ella_bot/ui/pygame_gui/app.py
 src/ella_bot/ui/pygame_gui/config.py
+src/ella_bot/ui/pygame_gui/scene.py
+src/ella_bot/ui/pygame_gui/ui_helpers.py
 src/ella_bot/ui/pygame_gui/components/__init__.py
 src/ella_bot/ui/pygame_gui/components/button.py
 src/ella_bot/ui/pygame_gui/components/dialog.py
 src/ella_bot/ui/pygame_gui/components/menu.py
+src/ella_bot/ui/pygame_gui/scenes/intro.py
+src/ella_bot/ui/pygame_gui/scenes/main_menu.py
+src/ella_bot/ui/pygame_gui/scenes/reading_prompt.py
 src/ella_bot/utils/__init__.py
 src/ella_bot/utils/audio.py
 src/ella_bot/utils/file_utils.py

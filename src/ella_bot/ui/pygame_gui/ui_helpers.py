@@ -42,7 +42,7 @@ def draw_wrapped_text(screen, text: str, font, color: tuple[int, int, int], rect
         if y > rect.bottom:
             break
 
-def draw_menu_button(screen, pygame_module, rect, text: str, is_pressed: bool, bg_color: tuple[int, int, int], text_color: tuple[int, int, int], outline_color: tuple[int, int, int]) -> None:
+def draw_menu_button(screen, pygame_module, rect, text: str, is_pressed: bool, bg_color: tuple[int, int, int], text_color: tuple[int, int, int], outline_color: tuple[int, int, int], font=None) -> None:
     """Draw a menu button with text."""
     pressed_color = (251, 165, 193)  # #FBA5C1
     current_bg_color = pressed_color if is_pressed else bg_color
@@ -50,7 +50,7 @@ def draw_menu_button(screen, pygame_module, rect, text: str, is_pressed: bool, b
     pygame_module.draw.rect(screen, current_bg_color, rect, border_radius=15)
     pygame_module.draw.rect(screen, outline_color, rect, width=6, border_radius=15)
     
-    button_font = pygame_module.font.SysFont("Avenir Next", 48, bold=True)
+    button_font = font if font else pygame_module.font.SysFont(["Avenir Next", "Segoe UI", "Arial", "sans-serif"], 48, bold=True)
     text_surf = button_font.render(text, True, text_color)
     text_rect = text_surf.get_rect(center=rect.center)
     screen.blit(text_surf, text_rect)

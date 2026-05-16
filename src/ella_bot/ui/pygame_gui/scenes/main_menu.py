@@ -85,16 +85,16 @@ class MainMenuScene(BaseScene):
         center_x = width // 2
         
         self.menu_start_button = pygame.Rect(center_x - button_width // 2, button_y_start, button_width, button_height)
-        draw_menu_button(screen, pygame, self.menu_start_button, "Start", self.pressed_button == "start", self.button_bg_color, self.button_text_color, self.button_outline_color)
+        draw_menu_button(screen, pygame, self.menu_start_button, "Start", self.pressed_button == "start", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
         
         self.menu_tutorial_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing, button_width, button_height)
-        draw_menu_button(screen, pygame, self.menu_tutorial_button, "Tutorial", self.pressed_button == "tutorial", self.button_bg_color, self.button_text_color, self.button_outline_color)
+        draw_menu_button(screen, pygame, self.menu_tutorial_button, "Tutorial", self.pressed_button == "tutorial", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
         
         self.menu_settings_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing * 2, button_width, button_height)
-        draw_menu_button(screen, pygame, self.menu_settings_button, "Settings", self.pressed_button == "settings", self.button_bg_color, self.button_text_color, self.button_outline_color)
-
+        draw_menu_button(screen, pygame, self.menu_settings_button, "Settings", self.pressed_button == "settings", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
+ 
         self.menu_exit_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing * 3, button_width, button_height)
-        draw_menu_button(screen, pygame, self.menu_exit_button, "Exit", self.pressed_button == "exit", self.button_bg_color, self.button_text_color, self.button_outline_color)
+        draw_menu_button(screen, pygame, self.menu_exit_button, "Exit", self.pressed_button == "exit", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
 
         if self.show_exit_confirm:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -110,8 +110,7 @@ class MainMenuScene(BaseScene):
             pygame.draw.rect(screen, (0, 0, 0), dialog_rect, width=6, border_radius=12)
 
             msg = "Are you sure you want to exit?"
-            msg_font = pygame.font.SysFont("Avenir Next", 28, bold=True)
-            msg_surf = msg_font.render(msg, True, (0, 0, 0))
+            msg_surf = self.app.font_body.render(msg, True, (0, 0, 0))
             msg_rect = msg_surf.get_rect(center=(width // 2, dialog_y + int(dialog_h * 0.35)))
             screen.blit(msg_surf, msg_rect)
 

@@ -40,6 +40,20 @@ def load_settings() -> Dict[str, Any]:
             defaults["tts_rate"] = parser.getint("TTS", "tts_rate")
         if parser.has_option("TTS", "pronunciation_overrides"):
             defaults["pronunciation_overrides"] = parser.get("TTS", "pronunciation_overrides")
+        if parser.has_option("TTS", "piper_binary"):
+            defaults["piper_binary"] = parser.get("TTS", "piper_binary")
+        if parser.has_option("TTS", "piper_model"):
+            defaults["piper_model"] = parser.get("TTS", "piper_model")
+        if parser.has_option("TTS", "noise_scale"):
+            defaults["noise_scale"] = parser.getfloat("TTS", "noise_scale")
+        if parser.has_option("TTS", "noise_w"):
+            defaults["noise_w"] = parser.getfloat("TTS", "noise_w")
+        if parser.has_option("TTS", "length_scale"):
+            defaults["length_scale"] = parser.getfloat("TTS", "length_scale")
+        if parser.has_option("TTS", "kokoro_model"):
+            defaults["kokoro_model"] = parser.get("TTS", "kokoro_model")
+        if parser.has_option("TTS", "kokoro_voices"):
+            defaults["kokoro_voices"] = parser.get("TTS", "kokoro_voices")
 
     if parser.has_section("GUI"):
         if parser.has_option("GUI", "gui"):

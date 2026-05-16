@@ -13,6 +13,14 @@ class TTSConfig:
     voice: Optional[str] = None
     rate: int = 150
     non_blocking: bool = False
+    piper_binary: Optional[str] = None
+    piper_model: Optional[str] = None
+    noise_scale: float = 0.667
+    noise_w: float = 0.8
+    length_scale: float = 1.0
+    kokoro_model: Optional[str] = None
+    kokoro_voices: Optional[str] = None
+
 
 
 class BaseTTS:
@@ -51,23 +59,45 @@ class Pyttsx3TTS(BaseTTS):
     def __init__(self, config: Optional[TTSConfig] = None):
         self.config = config or TTSConfig()
         try:
-            pyttsx3 = importlib.import_module("pyttsx3")
+            importlib.import_module("pyttsx3")
         except Exception as exc:
             raise RuntimeError("pyttsx3 is not installed. Run: pip install pyttsx3") from exc
 
-        self.engine = pyttsx3.init()
-        self.engine.setProperty("rate", self.config.rate)
-
-        if self.config.voice:
-            for voice in self.engine.getProperty("voices"):
-                if self.config.voice.lower() in str(voice.name).lower() or self.config.voice in str(voice.id):
-                    self.engine.setProperty("voice", voice.id)
-                    break
-
     def speak(self, text: str) -> None:
-        self.engine.say(text)
-        # pyttsx3 is inherently blocking for runAndWait in most backends.
-        self.engine.runAndWait()
+        import pyttsx3
+        import platform
+        
+        # On Windows, ensure COM is initialized for the current thread
+        if platform.system() == "Windows":
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+
+        # Initialize locally per-call to avoid cross-thread COM errors on Windows
+        try:
+            print("[TTS] Initializing pyttsx3 engine...")
+            engine = pyttsx3.init()
+            engine.setProperty("rate", self.config.rate)
+
+            if self.config.voice:
+                for voice in engine.getProperty("voices"):
+                    if self.config.voice.lower() in str(voice.name).lower() or self.config.voice in str(voice.id):
+                        engine.setProperty("voice", voice.id)
+                        break
+
+            print(f"[TTS] Speaking: {text[:40]}...")
+            engine.say(text)
+            print("[TTS] Calling runAndWait()...")
+            engine.runAndWait()
+            print("[TTS] runAndWait() finished.")
+            
+            # Explicitly delete engine to free COM references
+            del engine
+        except Exception as e:
+            print(f"[TTS Error] pyttsx3 failed: {e}")
+            raise
 
 
 class MacSayTTS(BaseTTS):
@@ -126,44 +156,3 @@ class ReSpeakerTTS(BaseTTS):
         subprocess.run(cmd, check=False)
 
 
-def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
-    name = engine_name.lower()
-
-    if name == "espeak":
-        return EspeakTTS(config=config)
-    if name == "pyttsx3":
-        return Pyttsx3TTS(config=config)
-    if name == "say":
-        return MacSayTTS(config=config)
-    if name == "respeaker":
-        return ReSpeakerTTS(config=config)
-    if name == "auto":
-        if platform.system() == "Darwin":
-            try:
-                return MacSayTTS(config=config)
-            except Exception:
-                try:
-                    return Pyttsx3TTS(config=config)
-                except Exception:
-                    return EspeakTTS(config=config)
-
-        # On Linux, check for ReSpeaker hardware first
-        try:
-            # Check if ReSpeaker kernel driver is loaded
-            result = subprocess.run(
-                ["lsmod"], capture_output=True, text=True, check=False
-            )
-            if "seeed_voicecard" in result.stdout or "ac108" in result.stdout:
-                try:
-                    return ReSpeakerTTS(config=config)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        try:
-            return EspeakTTS(config=config)
-        except Exception:
-            return Pyttsx3TTS(config=config)
-
-    raise ValueError(f"Unsupported TTS engine: {engine_name}")

@@ -77,19 +77,31 @@ class EllaGUIApp:
         return self.level_indices.get(self.current_level, 0) + 1
 
     def _build_start_announcement(self) -> str:
+        import random
         target_sentence = self.expected_sentence.strip() or "the next item"
-        return (
-            f"We are about to begin. You are on level {self._display_level_name()}, "
-            f"item {self._current_item_number()}. First, read: {target_sentence}."
-        )
+        level = self._display_level_name()
+        item = self._current_item_number()
+        intros = [
+            f"Alright! You're on the {level} level, item {item}. When you're ready, please read, {target_sentence}.",
+            f"Okay, let's do this! {level} level, item {item}. Go ahead and read, {target_sentence}.",
+            f"Here we go! Item {item} on the {level} level. Please read out loud, {target_sentence}.",
+        ]
+        return random.choice(intros)
+
+    def _get_sys_font(self, size, bold=False):
+        """Helper to get a system font with cross-platform fallbacks."""
+        import pygame
+        fonts = ["Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"]
+        return pygame.font.SysFont(fonts, size, bold=bold)
 
     def _prompt_font(self, pygame_module):
         width, height = self.screen.get_size()
+        # Use cached fonts based on sentence length
         if len(self.expected_sentence) <= 3:
-            return pygame_module.font.SysFont("Avenir Next", max(72, int(height * 0.28)))
+            return self.font_prompt_large
         if len(self.expected_sentence.split()) <= 6:
-            return pygame_module.font.SysFont("Avenir Next", max(54, int(height * 0.12)))
-        return pygame_module.font.SysFont("Avenir Next", max(42, int(height * 0.08)))
+            return self.font_prompt_medium
+        return self.font_prompt_small
 
     def _pick_sentence_for_level(self, level: str) -> str:
         pool = self.level_pools.get(level, [])
@@ -168,10 +180,20 @@ class EllaGUIApp:
         pygame.display.set_caption(self.config.title)
 
         self.clock = pygame.time.Clock()
-        self.font_title = pygame.font.SysFont("Avenir Next", 42)
-        self.font_subtitle = pygame.font.SysFont("Avenir Next", 24)
-        self.font_body = pygame.font.SysFont("Avenir Next", 30)
-        self.font_small = pygame.font.SysFont("Avenir Next", 22)
+        width, height = self.screen.get_size()
+        
+        # Cache standard fonts
+        self.font_title = self._get_sys_font(42)
+        self.font_subtitle = self._get_sys_font(24)
+        self.font_body = self._get_sys_font(30)
+        self.font_small = self._get_sys_font(22)
+        self.font_button = self._get_sys_font(48, bold=True)
+        
+        # Cache prompt fonts to avoid recreation in render loop
+        self.font_prompt_large = self._get_sys_font(max(72, int(height * 0.28)))
+        self.font_prompt_medium = self._get_sys_font(max(54, int(height * 0.12)))
+        self.font_prompt_small = self._get_sys_font(max(42, int(height * 0.08)))
+        self.font_button = self._get_sys_font(48, bold=True)
 
         avatar_size = (360, 360)
         self.animator = AvatarAnimator(
