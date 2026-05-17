@@ -17,7 +17,16 @@ def draw_gradient(screen, config: GUIConfig, pygame_module) -> None:
         )
         pygame_module.draw.line(screen, color, (0, y), (width, y))
 
-def draw_wrapped_text(screen, text: str, font, color: tuple[int, int, int], rect, line_spacing: int = 8) -> None:
+def draw_wrapped_text(
+    screen,
+    text: str,
+    font,
+    color: tuple[int, int, int],
+    rect,
+    line_spacing: int = 8,
+    align: str = "left",
+    valign: str = "top",
+) -> None:
     words = text.split()
     lines: List[str] = []
     current = ""
@@ -34,10 +43,19 @@ def draw_wrapped_text(screen, text: str, font, color: tuple[int, int, int], rect
     if current:
         lines.append(current)
 
+    line_surfs = [font.render(line, True, color) for line in lines]
+    total_height = sum(surf.get_height() for surf in line_surfs)
+    total_height += line_spacing * max(0, len(line_surfs) - 1)
+
     y = rect.top
-    for line in lines:
-        surf = font.render(line, True, color)
-        screen.blit(surf, (rect.left, y))
+    if valign == "center":
+        y = rect.top + max(0, (rect.height - total_height) // 2)
+
+    for surf in line_surfs:
+        x = rect.left
+        if align == "center":
+            x = rect.left + (rect.width - surf.get_width()) // 2
+        screen.blit(surf, (x, y))
         y += surf.get_height() + line_spacing
         if y > rect.bottom:
             break

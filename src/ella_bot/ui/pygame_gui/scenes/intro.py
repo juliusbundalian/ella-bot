@@ -44,7 +44,11 @@ class IntroScene(BaseScene):
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
-        draw_gradient(screen, self.app.config, pygame)
+        screen.fill((0, 0, 0))
+        
+        padding = 16
+        card_rect = pygame.Rect(padding, padding, width - padding * 2, height - padding * 2)
+        pygame.draw.rect(screen, (255, 255, 255), card_rect, border_radius=0)
 
         avatar_frame = self.app.animator.current_frame()
         frame_w = max(1, avatar_frame.get_width())
