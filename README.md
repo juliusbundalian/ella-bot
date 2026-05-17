@@ -13,10 +13,10 @@ This project runs an offline reading assistant GUI with:
 Ensure you have created a virtual environment and installed the package:
 ```bash
 # Create environment (ensure you are using Python 3.10+)
-# TIP: On Windows, use 'py -3.14 -m venv .venv' to pick a specific version
-python -m venv .venv
-# On Windows use: .\.venv\Scripts\activate
-source .venv/bin/activate
+# TIP: On Windows, use 'py -3.14 -m venv .venv_314' to pick a specific version
+python -m venv .venv_314
+# On Windows use: .\.venv_314\Scripts\activate
+source .venv_314/bin/activate
 
 # Upgrade pip and install
 python -m pip install --upgrade pip
@@ -27,8 +27,8 @@ pip install -e .
 
 To quickly activate the virtual environment and start the assistant, run:
 ```powershell
-.\.venv\Scripts\activate
-ella-bot
+.\.venv_314\Scripts\activate
+python src/ella_bot/cli/main.py --tts-engine kokoro --audio-feedback --random-sentence
 ```
 
 ## Running the Assistant
@@ -37,8 +37,9 @@ Ensure your virtual environment is activated before running the app. If you have
 
 From your terminal, simply run:
 ```bash
-ella-bot
+python src/ella_bot/cli/main.py
 ```
+*(If you installed the package with `pip install -e .`, you can also just type `ella-bot`)*
 
 ## Configuration (`config/settings.ini`)
 
