@@ -2,6 +2,7 @@ import random
 import queue
 import threading
 import time
+import json
 from typing import Dict, List, Optional
 
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
@@ -21,7 +22,7 @@ class EllaGUIApp:
         audio_feedback: bool,
         pronunciation_overrides: Dict[str, str],
         hard_sentences: Optional[List[str]] = None,
-        start_level: str = "easy",
+        start_level: str = "1a",
         config: Optional[GUIConfig] = None,
     ) -> None:
         self.asr = asr
@@ -30,28 +31,32 @@ class EllaGUIApp:
         self.pronunciation_overrides = pronunciation_overrides
         self.config = config or GUIConfig()
 
-        self.level_order = ["easy", "medium-a", "medium-b", "medium-c", "hard"]
+        self.level_order = ["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"]
         self.level_thresholds = {
-            "easy": 0.85,
-            "medium-a": 0.88,
-            "medium-b": 0.90,
-            "medium-c": 0.92,
-            "hard": 1.01,
+            "1a": 0.85,
+            "1b": 0.85,
+            "1c": 0.85,
+            "1d": 0.85,
+            "1e": 0.85,
+            "1f": 0.85,
+            "1g": 0.85,
+            "2a": 0.88,
+            "2b": 0.90,
+            "2c": 0.92,
+            "2d": 0.95,
+            "3": 1.01,
+            "4": 1.01,
         }
 
-        self.level_pools: Dict[str, List[str]] = {
-            "easy": list("abcdefghijklmnopqrstuvwxyz"),
-            "medium-a": ["cat", "dog", "sun", "hat", "red", "pen", "map", "cup", "bed", "fish"],
-            "medium-b": ["train", "green", "brush", "clock", "smile", "chair", "storm", "light", "plant", "school"],
-            "medium-c": [
-                "animal", "battery", "celebrate", "dinosaur", "elephant",
-                "favorite", "important", "library", "remember", "wonderful",
-            ],
-            "hard": hard_sentences or ([expected_sentence] if expected_sentence else ["The cat sits on the table."]),
-        }
+        with open("config/level_pools.json", "r") as f:
+            self.level_pools = json.load(f)
+        if hard_sentences:
+            self.level_pools["hard"] = hard_sentences
+        elif expected_sentence and expected_sentence not in self.level_pools["hard"]:
+            self.level_pools["hard"] = [expected_sentence]
 
         if start_level not in self.level_order:
-            start_level = "easy"
+            start_level = "1a"
         self.current_level = start_level
         self.level_indices: Dict[str, int] = {level: 0 for level in self.level_order}
         self.expected_sentence = self._pick_sentence_for_level(self.current_level)
