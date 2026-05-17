@@ -119,8 +119,8 @@ pip install kokoro-onnx sounddevice
 
 2. **Download Model Files**:
 Place the following files in your `models/` directory:
-- `kokoro-v1.0.int8.onnx` (Recommended for speed)
-- `voices-v1.0.bin`
+- [`kokoro-v1.0.int8.onnx`](https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx) (Recommended for speed)
+- [`voices-v1.0.bin`](https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin)
 
 3. **Enable in Settings**:
 Set `tts_engine = kokoro` in `config/settings.ini` or run with `--tts-engine kokoro`.
