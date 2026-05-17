@@ -113,7 +113,16 @@ ella-bot --start-level 2b --tts-rate 200 --fullscreen
 For the most natural, human-like voice, we recommend using **Kokoro TTS**. 
 
 1. **Install Dependencies**:
+
+**Windows / Linux:**
 ```bash
+pip install kokoro-onnx sounddevice
+```
+
+**macOS:**
+macOS requires some system libraries for audio playback and phonemization. Use Homebrew to install them before installing the Python packages:
+```bash
+brew install portaudio espeak-ng
 pip install kokoro-onnx sounddevice
 ```
 
