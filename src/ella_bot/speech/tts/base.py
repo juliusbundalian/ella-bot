@@ -27,6 +27,10 @@ class BaseTTS:
     def speak(self, text: str) -> None:
         raise NotImplementedError
 
+    def stop(self) -> None:
+        """Stop any active playback if supported."""
+        return None
+
 
 class EspeakTTS(BaseTTS):
     """Offline TTS using espeak-ng or espeak CLI."""
@@ -36,18 +40,31 @@ class EspeakTTS(BaseTTS):
         self.binary = shutil.which("espeak-ng") or shutil.which("espeak")
         if not self.binary:
             raise RuntimeError("No espeak-ng/espeak binary found in PATH.")
+        self._process: Optional[subprocess.Popen] = None
 
     def speak(self, text: str) -> None:
+        self.stop()
         cmd = [self.binary, "-s", str(self.config.rate)]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
         cmd.append(text)
 
         if self.config.non_blocking:
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
 
-        subprocess.run(cmd, check=False)
+        self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._process.wait()
+        self._process = None
+
+    def stop(self) -> None:
+        if self._process and self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=2)
+            except Exception:
+                pass
+        self._process = None
 
 
 class Pyttsx3TTS(BaseTTS):
@@ -111,8 +128,10 @@ class MacSayTTS(BaseTTS):
         if not self.config.voice:
             # Samantha is generally clearer and more natural for US English classroom demos.
             self.config.voice = "Samantha"
+        self._process: Optional[subprocess.Popen] = None
 
     def speak(self, text: str) -> None:
+        self.stop()
         cmd = [self.binary]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
@@ -120,10 +139,21 @@ class MacSayTTS(BaseTTS):
         cmd.extend(["-r", str(self.config.rate), text])
 
         if self.config.non_blocking:
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
 
-        subprocess.run(cmd, check=False)
+        self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._process.wait()
+        self._process = None
+
+    def stop(self) -> None:
+        if self._process and self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=2)
+            except Exception:
+                pass
+        self._process = None
 
 
 class ReSpeakerTTS(BaseTTS):
@@ -141,18 +171,31 @@ class ReSpeakerTTS(BaseTTS):
             raise RuntimeError(
                 "espeak-ng/espeak required for ReSpeaker TTS. Install with: sudo apt install espeak-ng"
             )
+        self._process: Optional[subprocess.Popen] = None
 
     def speak(self, text: str) -> None:
         """Use espeak with ReSpeaker audio output via ALSA."""
+        self.stop()
         cmd = [self.espeak_binary, "-s", str(self.config.rate)]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
         cmd.append(text)
 
         if self.config.non_blocking:
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
 
-        subprocess.run(cmd, check=False)
+        self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._process.wait()
+        self._process = None
+
+    def stop(self) -> None:
+        if self._process and self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=2)
+            except Exception:
+                pass
+        self._process = None
 
 
