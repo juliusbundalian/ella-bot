@@ -28,7 +28,7 @@ pip install -e .
 To quickly activate the virtual environment and start the assistant, run:
 ```powershell
 .\.venv_314\Scripts\activate
-python src/ella_bot/cli/main.py --tts-engine kokoro --audio-feedback --random-sentence
+ella-bot
 ```
 
 ## Running the Assistant
@@ -37,9 +37,8 @@ Ensure your virtual environment is activated before running the app. If you have
 
 From your terminal, simply run:
 ```bash
-python src/ella_bot/cli/main.py
+ella-bot
 ```
-*(If you installed the package with `pip install -e .`, you can also just type `ella-bot`)*
 
 ## Configuration (`config/settings.ini`)
 
