@@ -32,10 +32,18 @@ The app uses a carefully structured progression through 11 levels:
 ## Installation
 
 Ensure you have created a virtual environment and installed the package:
+
+**macOS/Linux:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+**Windows:**
 ```bash
 python -m venv .venv
-# On Windows use: .\.venv\Scripts\activate
-source .venv/bin/activate
+.\.venv\Scripts\activate
 pip install -e .
 ```
 

@@ -10,6 +10,7 @@ src/ella_bot.egg-info/top_level.txt
 src/ella_bot/cli/__init__.py
 src/ella_bot/cli/main.py
 src/ella_bot/config/__init__.py
+src/ella_bot/config/app_config.py
 src/ella_bot/config/base.py
 src/ella_bot/config/defaults.py
 src/ella_bot/config/loader.py
