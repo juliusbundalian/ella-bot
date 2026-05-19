@@ -10,6 +10,7 @@ from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene, AttemptViewModel
+from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS
 
 class EllaGUIApp:
     """Pygame GUI loop for E.L.L.A. serving as a SceneManager."""
@@ -31,22 +32,8 @@ class EllaGUIApp:
         self.pronunciation_overrides = pronunciation_overrides
         self.config = config or GUIConfig()
 
-        self.level_order = ["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"]
-        self.level_thresholds = {
-            "1a": 0.85,
-            "1b": 0.85,
-            "1c": 0.85,
-            "1d": 0.85,
-            "1e": 0.85,
-            "1f": 0.85,
-            "1g": 0.85,
-            "2a": 0.88,
-            "2b": 0.90,
-            "2c": 0.92,
-            "2d": 0.95,
-            "3": 1.01,
-            "4": 1.01,
-        }
+        self.level_order = list(LEVEL_ORDER)
+        self.level_thresholds = dict(LEVEL_THRESHOLDS)
 
         with open("config/level_pools.json", "r") as f:
             self.level_pools = json.load(f)
