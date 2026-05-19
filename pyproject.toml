@@ -16,6 +16,11 @@ dependencies = [
     "pronouncing"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
 [project.scripts]
 ella-bot = "ella_bot.cli.main:main"
 
