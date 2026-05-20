@@ -7,10 +7,8 @@ class MainMenuScene(BaseScene):
         super().__init__(app)
         self.pressed_button = None
         self.show_exit_confirm = False
-        
-        # Rects updated during render
+
         self.menu_start_button = None
-        self.menu_tutorial_button = None
         self.menu_settings_button = None
         self.menu_exit_button = None
         self.menu_confirm_yes_button = None
@@ -42,8 +40,6 @@ class MainMenuScene(BaseScene):
 
         if self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
             self.pressed_button = "start"
-        elif self.menu_tutorial_button and self.menu_tutorial_button.collidepoint(mouse_pos):
-            self.pressed_button = "tutorial"
         elif self.menu_settings_button and self.menu_settings_button.collidepoint(mouse_pos):
             self.pressed_button = "settings"
         elif self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
@@ -53,12 +49,9 @@ class MainMenuScene(BaseScene):
         try:
             if self.pressed_button == "start" and self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
                 self.app.switch_scene("reading_prompt")
-                # Ensure the reading prompt starts the attempt upon transitioning
                 self.app.active_scene._start_attempt()
-            elif self.pressed_button == "tutorial" and self.menu_tutorial_button and self.menu_tutorial_button.collidepoint(mouse_pos):
-                self.app.message = "Tutorial coming soon!"
             elif self.pressed_button == "settings" and self.menu_settings_button and self.menu_settings_button.collidepoint(mouse_pos):
-                self.app.message = "Settings coming soon!"
+                self.app.switch_scene("settings")
             elif self.pressed_button == "exit" and self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
                 self.show_exit_confirm = True
             elif self.pressed_button == "confirm_yes" and self.menu_confirm_yes_button and self.menu_confirm_yes_button.collidepoint(mouse_pos):
@@ -71,29 +64,26 @@ class MainMenuScene(BaseScene):
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
-        
+
         screen.fill(self.menu_bg_color)
-        
+
         title_surf = self.app.font_title.render("Welcome to E.L.L.A.", True, (0, 0, 0))
         title_rect = title_surf.get_rect(center=(width // 2, int(height * 0.15)))
         screen.blit(title_surf, title_rect)
-        
+
         button_width = 320
         button_height = 110
-        button_y_start = int(height * 0.30)
-        button_spacing = 130
+        button_y_start = int(height * 0.32)
+        button_spacing = 140
         center_x = width // 2
-        
+
         self.menu_start_button = pygame.Rect(center_x - button_width // 2, button_y_start, button_width, button_height)
         draw_menu_button(screen, pygame, self.menu_start_button, "Start", self.pressed_button == "start", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
-        
-        self.menu_tutorial_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing, button_width, button_height)
-        draw_menu_button(screen, pygame, self.menu_tutorial_button, "Tutorial", self.pressed_button == "tutorial", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
-        
-        self.menu_settings_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing * 2, button_width, button_height)
+
+        self.menu_settings_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing, button_width, button_height)
         draw_menu_button(screen, pygame, self.menu_settings_button, "Settings", self.pressed_button == "settings", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
- 
-        self.menu_exit_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing * 3, button_width, button_height)
+
+        self.menu_exit_button = pygame.Rect(center_x - button_width // 2, button_y_start + button_spacing * 2, button_width, button_height)
         draw_menu_button(screen, pygame, self.menu_exit_button, "Exit", self.pressed_button == "exit", self.button_bg_color, self.button_text_color, self.button_outline_color, font=self.app.font_button)
 
         if self.show_exit_confirm:
