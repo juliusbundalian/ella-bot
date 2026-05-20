@@ -74,3 +74,22 @@ def test_build_start_announcement_mentions_level_item_and_sentence():
     assert "1A" in text
     assert "item 1" in text.lower()
     assert "the cat" in text
+
+
+def test_reset_to_start_returns_to_level_1a():
+    from ella_bot.services.session_manager import SessionManager
+
+    sm = SessionManager(
+        level_pools={"1a": ["cat", "dog"], "1b": ["fish"]},
+        start_level="1a",
+    )
+    sm.current_level = "1b"
+    sm.level_indices["1b"] = 0
+    sm.completed_in_level = 3
+
+    sm.reset_to_start()
+
+    assert sm.current_level == "1a"
+    assert sm.completed_in_level == 0
+    assert sm.level_indices["1a"] == 0
+    assert sm.expected_sentence in ("cat", "dog")

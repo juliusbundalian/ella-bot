@@ -6,6 +6,21 @@ from typing import Dict, Any
 
 from ella_bot.utils.file_utils import get_project_root
 
+
+def save_setting(section: str, key: str, value: str) -> None:
+    """Write a single key to settings.ini, preserving all other values."""
+    config_path = get_project_root() / "config" / "settings.ini"
+    if not config_path.exists():
+        return
+    parser = configparser.ConfigParser()
+    parser.read(config_path, encoding="utf-8")
+    if not parser.has_section(section):
+        parser.add_section(section)
+    parser.set(section, key, value)
+    with open(config_path, "w", encoding="utf-8") as f:
+        parser.write(f)
+
+
 def load_settings() -> Dict[str, Any]:
     """Loads settings.ini into a dictionary suitable for argparse defaults."""
     config_path = get_project_root() / "config" / "settings.ini"
@@ -52,6 +67,8 @@ def load_settings() -> Dict[str, Any]:
             defaults["noise_w"] = parser.getfloat("TTS", "noise_w")
         if parser.has_option("TTS", "length_scale"):
             defaults["length_scale"] = parser.getfloat("TTS", "length_scale")
+        if parser.has_option("TTS", "volume"):
+            defaults["volume"] = parser.getint("TTS", "volume")
         if parser.has_option("TTS", "kokoro_model"):
             defaults["kokoro_model"] = parser.get("TTS", "kokoro_model")
         if parser.has_option("TTS", "kokoro_voices"):

@@ -39,6 +39,7 @@ class PiperTTS(BaseTTS):
             length_scale=self.config.length_scale,
             noise_scale=self.config.noise_scale,
             noise_w_scale=self.config.noise_w,
+            volume=self.config.volume,
         )
         self._stop = threading.Event()
 
@@ -56,6 +57,14 @@ class PiperTTS(BaseTTS):
             sd.stop()
         except Exception:
             pass
+
+    def set_volume(self, fraction: float) -> None:
+        self._syn_config = SynthesisConfig(
+            length_scale=self.config.length_scale,
+            noise_scale=self.config.noise_scale,
+            noise_w_scale=self.config.noise_w,
+            volume=fraction,
+        )
 
     def _speak_sync(self, text: str, stop_event: threading.Event) -> None:
         if not text.strip():

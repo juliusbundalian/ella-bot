@@ -188,3 +188,23 @@ def test_piper_stop_calls_stream_abort(monkeypatch):
     assert voice.spoken == ["cancel me"]
     assert _TrackingStream.aborted is True, "stream.abort() should be called when stop() was requested"
     assert _TrackingStream.stopped is False, "stream.stop() should NOT be called when stop() was requested"
+
+
+def test_set_volume_rebuilds_syn_config():
+    from unittest.mock import MagicMock, patch
+    from ella_bot.speech.tts.engines.piper import PiperTTS
+    from ella_bot.speech.tts.base import TTSConfig
+
+    config = TTSConfig(length_scale=1.0, noise_scale=0.667, noise_w=0.8)
+    with patch("ella_bot.speech.tts.engines.piper.PiperVoice.load", return_value=MagicMock()):
+        tts = PiperTTS(config=config, piper_model="fake.onnx")
+
+    tts.set_volume(0.5)
+    assert tts._syn_config.volume == 0.5
+
+
+def test_base_tts_set_volume_is_noop():
+    from ella_bot.speech.tts.base import BaseTTS
+    tts = BaseTTS()
+    result = tts.set_volume(0.5)
+    assert result is None

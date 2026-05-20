@@ -45,3 +45,22 @@ def test_load_settings_maps_sample_rate(tmp_path, monkeypatch):
     settings = app_config.load_settings()
 
     assert settings.get("sample_rate") == 16000
+
+
+def test_save_setting_round_trip(tmp_path, monkeypatch):
+    import configparser
+    ini_dir = tmp_path / "config"
+    ini_dir.mkdir()
+    ini = ini_dir / "settings.ini"
+    parser = configparser.ConfigParser()
+    parser.add_section("Speech")
+    parser.set("Speech", "listen_seconds", "5")
+    with open(ini, "w") as f:
+        parser.write(f)
+
+    monkeypatch.setattr("ella_bot.config.app_config.get_project_root", lambda: tmp_path)
+
+    from ella_bot.config.app_config import save_setting, load_settings
+    save_setting("Speech", "listen_seconds", "9")
+    settings = load_settings()
+    assert settings.get("listen_seconds") == 9

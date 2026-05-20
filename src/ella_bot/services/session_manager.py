@@ -76,6 +76,13 @@ class SessionManager:
         self.level_indices[self.current_level] = 0
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
 
+    def reset_to_start(self) -> None:
+        self.current_level = "1a"
+        self.level_indices = {level: 0 for level in self.level_order}
+        self.completed_in_level = 0
+        self.level_goal = len(self.level_pools.get("1a", []))
+        self.expected_sentence = self.pick_sentence_for_level("1a")
+
     def advance_to_higher_stage(self) -> bool:
         idx = self.level_order.index(self.current_level)
         if idx + 1 >= len(self.level_order):

@@ -18,6 +18,7 @@ class TTSConfig:
     noise_scale: float = 0.667
     noise_w: float = 0.8
     length_scale: float = 1.0
+    volume: float = 1.0
     kokoro_model: Optional[str] = None
     kokoro_voices: Optional[str] = None
 
@@ -29,6 +30,9 @@ class BaseTTS:
 
     def stop(self) -> None:
         """Stop any active playback if supported."""
+        return None
+
+    def set_volume(self, fraction: float) -> None:
         return None
 
 
