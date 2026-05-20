@@ -9,9 +9,9 @@ from typing import Optional
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
+from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.validation.feedback import FeedbackResult, build_feedback, build_spoken_feedback_with_coaching
 from ella_bot.validation.validators import ValidationResult, validate_spoken_text, normalize, spoken_word_confidence_map, build_highlighted_expected
-from ella_bot.utils.file_utils import get_project_root
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
 
 @dataclass
@@ -41,18 +41,7 @@ class ReadingPromptScene(BaseScene):
         self.pause_close_rect: Optional[pygame.Rect] = None
         self.confirm_yes_rect: Optional[pygame.Rect] = None
         self.confirm_no_rect: Optional[pygame.Rect] = None
-        self.bot_frames = self._load_bot_frames()
-        self.bot_state = "idle"
-        self.bot_frame_index = 0
-        self.bot_last_tick_ms = 0
-        self.bot_intervals_ms = {
-            "idle": 1400,
-            "listening": 320,
-            "speaking": 160,
-            "thinking": 200,
-            "warmup": 200,
-            "error": 1200,
-        }
+        self.bot = BotSprite()
 
     def on_enter(self) -> None:
         self.app.state = "idle"
@@ -127,7 +116,7 @@ class ReadingPromptScene(BaseScene):
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
         if not self.show_pause_modal and not self.show_confirm_modal:
-            self._update_bot_animation(now_ms)
+            self.bot.update(now_ms, self.app.state)
         
         if self.show_pause_modal or self.show_confirm_modal:
             return
@@ -219,7 +208,7 @@ class ReadingPromptScene(BaseScene):
             valign="center",
         )
 
-        self._draw_bot(screen, inner_rect)
+        self.bot.draw(screen, inner_rect)
 
         pygame.draw.rect(screen, outer_border, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, inner_border, inner_rect, width=12, border_radius=36)
@@ -414,91 +403,6 @@ class ReadingPromptScene(BaseScene):
                 pass
             elif isinstance(event, AttemptReady):
                 self.app.latest_attempt = event.view_model
-
-    def _load_bot_frames(self) -> dict[str, list[pygame.Surface]]:
-        base = get_project_root() / "bot"
-        mapping = {
-            "idle": base / "idle",
-            "listening": base / "listening",
-            "speaking": base / "speaking",
-            "thinking": base / "thinking",
-            "warmup": base / "warmup",
-            "error": base / "error",
-        }
-        frames: dict[str, list[pygame.Surface]] = {}
-        for state, folder in mapping.items():
-            images: list[pygame.Surface] = []
-            if folder.exists():
-                for image_path in sorted(folder.glob("*.png")):
-                    try:
-                        image = pygame.image.load(str(image_path)).convert_alpha()
-                        images.append(image)
-                    except Exception:
-                        continue
-            if images:
-                frames[state] = images
-        return frames
-
-    def _bot_state_for_app(self) -> str:
-        state = self.app.state
-        if state == "processing":
-            return "thinking"
-        if state == "retry":
-            return "error"
-        if state == "success":
-            return "idle"
-        if state in {"idle", "listening", "speaking", "warmup"}:
-            return state
-        return "idle"
-
-    def _update_bot_animation(self, now_ms: int) -> None:
-        next_state = self._bot_state_for_app()
-        if next_state != self.bot_state:
-            self.bot_state = next_state
-            self.bot_frame_index = 0
-            self.bot_last_tick_ms = 0
-
-        frames = self.bot_frames.get(self.bot_state, [])
-        if len(frames) <= 1:
-            return
-
-        if self.bot_last_tick_ms == 0:
-            self.bot_last_tick_ms = now_ms
-            return
-
-        interval_ms = self.bot_intervals_ms.get(self.bot_state, 240)
-        if now_ms - self.bot_last_tick_ms >= interval_ms:
-            self.bot_frame_index = (self.bot_frame_index + 1) % len(frames)
-            self.bot_last_tick_ms = now_ms
-
-    def _draw_bot(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
-        frames = self.bot_frames.get(self.bot_state) or self.bot_frames.get("idle")
-        if not frames:
-            return
-        frame = frames[self.bot_frame_index % len(frames)]
-
-        max_width = int(prompt_rect.width * 0.32)
-        max_height = int(prompt_rect.height * 0.42)
-        frame_w = max(1, frame.get_width())
-        frame_h = max(1, frame.get_height())
-        scale = min(max_width / frame_w, max_height / frame_h)
-        target_size = (max(1, int(frame_w * scale)), max(1, int(frame_h * scale)))
-        rendered = pygame.transform.smoothscale(frame, target_size)
-
-        # Position the bot so its lower part extends beyond the inner card bottom,
-        # then clip the blit to the inner card rect so the lower portion is hidden.
-        overlap = int(target_size[1] * 0.28)
-        target_rect = rendered.get_rect(
-            bottomright=(prompt_rect.right - 26, prompt_rect.bottom + overlap - 48)
-        )
-
-        # Clip drawing to the prompt_rect (inner card) so the sprite appears 'cut off'
-        old_clip = screen.get_clip()
-        try:
-            screen.set_clip(prompt_rect)
-            screen.blit(rendered, target_rect)
-        finally:
-            screen.set_clip(old_clip)
 
     def _draw_pause_modal(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
         if not (self.show_pause_modal or self.show_confirm_modal):
