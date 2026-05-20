@@ -164,7 +164,6 @@ class AttemptRunner:
             self.app.event_queue.put(StateChanged("retry"))
             self.app.event_queue.put(MessageChanged(f"Error: {error_msg}"))
             self.app.event_queue.put(ErrorOccurred(error_msg))
-            logger.error("Worker thread error: %s", error_msg)
         finally:
             self.app.prompt_active = False
 
