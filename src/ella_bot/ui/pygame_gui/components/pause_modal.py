@@ -84,7 +84,6 @@ class PauseModal:
         header_bg = (255, 217, 228)
         pygame.draw.rect(screen, outer_bg, dialog_rect, border_radius=24)
         pygame.draw.rect(screen, header_bg, header_rect, border_radius=24)
-        pygame.draw.rect(screen, header_bg, header_rect, width=0, border_radius=24)
         pygame.draw.rect(screen, (255, 255, 255), body_rect, border_radius=24)
         pygame.draw.rect(screen, (230, 127, 159), dialog_rect, width=6, border_radius=24)
 
