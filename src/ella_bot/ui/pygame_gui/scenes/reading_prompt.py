@@ -1,33 +1,20 @@
 import time
 import queue
 import threading
-import re
 from pathlib import Path
 import pygame
-from dataclasses import dataclass
 from typing import Optional
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
-from ella_bot.validation.feedback import FeedbackResult, build_feedback, build_spoken_feedback_with_coaching
-from ella_bot.validation.validators import ValidationResult, validate_spoken_text, normalize, spoken_word_confidence_map, build_highlighted_expected
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
-
-@dataclass
-class AttemptViewModel:
-    expected_sentence: str
-    spoken_sentence: str
-    highlighted_expected: str
-    validation: ValidationResult
-    feedback: FeedbackResult
+from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 
 class ReadingPromptScene(BaseScene):
     def __init__(self, app):
         super().__init__(app)
         self.worker_thread: Optional[threading.Thread] = None
-        self.error_log = []
-        self.max_errors = 5
         self.idle_timeout_seconds = 10
         self.last_activity_monotonic = time.monotonic()
         self.show_pause_modal = False
@@ -42,6 +29,7 @@ class ReadingPromptScene(BaseScene):
         self.confirm_yes_rect: Optional[pygame.Rect] = None
         self.confirm_no_rect: Optional[pygame.Rect] = None
         self.bot = BotSprite()
+        self.runner = AttemptRunner(self.app, lambda: self.is_paused)
 
     def on_enter(self) -> None:
         self.app.state = "idle"
@@ -222,167 +210,13 @@ class ReadingPromptScene(BaseScene):
             return
 
         self.app.prompt_active = True
-        self.worker_thread = threading.Thread(target=self._attempt_worker, daemon=True)
+        self.worker_thread = threading.Thread(target=self.runner.run, daemon=True)
         self.worker_thread.start()
 
-    def _attempt_worker(self) -> None:
-        self.app.event_queue.put(StateChanged("speaking"))
-        self.app.event_queue.put(MessageChanged(""))
-
-        if self.app.audio_feedback and self.app.tts is not None:
-            try:
-                if self.is_paused:
-                    return
-                announcement = self.app._build_start_announcement()
-                target_item = self.app.expected_sentence.strip()
-                target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
-                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                announcement_with_overrides = pattern.sub(target_override, announcement)
-                self.app.tts.speak(announcement_with_overrides)
-            except Exception as exc:
-                print(f"[DEBUG] Intro TTS Error: {exc}")
-                self.app.event_queue.put(ErrorOccurred(str(exc)))
-
-        self.app.event_queue.put(StateChanged("listening"))
-        self.app.event_queue.put(MessageChanged(""))
-
-        try:
-            target_sentence = self.app.expected_sentence
-            print(f"[DEBUG] Starting ASR transcription for: {target_sentence}")
-            asr_result = self.app.asr.transcribe(expected_sentence=target_sentence)
-            print(f"[DEBUG] Transcription finished. Result: '{asr_result.transcript}'")
-
-            if self.is_paused:
-                self.app.prompt_active = False
-                self.app.event_queue.put(StateChanged("idle"))
-                self.app.event_queue.put(MessageChanged(""))
-                return
-
-            self.app.prompt_active = False
-            self.app.event_queue.put(StateChanged("processing"))
-            self.app.event_queue.put(MessageChanged("Validating your reading..."))
-            
-            print("[DEBUG] Starting validation...")
-            validation = validate_spoken_text(target_sentence, asr_result.transcript)
-            print(f"\n{'='*60}")
-            print(f"Expected: {target_sentence}")
-            print(f"You said:  {asr_result.transcript}")
-            print(f"Accuracy: {validation.accuracy:.1%}, WER: {validation.wer:.2f}")
-            print(f"{'='*60}\n")
-            spoken_tokens = normalize(asr_result.transcript)
-            confidences = [w.confidence for w in asr_result.words][: len(spoken_tokens)]
-            conf_map = spoken_word_confidence_map(spoken_tokens, confidences)
-            feedback = build_feedback(validation=validation, spoken_confidence_by_word=conf_map)
-            print(f"[DEBUG] Validation finished. Accuracy: {validation.accuracy:.2f}")
-
-            highlighted = build_highlighted_expected(validation.alignment)
-            view_model = AttemptViewModel(
-                expected_sentence=self.app.expected_sentence,
-                spoken_sentence=asr_result.transcript,
-                highlighted_expected=highlighted,
-                validation=validation,
-                feedback=feedback,
-            )
-            self.app.event_queue.put(AttemptReady(view_model))
-
-            if self.app.audio_feedback and self.app.tts is not None:
-                try:
-                    spoken_lines = build_spoken_feedback_with_coaching(
-                        feedback=feedback,
-                        overrides=self.app.pronunciation_overrides,
-                        expected_sentence=self.app.expected_sentence,
-                        max_hints=2,
-                    )
-                except Exception:
-                    spoken_lines = [feedback.level_message]
-
-                for line in spoken_lines:
-                    if self.is_paused:
-                        break
-                    self.app.event_queue.put(StateChanged("speaking"))
-                    self.app.event_queue.put(MessageChanged("Speaking feedback..."))
-                    print(f"[DEBUG] Speaking: {line}")
-                    self.app.tts.speak(line)
-                print("[DEBUG] Audio feedback finished.")
-
-            if feedback.level_message == "Correct!":
-                self.app.completed_in_level = min(self.app.completed_in_level + 1, self.app.level_goal)
-                self.app.event_queue.put(StateChanged("success"))
-            else:
-                self.app.event_queue.put(StateChanged("retry"))
-
-            if self.app._try_level_up(validation.accuracy):
-                level_name = self.app._display_level_name()
-                if self.app.audio_feedback and self.app.tts is not None:
-                    if self.is_paused:
-                        return
-                    self.app.tts.speak(f"Wow, you leveled up! Welcome to the {level_name} level. You're doing amazing!")
-                self.app.event_queue.put(MessageChanged(f"Level up! You reached {level_name}!"))
-            else:
-                if feedback.level_message.startswith(("Excellent", "Great", "Wonderful", "That's right", "Perfect")):
-                    self.app._advance_to_next_sentence()
-                    self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
-                else:
-                    self.app.event_queue.put(MessageChanged("Give it another try!"))
-
-            time.sleep(0.6)
-            self.app.event_queue.put(StateChanged("listening"))
-            self.app.event_queue.put(MessageChanged(""))
-
-        except Exception as exc:
-            import traceback
-            print("\n[!!!] WORKER THREAD CRITICAL ERROR:")
-            traceback.print_exc()
-            error_msg = str(exc)
-            tb = traceback.format_exc()
-            print(f"\n{'='*60}")
-            print(f"ERROR DURING VALIDATION:")
-            print(tb)
-            print(f"{'='*60}\n")
-            self.error_log.append(error_msg)
-            if len(self.error_log) > self.max_errors:
-                self.error_log.pop(0)
-            
-            # Reset GUI state so it doesn't hang
-            self.app.prompt_active = False
-            self.app.event_queue.put(StateChanged("retry"))
-            self.app.event_queue.put(MessageChanged(f"Error: {error_msg}"))
-            self.app.event_queue.put(ErrorOccurred(error_msg))
-            print(f"DEBUG: Worker thread encountered error: {error_msg}")
-        finally:
-            self.app.prompt_active = False
-
     def _speak_last_feedback(self) -> None:
-        if self.is_paused or not self.app.audio_feedback or self.app.tts is None or self.app.latest_attempt is None:
-            return
-
-        def _worker() -> None:
-            feedback = self.app.latest_attempt.feedback
-            try:
-                lines = build_spoken_feedback_with_coaching(
-                    feedback=feedback,
-                    overrides=self.app.pronunciation_overrides,
-                    expected_sentence=self.app.latest_attempt.expected_sentence,
-                    max_hints=2,
-                )
-            except Exception:
-                lines = [feedback.level_message]
-
-            for line in lines:
-                self.app.event_queue.put(StateChanged("speaking"))
-                self.app.event_queue.put(MessageChanged("Replaying feedback..."))
-                self.app.tts.speak(line)
-
-            if feedback.level_message == "Correct!":
-                self.app.event_queue.put(StateChanged("success"))
-            else:
-                self.app.event_queue.put(StateChanged("retry"))
-            self.app.event_queue.put(MessageChanged("Replay finished."))
-
         if self.worker_thread and self.worker_thread.is_alive():
             return
-
-        self.worker_thread = threading.Thread(target=_worker, daemon=True)
+        self.worker_thread = threading.Thread(target=self.runner.replay, daemon=True)
         self.worker_thread.start()
 
     def _drain_event_queue(self) -> None:

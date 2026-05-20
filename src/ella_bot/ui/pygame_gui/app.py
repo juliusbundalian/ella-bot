@@ -7,7 +7,8 @@ from ella_bot.ui.pygame_gui.animator import AvatarAnimator
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
-from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene, AttemptViewModel
+from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
+from ella_bot.services.attempt_runner import AttemptViewModel
 from ella_bot.services.session_manager import SessionManager
 
 class EllaGUIApp:
