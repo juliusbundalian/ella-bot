@@ -68,7 +68,7 @@ def load_settings() -> Dict[str, Any]:
         if parser.has_option("TTS", "length_scale"):
             defaults["length_scale"] = parser.getfloat("TTS", "length_scale")
         if parser.has_option("TTS", "volume"):
-            defaults["volume"] = parser.getint("TTS", "volume")
+            defaults["volume"] = parser.getint("TTS", "volume") / 6.0
         if parser.has_option("TTS", "kokoro_model"):
             defaults["kokoro_model"] = parser.get("TTS", "kokoro_model")
         if parser.has_option("TTS", "kokoro_voices"):
