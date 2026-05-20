@@ -25,6 +25,8 @@ class BotSprite:
         self.state = "idle"
         self.frame_index = 0
         self.last_tick_ms = 0
+        self._scaled_cache: dict[str, list[pygame.Surface]] = {}
+        self._cache_target_size: tuple[int, int] | None = None
         self.intervals_ms = {
             "idle": 1400,
             "listening": 320,
@@ -58,6 +60,30 @@ class BotSprite:
                 frames[state] = images
         return frames
 
+    def _get_scaled_frames(self, max_width: int, max_height: int) -> list[pygame.Surface]:
+        """Return scaled frames for the current state, caching by target bounding box.
+
+        The cache is invalidated when (max_width, max_height) changes — which only
+        happens on a window resize, never on a fixed-resolution Pi 5 kiosk.
+        """
+        target = (max_width, max_height)
+        if target != self._cache_target_size:
+            self._scaled_cache.clear()
+            self._cache_target_size = target
+
+        key = self.state if self.state in self.frames else "idle"
+        if key not in self._scaled_cache:
+            raw = self.frames.get(key, [])
+            scaled: list[pygame.Surface] = []
+            for f in raw:
+                fw = max(1, f.get_width())
+                fh = max(1, f.get_height())
+                scale_factor = min(max_width / fw, max_height / fh)
+                size = (max(1, int(fw * scale_factor)), max(1, int(fh * scale_factor)))
+                scaled.append(pygame.transform.smoothscale(f, size))
+            self._scaled_cache[key] = scaled
+        return self._scaled_cache[key]
+
     def update(self, now_ms: int, app_state: str) -> None:
         next_state = bot_state_for_app(app_state)
         if next_state != self.state:
@@ -79,20 +105,15 @@ class BotSprite:
             self.last_tick_ms = now_ms
 
     def draw(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
-        frames = self.frames.get(self.state) or self.frames.get("idle")
-        if not frames:
-            return
-        frame = frames[self.frame_index % len(frames)]
-
         max_width = int(prompt_rect.width * 0.32)
         max_height = int(prompt_rect.height * 0.42)
-        frame_w = max(1, frame.get_width())
-        frame_h = max(1, frame.get_height())
-        scale = min(max_width / frame_w, max_height / frame_h)
-        target_size = (max(1, int(frame_w * scale)), max(1, int(frame_h * scale)))
-        rendered = pygame.transform.smoothscale(frame, target_size)
 
-        overlap = int(target_size[1] * 0.28)
+        scaled = self._get_scaled_frames(max_width, max_height)
+        if not scaled:
+            return
+
+        rendered = scaled[self.frame_index % len(scaled)]
+        overlap = int(rendered.get_height() * 0.28)
         target_rect = rendered.get_rect(
             bottomright=(prompt_rect.right - 26, prompt_rect.bottom + overlap - 48)
         )
