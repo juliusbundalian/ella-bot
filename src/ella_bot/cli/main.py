@@ -5,8 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict
 
-from ella_bot.speech.asr.simulated import SimulatedASR
-from ella_bot.speech.asr.vosk_engine import VoskASR
+from ella_bot.speech.asr.factory import build_asr as build_asr_engine
 from ella_bot.speech.tts.base import TTSConfig
 from ella_bot.speech.tts.factory import build_tts
 from ella_bot.ui.pygame_gui.config import GUIConfig
@@ -126,15 +125,17 @@ def resolve_existing_path(path: str, fallback_dir: str | None = None) -> Path:
 
 
 def build_asr(args: argparse.Namespace):
+    model_path = ""
     if args.use_mic:
-        model_path = resolve_existing_path(args.vosk_model, fallback_dir="models")
-        return VoskASR(
-            model_path=str(model_path),
-            sample_rate=args.sample_rate,
-            listen_seconds=args.listen_seconds,
-            input_device=args.input_device,
-        )
-    return SimulatedASR(simulated_text=args.spoken)
+        model_path = str(resolve_existing_path(args.vosk_model, fallback_dir="models"))
+    return build_asr_engine(
+        use_mic=args.use_mic,
+        spoken=args.spoken,
+        vosk_model_path=model_path,
+        sample_rate=args.sample_rate,
+        listen_seconds=args.listen_seconds,
+        input_device=args.input_device,
+    )
 
 
 def build_tts_if_enabled(args: argparse.Namespace):
