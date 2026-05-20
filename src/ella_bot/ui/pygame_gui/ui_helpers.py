@@ -1,21 +1,35 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional, Tuple
 from ella_bot.ui.pygame_gui.config import GUIConfig
 
+# Cached gradient surface — rebuilt only when screen size or colors change.
+_gradient_cache: Optional[object] = None
+_gradient_key: Optional[Tuple] = None
+
+
 def draw_gradient(screen, config: GUIConfig, pygame_module) -> None:
+    global _gradient_cache, _gradient_key
+
     top = config.background_top
     bottom = config.background_bottom
     width, height = screen.get_size()
+    key = (width, height, top, bottom)
 
-    for y in range(height):
-        t = y / max(1, height - 1)
-        color = (
-            int(top[0] * (1 - t) + bottom[0] * t),
-            int(top[1] * (1 - t) + bottom[1] * t),
-            int(top[2] * (1 - t) + bottom[2] * t),
-        )
-        pygame_module.draw.line(screen, color, (0, y), (width, y))
+    if _gradient_cache is None or _gradient_key != key:
+        surf = pygame_module.Surface((width, height))
+        for y in range(height):
+            t = y / max(1, height - 1)
+            color = (
+                int(top[0] * (1 - t) + bottom[0] * t),
+                int(top[1] * (1 - t) + bottom[1] * t),
+                int(top[2] * (1 - t) + bottom[2] * t),
+            )
+            pygame_module.draw.line(surf, color, (0, y), (width, y))
+        _gradient_cache = surf
+        _gradient_key = key
+
+    screen.blit(_gradient_cache, (0, 0))
 
 def draw_wrapped_text(
     screen,

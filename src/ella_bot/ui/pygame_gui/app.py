@@ -40,7 +40,7 @@ class EllaGUIApp:
         self.state = "idle"
         self.message = ""
         self.latest_attempt: Optional[AttemptViewModel] = None
-        self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.event_queue: queue.Queue = queue.Queue()
         self.prompt_active = False
 
         self.running = False
@@ -137,7 +137,7 @@ class EllaGUIApp:
         pygame.init()
         pygame.font.init()
 
-        fullscreen = True if not self.config.fullscreen else self.config.fullscreen
+        fullscreen = self.config.fullscreen
         if fullscreen:
             flags = pygame.FULLSCREEN
             self.screen = pygame.display.set_mode((0, 0), flags)
