@@ -31,10 +31,11 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         return ReSpeakerTTS(config=config)
     if name == "piper":
         from ella_bot.speech.tts.engines.piper import PiperTTS
-        # Use defaults if not provided in config
-        binary = (config.piper_binary if config else None) or "./piper/piper.exe"
-        model = (config.piper_model if config else None) or "./models/bmo.onnx"
-        return PiperTTS(config=config, piper_binary=binary, piper_model=model)
+        from ella_bot.utils.file_utils import resolve_model_path
+        model = resolve_model_path(
+            (config.piper_model if config else None) or "en_US-hfc_female-medium.onnx"
+        )
+        return PiperTTS(config=config, piper_model=str(model))
     if name == "kokoro":
         from ella_bot.speech.tts.engines.kokoro import KokoroTTS
         from ella_bot.utils.file_utils import resolve_model_path
@@ -45,12 +46,23 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
     if name == "auto":
         import os
         from pathlib import Path
-        from ella_bot.utils.file_utils import resolve_model_path, resolve_piper_path
+        from ella_bot.utils.file_utils import resolve_model_path
 
-        # 1. Check if Kokoro is available (High quality offline)
+        # 1. Prefer Piper (in-process neural TTS, light enough for Pi 5)
+        piper_model = resolve_model_path(
+            (config.piper_model if config else None) or "en_US-hfc_female-medium.onnx"
+        )
+        if piper_model.exists():
+            try:
+                from ella_bot.speech.tts.engines.piper import PiperTTS
+                print(f"[TTS] Auto-selecting Piper (Neural TTS). Model: {piper_model}")
+                return PiperTTS(config=config, piper_model=str(piper_model))
+            except Exception as e:
+                print(f"[TTS Warning] Piper failed to load: {e}")
+
+        # 2. Fall back to Kokoro if its model files are present
         kokoro_model = resolve_model_path((config.kokoro_model if config else None) or "kokoro-v1.0.onnx")
         kokoro_voices = resolve_model_path((config.kokoro_voices if config else None) or "voices-v1.0.bin")
-        
         if kokoro_model.exists() and kokoro_voices.exists():
             try:
                 from ella_bot.speech.tts.engines.kokoro import KokoroTTS
@@ -58,23 +70,6 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
                 return KokoroTTS(config=config, model_path=str(kokoro_model), voices_path=str(kokoro_voices))
             except Exception as e:
                 print(f"[TTS Warning] Kokoro failed to load: {e}")
-
-        # 2. Check if Piper is available (Neural TTS)
-        piper_bin = resolve_piper_path(config.piper_binary or "piper.exe")
-        piper_model = resolve_model_path(config.piper_model or "en_US-amy-medium.onnx")
-        
-        # Fallback to other models if amy is missing
-        if not piper_model.exists():
-             piper_model = resolve_model_path("en_US-libritts_r-medium.onnx")
-
-        if piper_bin.exists() and piper_model.exists():
-            try:
-                from ella_bot.speech.tts.engines.piper import PiperTTS
-                print(f"[TTS] Auto-selecting Piper (Neural TTS) for high-quality offline speech.")
-                print(f"[TTS] Using model: {piper_model}")
-                return PiperTTS(config=config, piper_binary=str(piper_bin), piper_model=str(piper_model))
-            except Exception as e:
-                 print(f"[TTS Warning] Piper failed to load: {e}")
 
         if platform.system() == "Darwin":
             try:

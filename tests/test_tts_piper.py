@@ -108,3 +108,32 @@ def test_piper_passes_synthesis_config_from_ttsconfig(monkeypatch):
     assert tts._syn_config.noise_scale == 0.5
     assert tts._syn_config.noise_w_scale == 0.9
     assert tts._syn_config.length_scale == 1.2
+
+
+def test_build_tts_piper_defaults_to_hfc_female(monkeypatch):
+    from ella_bot.speech.tts.engines import piper as piper_mod
+    captured = {}
+
+    class FakePiper:
+        def __init__(self, config, piper_model):
+            captured["model"] = piper_model
+
+    monkeypatch.setattr(piper_mod, "PiperTTS", FakePiper)
+    from ella_bot.speech.tts.factory import build_tts
+    build_tts("piper", TTSConfig())
+    assert captured["model"].endswith("en_US-hfc_female-medium.onnx")
+    assert "models" in captured["model"]
+
+
+def test_build_tts_piper_honors_explicit_model(monkeypatch):
+    from ella_bot.speech.tts.engines import piper as piper_mod
+    captured = {}
+
+    class FakePiper:
+        def __init__(self, config, piper_model):
+            captured["model"] = piper_model
+
+    monkeypatch.setattr(piper_mod, "PiperTTS", FakePiper)
+    from ella_bot.speech.tts.factory import build_tts
+    build_tts("piper", TTSConfig(piper_model="./models/en_US-amy-medium.onnx"))
+    assert captured["model"].endswith("en_US-amy-medium.onnx")
