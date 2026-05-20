@@ -9,7 +9,7 @@ from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
-from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
+from ella_bot.services.attempt_runner import AttemptRunner
 
 class ReadingPromptScene(BaseScene):
     def __init__(self, app):
