@@ -30,3 +30,18 @@ def test_load_settings_maps_ini_sections(tmp_path, monkeypatch):
 def test_load_settings_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(app_config, "get_project_root", lambda: tmp_path)
     assert app_config.load_settings() == {}
+
+
+def test_load_settings_maps_sample_rate(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    ini = config_dir / "settings.ini"
+    ini.write_text(
+        "[Speech]\nuse_mic = true\nsample_rate = 16000\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(app_config, "get_project_root", lambda: tmp_path)
+
+    settings = app_config.load_settings()
+
+    assert settings.get("sample_rate") == 16000

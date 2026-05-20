@@ -30,6 +30,8 @@ def load_settings() -> Dict[str, Any]:
             defaults["vosk_model"] = parser.get("Speech", "vosk_model")
         if parser.has_option("Speech", "listen_seconds"):
             defaults["listen_seconds"] = parser.getint("Speech", "listen_seconds")
+        if parser.has_option("Speech", "sample_rate"):
+            defaults["sample_rate"] = parser.getint("Speech", "sample_rate")
 
     if parser.has_section("TTS"):
         if parser.has_option("TTS", "audio_feedback"):
