@@ -137,3 +137,54 @@ def test_build_tts_piper_honors_explicit_model(monkeypatch):
     from ella_bot.speech.tts.factory import build_tts
     build_tts("piper", TTSConfig(piper_model="./models/en_US-amy-medium.onnx"))
     assert captured["model"].endswith("en_US-amy-medium.onnx")
+
+
+def test_piper_stop_calls_stream_abort(monkeypatch):
+    import threading
+
+    class _SlowFakeVoice:
+        """Yields one chunk then blocks until an event is set."""
+        def __init__(self, proceed: threading.Event):
+            self._proceed = proceed
+            self.spoken = []
+
+        def synthesize(self, text, syn_config=None, include_alignments=False):
+            self.spoken.append(text)
+            pcm = (np.ones(128, dtype=np.int16) * 500)
+            yield _FakeChunk(pcm)
+            # Block here — stop() should interrupt before a second chunk
+            self._proceed.wait(timeout=2)
+
+    class _TrackingStream(_FakeStream):
+        aborted = False
+        stopped = False
+
+        def abort(self):
+            _TrackingStream.aborted = True
+
+        def stop(self):
+            _TrackingStream.stopped = True
+
+    _TrackingStream.aborted = False
+    _TrackingStream.stopped = False
+
+    proceed = threading.Event()
+    voice = _SlowFakeVoice(proceed)
+
+    from ella_bot.speech.tts.engines import piper as piper_mod
+    monkeypatch.setattr(piper_mod.PiperVoice, "load", staticmethod(lambda *a, **k: voice))
+    monkeypatch.setattr(piper_mod.sd, "RawOutputStream", _TrackingStream)
+
+    tts = piper_mod.PiperTTS(config=TTSConfig(non_blocking=True), piper_model="x.onnx")
+    tts.speak("cancel me")
+    # Give the thread a moment to open the stream and reach the blocking synthesize
+    import time; time.sleep(0.05)
+    tts.stop()
+    proceed.set()  # unblock the synthesize generator
+
+    # Wait for the background thread to finish
+    time.sleep(0.1)
+
+    assert voice.spoken == ["cancel me"]
+    assert _TrackingStream.aborted is True, "stream.abort() should be called when stop() was requested"
+    assert _TrackingStream.stopped is False, "stream.stop() should NOT be called when stop() was requested"
