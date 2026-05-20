@@ -40,6 +40,9 @@ class _FakeStream:
     def stop(self):
         pass
 
+    def abort(self):
+        pass
+
     def close(self):
         self.closed = True
 
@@ -64,6 +67,7 @@ def test_apply_warmth_preserves_length_and_dtype():
     out = _apply_warmth(pcm)
     assert out.dtype == np.int16
     assert out.shape == pcm.shape
+    assert np.all(np.abs(out.astype(np.int32)) <= 32767)
 
 
 def test_piper_loads_voice_once_at_construction(monkeypatch):
@@ -83,6 +87,7 @@ def test_piper_speak_streams_audio_through_sounddevice(monkeypatch):
     stream = _FakeStream.instances[0]
     assert stream.kwargs["samplerate"] == 22050
     assert stream.kwargs["channels"] == 1
+    assert stream.started is True
     assert len(stream.written) == 128 * 2  # 128 int16 samples
 
 

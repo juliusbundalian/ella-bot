@@ -43,10 +43,12 @@ class PiperTTS(BaseTTS):
         self._stop = threading.Event()
 
     def speak(self, text: str) -> None:
+        stop_event = threading.Event()
+        self._stop = stop_event
         if self.config.non_blocking:
-            threading.Thread(target=self._speak_sync, args=(text,), daemon=True).start()
+            threading.Thread(target=self._speak_sync, args=(text, stop_event), daemon=True).start()
         else:
-            self._speak_sync(text)
+            self._speak_sync(text, stop_event)
 
     def stop(self) -> None:
         self._stop.set()
@@ -55,15 +57,14 @@ class PiperTTS(BaseTTS):
         except Exception:
             pass
 
-    def _speak_sync(self, text: str) -> None:
+    def _speak_sync(self, text: str, stop_event: threading.Event) -> None:
         if not text.strip():
             return
 
-        self._stop.clear()
         stream = None
         try:
             for chunk in self._voice.synthesize(text, syn_config=self._syn_config):
-                if self._stop.is_set():
+                if stop_event.is_set():
                     break
                 pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
                 pcm_warm = _apply_warmth(pcm)
@@ -80,7 +81,10 @@ class PiperTTS(BaseTTS):
         finally:
             if stream is not None:
                 try:
-                    stream.stop()
+                    if stop_event.is_set():
+                        stream.abort()
+                    else:
+                        stream.stop()
                     stream.close()
                 except Exception:
                     pass
