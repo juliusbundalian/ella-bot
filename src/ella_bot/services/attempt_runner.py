@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import re
 import time
-import traceback
 from dataclasses import dataclass
 from typing import Callable
 
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
+from ella_bot.utils.logging import get_logger
 from ella_bot.validation.feedback import (
     FeedbackResult,
     build_feedback,
@@ -19,6 +19,8 @@ from ella_bot.validation.validators import (
     spoken_word_confidence_map,
     build_highlighted_expected,
 )
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -54,7 +56,7 @@ class AttemptRunner:
                 announcement_with_overrides = pattern.sub(target_override, announcement)
                 self.app.tts.speak(announcement_with_overrides)
             except Exception as exc:
-                print(f"[DEBUG] Intro TTS Error: {exc}")
+                logger.debug("Intro TTS error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))
 
         self.app.event_queue.put(StateChanged("listening"))
@@ -62,9 +64,9 @@ class AttemptRunner:
 
         try:
             target_sentence = self.app.session.expected_sentence
-            print(f"[DEBUG] Starting ASR transcription for: {target_sentence}")
+            logger.debug("Starting ASR transcription for: %s", target_sentence)
             asr_result = self.app.asr.transcribe(expected_sentence=target_sentence)
-            print(f"[DEBUG] Transcription finished. Result: '{asr_result.transcript}'")
+            logger.debug("Transcription finished. Result: %r", asr_result.transcript)
 
             if self._is_paused():
                 self.app.prompt_active = False
@@ -76,18 +78,20 @@ class AttemptRunner:
             self.app.event_queue.put(StateChanged("processing"))
             self.app.event_queue.put(MessageChanged("Validating your reading..."))
 
-            print("[DEBUG] Starting validation...")
+            logger.debug("Starting validation")
             validation = validate_spoken_text(target_sentence, asr_result.transcript)
-            print(f"\n{'='*60}")
-            print(f"Expected: {target_sentence}")
-            print(f"You said:  {asr_result.transcript}")
-            print(f"Accuracy: {validation.accuracy:.1%}, WER: {validation.wer:.2f}")
-            print(f"{'='*60}\n")
+            logger.info(
+                "Expected: %r | Said: %r | Accuracy: %.1f%% | WER: %.2f",
+                target_sentence,
+                asr_result.transcript,
+                validation.accuracy * 100,
+                validation.wer,
+            )
             spoken_tokens = normalize(asr_result.transcript)
             confidences = [w.confidence for w in asr_result.words][: len(spoken_tokens)]
             conf_map = spoken_word_confidence_map(spoken_tokens, confidences)
             feedback = build_feedback(validation=validation, spoken_confidence_by_word=conf_map)
-            print(f"[DEBUG] Validation finished. Accuracy: {validation.accuracy:.2f}")
+            logger.debug("Validation finished. Accuracy: %.2f", validation.accuracy)
 
             highlighted = build_highlighted_expected(validation.alignment)
             view_model = AttemptViewModel(
@@ -115,9 +119,9 @@ class AttemptRunner:
                         break
                     self.app.event_queue.put(StateChanged("speaking"))
                     self.app.event_queue.put(MessageChanged("Speaking feedback..."))
-                    print(f"[DEBUG] Speaking: {line}")
+                    logger.debug("Speaking: %s", line)
                     self.app.tts.speak(line)
-                print("[DEBUG] Audio feedback finished.")
+                logger.debug("Audio feedback finished")
 
             if feedback.level_message == "Correct!":
                 self.app.session.completed_in_level = min(
@@ -150,14 +154,8 @@ class AttemptRunner:
             self.app.event_queue.put(MessageChanged(""))
 
         except Exception as exc:
-            print("\n[!!!] WORKER THREAD CRITICAL ERROR:")
-            traceback.print_exc()
+            logger.exception("Attempt worker crashed")
             error_msg = str(exc)
-            tb = traceback.format_exc()
-            print(f"\n{'='*60}")
-            print("ERROR DURING VALIDATION:")
-            print(tb)
-            print(f"{'='*60}\n")
             self.error_log.append(error_msg)
             if len(self.error_log) > self.max_errors:
                 self.error_log.pop(0)
@@ -166,7 +164,7 @@ class AttemptRunner:
             self.app.event_queue.put(StateChanged("retry"))
             self.app.event_queue.put(MessageChanged(f"Error: {error_msg}"))
             self.app.event_queue.put(ErrorOccurred(error_msg))
-            print(f"DEBUG: Worker thread encountered error: {error_msg}")
+            logger.error("Worker thread error: %s", error_msg)
         finally:
             self.app.prompt_active = False
 

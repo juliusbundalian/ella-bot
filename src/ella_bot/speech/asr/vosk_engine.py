@@ -5,6 +5,10 @@ import json
 from dataclasses import dataclass
 from typing import List, Optional
 
+from ella_bot.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class WordScore:
@@ -63,9 +67,9 @@ class VoskASR(BaseASR):
 		self._recognizer = None
 		
 		# Force load model during initialization to avoid runtime lag
-		print(f"Loading ASR Model from {self.model_path}...")
+		logger.info("Loading ASR Model from %s", self.model_path)
 		self._ensure_model_loaded()
-		print("ASR Model Loaded Successfully.")
+		logger.info("ASR Model Loaded Successfully")
 
 	def _ensure_model_loaded(self):
 		if self._model is not None:
@@ -104,7 +108,7 @@ class VoskASR(BaseASR):
 			try:
 				device_info = sd.query_devices(self.input_device, "input")
 				self.sample_rate = int(device_info.get("default_samplerate", 16000))
-				print(f"[ASR] Detected default sample rate: {self.sample_rate}Hz")
+				logger.debug("[ASR] Detected default sample rate: %dHz", self.sample_rate)
 			except Exception:
 				self.sample_rate = 16000
 
@@ -115,14 +119,14 @@ class VoskASR(BaseASR):
 
 		def callback(indata, frames, time, status):
 			if status:
-				print(f"[Audio Status] {status}")
+				logger.info("[Audio Status] %s", status)
 			audio_queue.put(bytes(indata))
 
 		try:
 			device_info = sd.query_devices(self.input_device, "input")
-			print(f"[ASR] Initializing microphone: {device_info.get('name', 'Unknown')} at {self.sample_rate}Hz")
+			logger.info("[ASR] Initializing microphone: %s at %dHz", device_info.get('name', 'Unknown'), self.sample_rate)
 		except Exception as e:
-			print(f"[ASR] Warning: Could not query device info: {e}")
+			logger.warning("[ASR] Could not query device info: %s", e)
 
 		try:
 			import time
@@ -134,7 +138,7 @@ class VoskASR(BaseASR):
 				device=self.input_device,
 				callback=callback,
 			):
-				print(f"[ASR] Recording started. Will listen for {self.listen_seconds} seconds...")
+				logger.info("[ASR] Recording started. Will listen for %d seconds", self.listen_seconds)
 				start_time = time.time()
 				last_log_time = start_time
 				
@@ -145,7 +149,7 @@ class VoskASR(BaseASR):
 						
 					# Log every second
 					if time.time() - last_log_time >= 1.0:
-						print(f"[ASR] ... recording ({int(elapsed)}s / {self.listen_seconds}s)")
+						logger.debug("[ASR] Recording: %ds / %ds", int(elapsed), self.listen_seconds)
 						last_log_time = time.time()
 
 					try:
@@ -155,14 +159,14 @@ class VoskASR(BaseASR):
 					except queue.Empty:
 						continue
 				
-				print("[ASR] Recording loop finished.")
+				logger.debug("[ASR] Recording loop finished")
 		except Exception as exc:
-			print(f"[ASR Error] Could not open microphone: {exc}")
+			logger.error("[ASR] Could not open microphone: %s", exc)
 			raise RuntimeError(f"Microphone error: {exc}")
 
-		print("[ASR] Finalizing recognition result...")
+		logger.debug("[ASR] Finalizing recognition result")
 		final_result_str = recognizer.FinalResult()
-		print(f"[ASR] FinalResult() called. Raw length: {len(final_result_str)}")
+		logger.debug("[ASR] FinalResult() called. Raw length: %d", len(final_result_str))
 		final_json = json.loads(final_result_str)
 		transcript = final_json.get("text", "").strip()
 
