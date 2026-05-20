@@ -11,6 +11,7 @@ from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene, AttemptViewModel
 from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS
+from ella_bot.utils.file_utils import resolve_config_path
 
 class EllaGUIApp:
     """Pygame GUI loop for E.L.L.A. serving as a SceneManager."""
@@ -35,7 +36,7 @@ class EllaGUIApp:
         self.level_order = list(LEVEL_ORDER)
         self.level_thresholds = dict(LEVEL_THRESHOLDS)
 
-        with open("config/level_pools.json", "r") as f:
+        with open(resolve_config_path("level_pools.json"), "r") as f:
             self.level_pools = json.load(f)
         if hard_sentences:
             self.level_pools["hard"] = hard_sentences
