@@ -19,25 +19,29 @@ def _make_scene(volume_level=3, listen_seconds=7):
 
 def test_volume_tap_plus_increments():
     scene = _make_scene(volume_level=3)
-    scene._tap_volume(1)
+    with patch("ella_bot.config.app_config.save_setting"):
+        scene._tap_volume(1)
     assert scene.volume_level == 4
 
 
 def test_volume_tap_minus_decrements():
     scene = _make_scene(volume_level=3)
-    scene._tap_volume(-1)
+    with patch("ella_bot.config.app_config.save_setting"):
+        scene._tap_volume(-1)
     assert scene.volume_level == 2
 
 
 def test_volume_clamps_at_min():
     scene = _make_scene(volume_level=1)
-    scene._tap_volume(-1)
+    with patch("ella_bot.config.app_config.save_setting"):
+        scene._tap_volume(-1)
     assert scene.volume_level == 1
 
 
 def test_volume_clamps_at_max():
     scene = _make_scene(volume_level=6)
-    scene._tap_volume(1)
+    with patch("ella_bot.config.app_config.save_setting"):
+        scene._tap_volume(1)
     assert scene.volume_level == 6
 
 
