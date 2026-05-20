@@ -44,9 +44,9 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         return KokoroTTS(config=config, model_path=str(model), voices_path=str(voices))
 
     if name == "auto":
-        import os
-        from pathlib import Path
         from ella_bot.utils.file_utils import resolve_model_path
+        from ella_bot.utils.logging import get_logger
+        _log = get_logger(__name__)
 
         # 1. Prefer Piper (in-process neural TTS, light enough for Pi 5)
         piper_model = resolve_model_path(
@@ -55,10 +55,10 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         if piper_model.exists():
             try:
                 from ella_bot.speech.tts.engines.piper import PiperTTS
-                print(f"[TTS] Auto-selecting Piper (Neural TTS). Model: {piper_model}")
+                _log.info("[TTS] Auto-selecting Piper (Neural TTS). Model: %s", piper_model)
                 return PiperTTS(config=config, piper_model=str(piper_model))
             except Exception as e:
-                print(f"[TTS Warning] Piper failed to load: {e}")
+                _log.warning("[TTS] Piper failed to load: %s", e)
 
         # 2. Fall back to Kokoro if its model files are present
         kokoro_model = resolve_model_path((config.kokoro_model if config else None) or "kokoro-v1.0.onnx")
@@ -66,10 +66,10 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         if kokoro_model.exists() and kokoro_voices.exists():
             try:
                 from ella_bot.speech.tts.engines.kokoro import KokoroTTS
-                print(f"[TTS] Auto-selecting Kokoro (High Quality Offline) for natural speech.")
+                _log.info("[TTS] Auto-selecting Kokoro (High Quality Offline) for natural speech.")
                 return KokoroTTS(config=config, model_path=str(kokoro_model), voices_path=str(kokoro_voices))
             except Exception as e:
-                print(f"[TTS Warning] Kokoro failed to load: {e}")
+                _log.warning("[TTS] Kokoro failed to load: %s", e)
 
         if platform.system() == "Darwin":
             try:
