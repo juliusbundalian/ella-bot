@@ -458,7 +458,6 @@ class ReadingPromptScene(BaseScene):
             width=4,
         )
         left_x = dialog_rect.centerx - button_w // 2
-        right_x = left_x
 
         if self.show_confirm_modal:
             msg = "Return to main menu?" if self.confirm_action == "main_menu" else "Exit the app?"
