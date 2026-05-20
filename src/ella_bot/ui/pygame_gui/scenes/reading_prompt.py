@@ -12,6 +12,7 @@ from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.validation.feedback import FeedbackResult, build_feedback, build_spoken_feedback_with_coaching
 from ella_bot.validation.validators import ValidationResult, validate_spoken_text, normalize, spoken_word_confidence_map, build_highlighted_expected
 from ella_bot.utils.file_utils import get_project_root
+from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
 
 @dataclass
 class AttemptViewModel:
@@ -37,6 +38,7 @@ class ReadingPromptScene(BaseScene):
         self.pause_resume_rect: Optional[pygame.Rect] = None
         self.pause_main_menu_rect: Optional[pygame.Rect] = None
         self.pause_exit_rect: Optional[pygame.Rect] = None
+        self.pause_close_rect: Optional[pygame.Rect] = None
         self.confirm_yes_rect: Optional[pygame.Rect] = None
         self.confirm_no_rect: Optional[pygame.Rect] = None
         self.bot_frames = self._load_bot_frames()
@@ -69,6 +71,9 @@ class ReadingPromptScene(BaseScene):
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.show_confirm_modal:
+                if self.pause_close_rect and self.pause_close_rect.collidepoint(event.pos):
+                    self.show_confirm_modal = False
+                    return
                 if self.confirm_yes_rect and self.confirm_yes_rect.collidepoint(event.pos):
                     if self.confirm_action == "main_menu":
                         self.show_confirm_modal = False
@@ -86,6 +91,9 @@ class ReadingPromptScene(BaseScene):
                 return
 
             if self.show_pause_modal:
+                if self.pause_close_rect and self.pause_close_rect.collidepoint(event.pos):
+                    self._set_paused(False)
+                    return
                 if self.pause_resume_rect and self.pause_resume_rect.collidepoint(event.pos):
                     self._set_paused(False)
                     return
@@ -126,8 +134,8 @@ class ReadingPromptScene(BaseScene):
 
         if self.app.state == "listening" and not self.app.prompt_active:
             if time.monotonic() - self.last_activity_monotonic >= self.idle_timeout_seconds:
-                self.app.event_queue.put(("state", "idle"))
-                self.app.event_queue.put(("message", ""))
+                self.app.event_queue.put(StateChanged("idle"))
+                self.app.event_queue.put(MessageChanged(""))
 
     def render(self) -> None:
         screen = self.app.screen
@@ -229,8 +237,8 @@ class ReadingPromptScene(BaseScene):
         self.worker_thread.start()
 
     def _attempt_worker(self) -> None:
-        self.app.event_queue.put(("state", "speaking"))
-        self.app.event_queue.put(("message", ""))
+        self.app.event_queue.put(StateChanged("speaking"))
+        self.app.event_queue.put(MessageChanged(""))
 
         if self.app.audio_feedback and self.app.tts is not None:
             try:
@@ -244,10 +252,10 @@ class ReadingPromptScene(BaseScene):
                 self.app.tts.speak(announcement_with_overrides)
             except Exception as exc:
                 print(f"[DEBUG] Intro TTS Error: {exc}")
-                self.app.event_queue.put(("error", str(exc)))
+                self.app.event_queue.put(ErrorOccurred(str(exc)))
 
-        self.app.event_queue.put(("state", "listening"))
-        self.app.event_queue.put(("message", ""))
+        self.app.event_queue.put(StateChanged("listening"))
+        self.app.event_queue.put(MessageChanged(""))
 
         try:
             target_sentence = self.app.expected_sentence
@@ -257,13 +265,13 @@ class ReadingPromptScene(BaseScene):
 
             if self.is_paused:
                 self.app.prompt_active = False
-                self.app.event_queue.put(("state", "idle"))
-                self.app.event_queue.put(("message", ""))
+                self.app.event_queue.put(StateChanged("idle"))
+                self.app.event_queue.put(MessageChanged(""))
                 return
 
             self.app.prompt_active = False
-            self.app.event_queue.put(("state", "processing"))
-            self.app.event_queue.put(("message", "Validating your reading..."))
+            self.app.event_queue.put(StateChanged("processing"))
+            self.app.event_queue.put(MessageChanged("Validating your reading..."))
             
             print("[DEBUG] Starting validation...")
             validation = validate_spoken_text(target_sentence, asr_result.transcript)
@@ -286,7 +294,7 @@ class ReadingPromptScene(BaseScene):
                 validation=validation,
                 feedback=feedback,
             )
-            self.app.event_queue.put(("attempt_ready", view_model))
+            self.app.event_queue.put(AttemptReady(view_model))
 
             if self.app.audio_feedback and self.app.tts is not None:
                 try:
@@ -302,17 +310,17 @@ class ReadingPromptScene(BaseScene):
                 for line in spoken_lines:
                     if self.is_paused:
                         break
-                    self.app.event_queue.put(("state", "speaking"))
-                    self.app.event_queue.put(("message", "Speaking feedback..."))
+                    self.app.event_queue.put(StateChanged("speaking"))
+                    self.app.event_queue.put(MessageChanged("Speaking feedback..."))
                     print(f"[DEBUG] Speaking: {line}")
                     self.app.tts.speak(line)
                 print("[DEBUG] Audio feedback finished.")
 
             if feedback.level_message == "Correct!":
                 self.app.completed_in_level = min(self.app.completed_in_level + 1, self.app.level_goal)
-                self.app.event_queue.put(("state", "success"))
+                self.app.event_queue.put(StateChanged("success"))
             else:
-                self.app.event_queue.put(("state", "retry"))
+                self.app.event_queue.put(StateChanged("retry"))
 
             if self.app._try_level_up(validation.accuracy):
                 level_name = self.app._display_level_name()
@@ -320,17 +328,17 @@ class ReadingPromptScene(BaseScene):
                     if self.is_paused:
                         return
                     self.app.tts.speak(f"Wow, you leveled up! Welcome to the {level_name} level. You're doing amazing!")
-                self.app.event_queue.put(("message", f"Level up! You reached {level_name}!"))
+                self.app.event_queue.put(MessageChanged(f"Level up! You reached {level_name}!"))
             else:
                 if feedback.level_message.startswith(("Excellent", "Great", "Wonderful", "That's right", "Perfect")):
                     self.app._advance_to_next_sentence()
-                    self.app.event_queue.put(("message", "Nice work! Moving to the next one."))
+                    self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
                 else:
-                    self.app.event_queue.put(("message", "Give it another try!"))
+                    self.app.event_queue.put(MessageChanged("Give it another try!"))
 
             time.sleep(0.6)
-            self.app.event_queue.put(("state", "listening"))
-            self.app.event_queue.put(("message", ""))
+            self.app.event_queue.put(StateChanged("listening"))
+            self.app.event_queue.put(MessageChanged(""))
 
         except Exception as exc:
             import traceback
@@ -348,9 +356,9 @@ class ReadingPromptScene(BaseScene):
             
             # Reset GUI state so it doesn't hang
             self.app.prompt_active = False
-            self.app.event_queue.put(("state", "retry"))
-            self.app.event_queue.put(("message", f"Error: {error_msg}"))
-            self.app.event_queue.put(("error", error_msg))
+            self.app.event_queue.put(StateChanged("retry"))
+            self.app.event_queue.put(MessageChanged(f"Error: {error_msg}"))
+            self.app.event_queue.put(ErrorOccurred(error_msg))
             print(f"DEBUG: Worker thread encountered error: {error_msg}")
         finally:
             self.app.prompt_active = False
@@ -372,15 +380,15 @@ class ReadingPromptScene(BaseScene):
                 lines = [feedback.level_message]
 
             for line in lines:
-                self.app.event_queue.put(("state", "speaking"))
-                self.app.event_queue.put(("message", "Replaying feedback..."))
+                self.app.event_queue.put(StateChanged("speaking"))
+                self.app.event_queue.put(MessageChanged("Replaying feedback..."))
                 self.app.tts.speak(line)
 
             if feedback.level_message == "Correct!":
-                self.app.event_queue.put(("state", "success"))
+                self.app.event_queue.put(StateChanged("success"))
             else:
-                self.app.event_queue.put(("state", "retry"))
-            self.app.event_queue.put(("message", "Replay finished."))
+                self.app.event_queue.put(StateChanged("retry"))
+            self.app.event_queue.put(MessageChanged("Replay finished."))
 
         if self.worker_thread and self.worker_thread.is_alive():
             return
@@ -391,21 +399,21 @@ class ReadingPromptScene(BaseScene):
     def _drain_event_queue(self) -> None:
         while True:
             try:
-                event, payload = self.app.event_queue.get_nowait()
+                event = self.app.event_queue.get_nowait()
             except queue.Empty:
                 break
 
-            if event == "state" and isinstance(payload, str):
-                self.app.state = payload
+            if isinstance(event, StateChanged):
+                self.app.state = event.state
                 self._touch_activity()
-                if payload in {"idle", "warmup", "listening", "processing", "speaking", "success", "retry"}:
-                    self.app.animator.set_state(payload, reset=True)
-            elif event == "message" and isinstance(payload, str):
-                self.app.message = payload
-            elif event == "error" and isinstance(payload, str):
+                if event.state in {"idle", "warmup", "listening", "processing", "speaking", "success", "retry"}:
+                    self.app.animator.set_state(event.state, reset=True)
+            elif isinstance(event, MessageChanged):
+                self.app.message = event.message
+            elif isinstance(event, ErrorOccurred):
                 pass
-            elif event == "attempt_ready" and isinstance(payload, AttemptViewModel):
-                self.app.latest_attempt = payload
+            elif isinstance(event, AttemptReady):
+                self.app.latest_attempt = event.view_model
 
     def _load_bot_frames(self) -> dict[str, list[pygame.Surface]]:
         base = get_project_root() / "bot"
@@ -500,74 +508,88 @@ class ReadingPromptScene(BaseScene):
         overlay.fill((0, 0, 0, 140))
         screen.blit(overlay, (0, 0))
 
-        dialog_w = int(prompt_rect.width * 0.72)
-        dialog_h = int(prompt_rect.height * 0.40)
+        dialog_w = int(prompt_rect.width * 0.55)
+        dialog_h = int(prompt_rect.height * 0.50)
         dialog_x = prompt_rect.centerx - dialog_w // 2
         dialog_y = prompt_rect.centery - dialog_h // 2
         dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
 
-        pygame.draw.rect(screen, (255, 255, 255), dialog_rect, border_radius=18)
-        pygame.draw.rect(screen, (230, 127, 159), dialog_rect, width=6, border_radius=18)
+        header_height = 92
+        header_rect = pygame.Rect(dialog_rect.left, dialog_rect.top, dialog_rect.width, header_height)
+        body_rect = pygame.Rect(dialog_rect.left, dialog_rect.top + header_height, dialog_rect.width, dialog_rect.height - header_height)
+
+        outer_bg = (255, 240, 245)
+        header_bg = (255, 217, 228)
+        pygame.draw.rect(screen, outer_bg, dialog_rect, border_radius=24)
+        pygame.draw.rect(screen, header_bg, header_rect, border_radius=24)
+        pygame.draw.rect(screen, header_bg, header_rect, width=0, border_radius=24)
+        pygame.draw.rect(screen, (255, 255, 255), body_rect, border_radius=24)
+        pygame.draw.rect(screen, (230, 127, 159), dialog_rect, width=6, border_radius=24)
 
         title_text = "Paused" if not self.show_confirm_modal else "Confirm"
         title_surf = self.app.font_body.render(title_text, True, (40, 40, 40))
-        title_rect = title_surf.get_rect(center=(dialog_rect.centerx, dialog_rect.top + 46))
+        title_rect = title_surf.get_rect(topleft=(dialog_rect.left + 24, dialog_rect.top + 24))
         screen.blit(title_surf, title_rect)
 
-        button_w = int(dialog_rect.width * 0.34)
-        button_h = 64
-        button_y = dialog_rect.bottom - button_h - 28
-        left_x = dialog_rect.centerx - button_w - 16
-        right_x = dialog_rect.centerx + 16
+        button_w = int(dialog_rect.width * 0.82)
+        button_h = 72
+        stack_gap = 18
+        close_size = 48
+        close_rect = pygame.Rect(dialog_rect.right - close_size - 20, dialog_rect.top + 22, close_size, close_size)
+        self.pause_close_rect = close_rect
+        pygame.draw.rect(screen, (255, 255, 255), close_rect, border_radius=14)
+        pygame.draw.rect(screen, (230, 127, 159), close_rect, width=4, border_radius=14)
+        pygame.draw.line(
+            screen,
+            (230, 127, 159),
+            (close_rect.left + 14, close_rect.top + 14),
+            (close_rect.right - 14, close_rect.bottom - 14),
+            width=4,
+        )
+        pygame.draw.line(
+            screen,
+            (230, 127, 159),
+            (close_rect.left + 14, close_rect.bottom - 14),
+            (close_rect.right - 14, close_rect.top + 14),
+            width=4,
+        )
+        left_x = dialog_rect.centerx - button_w // 2
+        right_x = left_x
 
         if self.show_confirm_modal:
             msg = "Return to main menu?" if self.confirm_action == "main_menu" else "Exit the app?"
             msg_surf = self.app.font_small.render(msg, True, (50, 50, 50))
-            msg_rect = msg_surf.get_rect(center=(dialog_rect.centerx, dialog_rect.centery))
+            msg_rect = msg_surf.get_rect(center=(dialog_rect.centerx, header_rect.bottom + 44))
             screen.blit(msg_surf, msg_rect)
 
-            yes_rect = pygame.Rect(left_x, button_y, button_w, button_h)
-            no_rect = pygame.Rect(right_x, button_y, button_w, button_h)
+            yes_rect = pygame.Rect(left_x, header_rect.bottom + 88, button_w, button_h)
+            no_rect = pygame.Rect(left_x, header_rect.bottom + 88 + button_h + 16, button_w, button_h)
             self.confirm_yes_rect = yes_rect
             self.confirm_no_rect = no_rect
             self.pause_main_menu_rect = None
             self.pause_exit_rect = None
 
-            pygame.draw.rect(screen, (236, 133, 165), yes_rect, border_radius=14)
-            pygame.draw.rect(screen, (230, 127, 159), yes_rect, width=4, border_radius=14)
-            yes_text = self.app.font_small.render("Yes", True, (255, 255, 255))
+            shadow = pygame.Surface((button_w, button_h), pygame.SRCALPHA)
+            shadow.fill((0, 0, 0, 40))
+            screen.blit(shadow, (yes_rect.left, yes_rect.top + 6))
+            screen.blit(shadow, (no_rect.left, no_rect.top + 6))
+
+            pygame.draw.rect(screen, (255, 255, 255), yes_rect, border_radius=18)
+            pygame.draw.rect(screen, (230, 127, 159), yes_rect, width=4, border_radius=18)
+            yes_text = self.app.font_small.render("Yes", True, (40, 40, 40))
             screen.blit(yes_text, yes_text.get_rect(center=yes_rect.center))
 
-            pygame.draw.rect(screen, (236, 133, 165), no_rect, border_radius=14)
-            pygame.draw.rect(screen, (230, 127, 159), no_rect, width=4, border_radius=14)
-            no_text = self.app.font_small.render("No", True, (255, 255, 255))
+            pygame.draw.rect(screen, (255, 255, 255), no_rect, border_radius=18)
+            pygame.draw.rect(screen, (230, 127, 159), no_rect, width=4, border_radius=18)
+            no_text = self.app.font_small.render("No", True, (40, 40, 40))
             screen.blit(no_text, no_text.get_rect(center=no_rect.center))
             return
 
-        button_w = int(dialog_rect.width * 0.48)
-        button_h = 62
-        stack_gap = 16
-        stack_height = button_h * 3 + stack_gap * 2
-        stack_top = dialog_rect.centery - stack_height // 2 + 12
-
-        resume_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top,
-            button_w,
-            button_h,
-        )
-        main_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top + button_h + stack_gap,
-            button_w,
-            button_h,
-        )
-        exit_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top + (button_h + stack_gap) * 2,
-            button_w,
-            button_h,
-        )
+        button_h = 78
+        stack_gap = 20
+        resume_rect = pygame.Rect(left_x, header_rect.bottom + 40, button_w, button_h)
+        main_rect = pygame.Rect(left_x, resume_rect.bottom + stack_gap, button_w, button_h)
+        exit_rect = pygame.Rect(left_x, main_rect.bottom + stack_gap, button_w, button_h)
 
         self.pause_resume_rect = resume_rect
         self.pause_main_menu_rect = main_rect
@@ -575,19 +597,25 @@ class ReadingPromptScene(BaseScene):
         self.confirm_yes_rect = None
         self.confirm_no_rect = None
 
-        pygame.draw.rect(screen, (236, 133, 165), resume_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), resume_rect, width=4, border_radius=14)
-        resume_text = self.app.font_small.render("Resume", True, (255, 255, 255))
+        shadow = pygame.Surface((button_w, button_h), pygame.SRCALPHA)
+        shadow.fill((0, 0, 0, 28))
+        screen.blit(shadow, (resume_rect.left, resume_rect.top + 6))
+        screen.blit(shadow, (main_rect.left, main_rect.top + 6))
+        screen.blit(shadow, (exit_rect.left, exit_rect.top + 6))
+
+        pygame.draw.rect(screen, (255, 255, 255), resume_rect, border_radius=22)
+        pygame.draw.rect(screen, (230, 127, 159), resume_rect, width=4, border_radius=22)
+        resume_text = self.app.font_small.render("Resume", True, (40, 40, 40))
         screen.blit(resume_text, resume_text.get_rect(center=resume_rect.center))
 
-        pygame.draw.rect(screen, (236, 133, 165), main_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), main_rect, width=4, border_radius=14)
-        main_text = self.app.font_small.render("Main Menu", True, (255, 255, 255))
+        pygame.draw.rect(screen, (255, 255, 255), main_rect, border_radius=22)
+        pygame.draw.rect(screen, (230, 127, 159), main_rect, width=4, border_radius=22)
+        main_text = self.app.font_small.render("Main Menu", True, (40, 40, 40))
         screen.blit(main_text, main_text.get_rect(center=main_rect.center))
 
-        pygame.draw.rect(screen, (236, 133, 165), exit_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), exit_rect, width=4, border_radius=14)
-        exit_text = self.app.font_small.render("Exit", True, (255, 255, 255))
+        pygame.draw.rect(screen, (255, 255, 255), exit_rect, border_radius=22)
+        pygame.draw.rect(screen, (230, 127, 159), exit_rect, width=4, border_radius=22)
+        exit_text = self.app.font_small.render("Exit", True, (40, 40, 40))
         screen.blit(exit_text, exit_text.get_rect(center=exit_rect.center))
 
     def _set_paused(self, paused: bool) -> None:
@@ -602,5 +630,5 @@ class ReadingPromptScene(BaseScene):
             except Exception:
                 pass
         self.app.prompt_active = False
-        self.app.event_queue.put(("state", "idle"))
-        self.app.event_queue.put(("message", ""))
+        self.app.event_queue.put(StateChanged("idle"))
+        self.app.event_queue.put(MessageChanged(""))
