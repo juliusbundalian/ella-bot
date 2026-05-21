@@ -16,8 +16,9 @@ _INNER_BORDER = (255, 185, 207)
 _BTN_FILL = (255, 182, 193)
 _BTN_OUTLINE = (215, 140, 160)
 _BTN_PRESSED = (251, 165, 193)
-_DANGER = (220, 70, 90)
+_DANGER = (255, 99, 122)
 _DANGER_PRESSED = (200, 50, 70)
+_DANGER_BORDER = (244, 45, 74)
 _TITLE_COLOR = (230, 127, 159)
 
 
@@ -200,8 +201,15 @@ class SettingsScene(BaseScene):
         reset_x = inner_rect.centerx - reset_w // 2
         reset_y = inner_rect.bottom - 60 - reset_h
         self.btn_reset = pygame.Rect(reset_x, reset_y, reset_w, reset_h)
-        reset_bg = _DANGER_PRESSED if self.pressed_button == "reset" else _DANGER
+        is_reset_pressed = self.pressed_button == "reset"
+        reset_bg = _DANGER_PRESSED if is_reset_pressed else _DANGER
+        if not is_reset_pressed:
+            pygame.draw.rect(screen, _DANGER_BORDER,
+                             pygame.Rect(self.btn_reset.left + 6, self.btn_reset.top + 6,
+                                         self.btn_reset.width, self.btn_reset.height),
+                             border_radius=15)
         pygame.draw.rect(screen, reset_bg, self.btn_reset, border_radius=15)
+        pygame.draw.rect(screen, _DANGER_BORDER, self.btn_reset, width=2, border_radius=15)
         rs = self.app.font_body.render("Reset Progress", True, _WHITE)
         screen.blit(rs, rs.get_rect(center=self.btn_reset.center))
 
