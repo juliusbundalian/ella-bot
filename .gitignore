@@ -30,4 +30,4 @@ htmlcov/
 
 models/
 piper/
-sounds/
+sounds/.mcp.json
