@@ -22,6 +22,8 @@ _DANGER = (255, 99, 122)
 _DANGER_PRESSED = (200, 50, 70)
 _DANGER_BORDER = (244, 45, 74)
 _TITLE_COLOR = (230, 127, 159)
+_SEG_ACTIVE_FILL = (255, 185, 210)
+_SEG_INACTIVE_BORDER = (56, 56, 56)
 
 
 class SettingsScene(BaseScene):
@@ -185,22 +187,27 @@ class SettingsScene(BaseScene):
         vol_lbl = self.app.font_body.render("Volume", True, (50, 50, 50))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=inner_rect.centerx, top=vol_label_y))
 
-        seg_w, seg_h, seg_gap = 52, 36, 8
+        seg_w, seg_h, seg_gap = 48, 24, 8
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
         seg_x0 = inner_rect.centerx - total_seg_w // 2
         seg_y = vol_label_y + vol_lbl.get_height() + 30
 
-        # Draw volume segments
+        # Draw volume segments — 1px top/left border, 3px right/bottom (shadow-shift technique)
         for i in range(_VOLUME_MAX):
             rx = seg_x0 + i * (seg_w + seg_gap)
             if (i + 1) <= self.volume_level:
-                pygame.draw.rect(screen, _BTN_FILL, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _BTN_OUTLINE,
+                                 pygame.Rect(rx + 2, seg_y + 2, seg_w, seg_h), border_radius=6)
+                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=6)
+                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
             else:
-                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=8)
-                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=2, border_radius=8)
+                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER,
+                                 pygame.Rect(rx + 2, seg_y + 2, seg_w, seg_h), border_radius=6)
+                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=6)
+                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
 
         # Volume -/+ buttons (62x62, 12px gap from segments)
-        btn_sz = 62
+        btn_sz = 56
         self.btn_vol_minus = pygame.Rect(seg_x0 - btn_sz - 12, seg_y, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 12, seg_y, btn_sz, btn_sz)
         self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, icon=self._icon_remove or None)
