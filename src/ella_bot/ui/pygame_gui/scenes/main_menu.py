@@ -6,10 +6,10 @@ from ella_bot.utils.file_utils import resolve_asset_path
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
-_OUTER_BORDER = (230, 127, 159)
+_OUTER_BORDER = (94, 42, 59)
 _INNER_BORDER = (255, 185, 207)
 _BTN_FILL = (255, 182, 193)
-_BTN_OUTLINE = (215, 140, 160)
+_BTN_OUTLINE = (94, 42, 59)
 _BTN_PRESSED = (251, 165, 193)
 
 

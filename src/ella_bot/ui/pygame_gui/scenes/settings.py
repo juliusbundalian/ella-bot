@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.config.app_config import save_setting
+from ella_bot.utils.file_utils import resolve_asset_path
 
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
@@ -11,10 +13,10 @@ _LISTEN_MAX = 10
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
-_OUTER_BORDER = (230, 127, 159)
+_OUTER_BORDER = (94, 42, 59)
 _INNER_BORDER = (255, 185, 207)
 _BTN_FILL = (255, 182, 193)
-_BTN_OUTLINE = (215, 140, 160)
+_BTN_OUTLINE = (94, 42, 59)
 _BTN_PRESSED = (251, 165, 193)
 _DANGER = (255, 99, 122)
 _DANGER_PRESSED = (200, 50, 70)
@@ -38,6 +40,9 @@ class SettingsScene(BaseScene):
         self.btn_back: pygame.Rect | None = None
         self.btn_confirm_yes: pygame.Rect | None = None
         self.btn_confirm_no: pygame.Rect | None = None
+
+        self._icon_add = None
+        self._icon_remove = None
 
     def on_enter(self) -> None:
         self.show_reset_confirm = False
@@ -115,7 +120,22 @@ class SettingsScene(BaseScene):
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_button(self, screen, rect, label, key, radius=16, font=None) -> None:
+    def _load_assets(self) -> None:
+        for attr, filename, size in [
+            ("_icon_add", "assets/ic_add.svg", 36),
+            ("_icon_remove", "assets/ic_remove.svg", 36),
+        ]:
+            if getattr(self, attr) is None:
+                try:
+                    svg_text = resolve_asset_path(filename).read_text()
+                    svg_sized = (svg_text
+                                 .replace('height="24px"', f'height="{size}px"')
+                                 .replace('width="24px"', f'width="{size}px"'))
+                    setattr(self, attr, pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha())
+                except Exception:
+                    setattr(self, attr, False)
+
+    def _draw_button(self, screen, rect, label, key, radius=16, font=None, icon=None) -> None:
         if font is None:
             font = self.app.font_title
         is_pressed = self.pressed_button == key
@@ -126,12 +146,16 @@ class SettingsScene(BaseScene):
                              border_radius=radius)
         pygame.draw.rect(screen, bg, rect, border_radius=radius)
         pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=radius)
-        surf = font.render(label, True, _WHITE)
-        screen.blit(surf, surf.get_rect(center=rect.center))
+        if icon:
+            screen.blit(icon, icon.get_rect(center=rect.center))
+        else:
+            surf = font.render(label, True, _WHITE)
+            screen.blit(surf, surf.get_rect(center=rect.center))
 
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
+        self._load_assets()
 
         prompt_rect = pygame.Rect(0, 0, width, height)
 
@@ -179,22 +203,22 @@ class SettingsScene(BaseScene):
         btn_sz = 62
         self.btn_vol_minus = pygame.Rect(seg_x0 - btn_sz - 12, seg_y, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 12, seg_y, btn_sz, btn_sz)
-        self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, font=self.app.font_button)
-        self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14, font=self.app.font_button)
+        self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, icon=self._icon_remove or None)
+        self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14, icon=self._icon_add or None)
 
         # --- Listening Time section ---
         listen_top = seg_y + seg_h + 30
         listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=inner_rect.centerx, top=listen_top))
 
-        val_surf = self.app.font_title.render(f"{self.listen_seconds} seconds", True, _BTN_OUTLINE)
+        val_surf = self.app.font_title.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
         val_rect = val_surf.get_rect(centerx=inner_rect.centerx, top=listen_top + listen_lbl.get_height() + 20)
         screen.blit(val_surf, val_rect)
 
         self.btn_listen_minus = pygame.Rect(val_rect.left - btn_sz - 12, val_rect.top, btn_sz, btn_sz)
         self.btn_listen_plus = pygame.Rect(val_rect.right + 12, val_rect.top, btn_sz, btn_sz)
-        self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14, font=self.app.font_button)
-        self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14, font=self.app.font_button)
+        self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14, icon=self._icon_remove or None)
+        self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14, icon=self._icon_add or None)
 
         # --- Reset Progress button ---
         reset_w, reset_h = 380, 70

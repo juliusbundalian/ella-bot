@@ -117,7 +117,7 @@ class ReadingPromptScene(BaseScene):
 
         card_color = (0, 0, 0)
         inner_card_color = (255, 255, 255)
-        outer_border = (230, 127, 159)
+        outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
         pygame.draw.rect(screen, card_color, prompt_rect, border_radius=0)
 
