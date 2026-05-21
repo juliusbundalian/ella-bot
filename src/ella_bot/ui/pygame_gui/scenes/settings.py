@@ -3,12 +3,22 @@ from __future__ import annotations
 import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.config.app_config import save_setting
-from ella_bot.ui.pygame_gui.ui_helpers import draw_menu_button
 
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
 _LISTEN_MIN = 5
 _LISTEN_MAX = 10
+
+_CARD_BG = (0, 0, 0)
+_WHITE = (255, 255, 255)
+_OUTER_BORDER = (230, 127, 159)
+_INNER_BORDER = (255, 185, 207)
+_BTN_FILL = (255, 182, 193)
+_BTN_OUTLINE = (215, 140, 160)
+_BTN_PRESSED = (251, 165, 193)
+_DANGER = (220, 70, 90)
+_DANGER_PRESSED = (200, 50, 70)
+_TITLE_COLOR = (230, 127, 159)
 
 
 class SettingsScene(BaseScene):
@@ -27,16 +37,6 @@ class SettingsScene(BaseScene):
         self.btn_back: pygame.Rect | None = None
         self.btn_confirm_yes: pygame.Rect | None = None
         self.btn_confirm_no: pygame.Rect | None = None
-
-        self.bg_color = (245, 205, 214)
-        self.btn_color = (248, 111, 150)
-        self.btn_text_color = (255, 255, 255)
-        self.btn_outline_color = (0, 0, 0)
-        self.btn_pressed_color = (251, 165, 193)
-        self.seg_filled_color = (248, 111, 150)
-        self.seg_empty_color = (210, 170, 185)
-        self.danger_color = (220, 70, 90)
-        self.danger_pressed_color = (200, 50, 70)
 
     def on_enter(self) -> None:
         self.show_reset_confirm = False
@@ -114,114 +114,119 @@ class SettingsScene(BaseScene):
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
+    def _draw_button(self, screen, rect, label, key, radius=16) -> None:
+        is_pressed = self.pressed_button == key
+        bg = _BTN_PRESSED if is_pressed else _BTN_FILL
+        if not is_pressed:
+            pygame.draw.rect(screen, _BTN_OUTLINE,
+                             pygame.Rect(rect.left + 4, rect.top + 4, rect.width, rect.height),
+                             border_radius=radius)
+        pygame.draw.rect(screen, bg, rect, border_radius=radius)
+        pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=radius)
+        surf = self.app.font_title.render(label, True, _WHITE)
+        screen.blit(surf, surf.get_rect(center=rect.center))
+
     def render(self) -> None:
         screen = self.app.screen
-        w, h = screen.get_size()
-        screen.fill(self.bg_color)
+        width, height = screen.get_size()
 
-        title = self.app.font_title.render("Settings", True, (0, 0, 0))
-        screen.blit(title, title.get_rect(center=(w // 2, int(h * 0.10))))
+        prompt_rect = pygame.Rect(0, 0, width, height)
 
-        cx = w // 2
-        btn_sz = 70
-        btn_r = 12
+        # --- card frame (matching MainMenuScene) ---
+        pygame.draw.rect(screen, _CARD_BG, prompt_rect, border_radius=0)
+        middle_rect = prompt_rect.inflate(-24, -24)
+        pygame.draw.rect(screen, _WHITE, middle_rect, border_radius=56)
+        inner_rect = prompt_rect.inflate(-64, -64)
+        pygame.draw.rect(screen, _WHITE, inner_rect, border_radius=36)
 
-        # Volume row
-        vol_label_y = int(h * 0.28)
-        lbl = self.app.font_body.render("Volume", True, (0, 0, 0))
-        screen.blit(lbl, lbl.get_rect(midleft=(cx - 260, vol_label_y)))
+        # --- Title ---
+        title_surf = self.app.font_title.render("Settings", True, _TITLE_COLOR)
+        screen.blit(title_surf, title_surf.get_rect(centerx=inner_rect.centerx, top=inner_rect.top + 28))
+
+        # --- Back button (top-right) ---
+        back_w, back_h = 120, 52
+        self.btn_back = pygame.Rect(
+            inner_rect.right - 24 - back_w,
+            inner_rect.top + 20,
+            back_w, back_h,
+        )
+        self._draw_button(screen, self.btn_back, "Back", "back", radius=16)
+
+        # --- Volume section ---
+        # Label centered horizontally, ~45% down from inner_rect.top
+        vol_label_y = inner_rect.centery - 110
+        vol_lbl = self.app.font_body.render("Volume", True, (50, 50, 50))
+        screen.blit(vol_lbl, vol_lbl.get_rect(centerx=inner_rect.centerx, top=vol_label_y))
 
         seg_w, seg_h, seg_gap = 52, 36, 8
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
-        seg_x0 = cx - total_seg_w // 2
-        seg_y = vol_label_y + 40
+        seg_x0 = inner_rect.centerx - total_seg_w // 2
+        seg_y = vol_label_y + vol_lbl.get_height() + 30
+
+        # Draw volume segments
         for i in range(_VOLUME_MAX):
             rx = seg_x0 + i * (seg_w + seg_gap)
-            color = self.seg_filled_color if (i + 1) <= self.volume_level else self.seg_empty_color
-            pygame.draw.rect(screen, color, (rx, seg_y, seg_w, seg_h), border_radius=8)
-            if (i + 1) > self.volume_level:
-                pygame.draw.rect(screen, self.btn_outline_color, (rx, seg_y, seg_w, seg_h), width=2, border_radius=8)
+            if (i + 1) <= self.volume_level:
+                pygame.draw.rect(screen, _BTN_FILL, (rx, seg_y, seg_w, seg_h), border_radius=8)
+            else:
+                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=2, border_radius=8)
 
+        # Volume -/+ buttons (62x62, 12px gap from segments)
+        btn_sz = 62
         self.btn_vol_minus = pygame.Rect(seg_x0 - btn_sz - 12, seg_y, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 12, seg_y, btn_sz, btn_sz)
-        for rect, symbol, key in [
-            (self.btn_vol_minus, "-", "vol_minus"),
-            (self.btn_vol_plus, "+", "vol_plus"),
-        ]:
-            pressed = self.pressed_button == key
-            bg = self.btn_pressed_color if pressed else self.btn_color
-            pygame.draw.rect(screen, bg, rect, border_radius=btn_r)
-            pygame.draw.rect(screen, self.btn_outline_color, rect, width=4, border_radius=btn_r)
-            s = self.app.font_button.render(symbol, True, self.btn_text_color)
-            screen.blit(s, s.get_rect(center=rect.center))
+        self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14)
+        self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14)
 
-        # Listen Time row
-        listen_label_y = int(h * 0.50)
-        lbl2 = self.app.font_body.render("Listen Time", True, (0, 0, 0))
-        screen.blit(lbl2, lbl2.get_rect(midleft=(cx - 260, listen_label_y)))
+        # --- Listening Time section ---
+        listen_top = seg_y + seg_h + 30
+        listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
+        screen.blit(listen_lbl, listen_lbl.get_rect(centerx=inner_rect.centerx, top=listen_top))
 
-        val = self.app.font_button.render(f"{self.listen_seconds} sec", True, (0, 0, 0))
-        val_rect = val.get_rect(center=(cx, listen_label_y + 40 + btn_sz // 2))
-        screen.blit(val, val_rect)
+        val_surf = self.app.font_title.render(f"{self.listen_seconds} seconds", True, _BTN_OUTLINE)
+        val_rect = val_surf.get_rect(centerx=inner_rect.centerx, top=listen_top + listen_lbl.get_height() + 20)
+        screen.blit(val_surf, val_rect)
 
-        self.btn_listen_minus = pygame.Rect(val_rect.left - btn_sz - 16, val_rect.top, btn_sz, btn_sz)
-        self.btn_listen_plus = pygame.Rect(val_rect.right + 16, val_rect.top, btn_sz, btn_sz)
-        for rect, symbol, key in [
-            (self.btn_listen_minus, "-", "listen_minus"),
-            (self.btn_listen_plus, "+", "listen_plus"),
-        ]:
-            pressed = self.pressed_button == key
-            bg = self.btn_pressed_color if pressed else self.btn_color
-            pygame.draw.rect(screen, bg, rect, border_radius=btn_r)
-            pygame.draw.rect(screen, self.btn_outline_color, rect, width=4, border_radius=btn_r)
-            s = self.app.font_button.render(symbol, True, self.btn_text_color)
-            screen.blit(s, s.get_rect(center=rect.center))
+        self.btn_listen_minus = pygame.Rect(val_rect.left - btn_sz - 12, val_rect.top, btn_sz, btn_sz)
+        self.btn_listen_plus = pygame.Rect(val_rect.right + 12, val_rect.top, btn_sz, btn_sz)
+        self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14)
+        self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14)
 
-        # Reset Progress button
-        reset_w, reset_h = 320, 90
-        self.btn_reset = pygame.Rect(cx - reset_w // 2, int(h * 0.70), reset_w, reset_h)
-        reset_bg = self.danger_pressed_color if self.pressed_button == "reset" else self.danger_color
+        # --- Reset Progress button ---
+        reset_w, reset_h = 380, 70
+        reset_x = inner_rect.centerx - reset_w // 2
+        reset_y = inner_rect.bottom - 60 - reset_h
+        self.btn_reset = pygame.Rect(reset_x, reset_y, reset_w, reset_h)
+        reset_bg = _DANGER_PRESSED if self.pressed_button == "reset" else _DANGER
         pygame.draw.rect(screen, reset_bg, self.btn_reset, border_radius=15)
-        pygame.draw.rect(screen, self.btn_outline_color, self.btn_reset, width=6, border_radius=15)
-        rs = self.app.font_body.render("Reset Progress", True, (255, 255, 255))
+        rs = self.app.font_body.render("Reset Progress", True, _WHITE)
         screen.blit(rs, rs.get_rect(center=self.btn_reset.center))
 
-        # Back button
-        back_w, back_h = 180, 70
-        self.btn_back = pygame.Rect(24, h - back_h - 24, back_w, back_h)
-        draw_menu_button(screen, pygame, self.btn_back, "Back",
-                         self.pressed_button == "back",
-                         self.btn_color, self.btn_text_color, self.btn_outline_color,
-                         font=self.app.font_body)
+        # --- Outer/inner pink borders (on top) ---
+        pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
+        pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
 
-        # Confirmation overlay
+        # --- Confirmation overlay ---
         if self.show_reset_confirm:
-            overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
 
-            dlg_w = int(w * 0.7)
-            dlg_h = int(h * 0.32)
-            dlg_x = (w - dlg_w) // 2
-            dlg_y = (h - dlg_h) // 2
+            dlg_w = int(width * 0.55)
+            dlg_h = int(height * 0.32)
+            dlg_x = (width - dlg_w) // 2
+            dlg_y = (height - dlg_h) // 2
             dlg = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
-            pygame.draw.rect(screen, (255, 255, 255), dlg, border_radius=12)
-            pygame.draw.rect(screen, (0, 0, 0), dlg, width=6, border_radius=12)
+            pygame.draw.rect(screen, _WHITE, dlg, border_radius=20)
+            pygame.draw.rect(screen, _BTN_OUTLINE, dlg, width=4, border_radius=20)
 
-            msg = self.app.font_body.render("Reset all progress to Level 1?", True, (0, 0, 0))
-            screen.blit(msg, msg.get_rect(center=(w // 2, dlg_y + int(dlg_h * 0.35))))
+            msg = self.app.font_body.render("Reset all progress to Level 1?", True, (50, 50, 50))
+            screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.35))))
 
-            bw, bh = 160, 70
-            by = dlg_y + dlg_h - bh - 24
-            self.btn_confirm_yes = pygame.Rect(w // 2 - bw - 12, by, bw, bh)
-            self.btn_confirm_no = pygame.Rect(w // 2 + 12, by, bw, bh)
-            for rect, text, key in [
-                (self.btn_confirm_yes, "Yes", "confirm_yes"),
-                (self.btn_confirm_no, "No", "confirm_no"),
-            ]:
-                pressed = self.pressed_button == key
-                bg = self.btn_pressed_color if pressed else self.btn_color
-                pygame.draw.rect(screen, bg, rect, border_radius=12)
-                pygame.draw.rect(screen, self.btn_outline_color, rect, width=6, border_radius=12)
-                ts = self.app.font_body.render(text, True, (255, 255, 255))
-                screen.blit(ts, ts.get_rect(center=rect.center))
+            bw, bh = 150, 62
+            by = dlg_y + dlg_h - bh - 22
+            self.btn_confirm_yes = pygame.Rect(width // 2 - bw - 14, by, bw, bh)
+            self.btn_confirm_no = pygame.Rect(width // 2 + 14, by, bw, bh)
+            self._draw_button(screen, self.btn_confirm_yes, "Yes", "confirm_yes")
+            self._draw_button(screen, self.btn_confirm_no, "No", "confirm_no")
