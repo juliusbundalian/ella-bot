@@ -170,14 +170,14 @@ class SettingsScene(BaseScene):
         title_surf = self.app.font_title.render("Settings", True, _TITLE_COLOR)
         screen.blit(title_surf, title_surf.get_rect(centerx=inner_rect.centerx, top=inner_rect.top + 28))
 
-        # --- Back button (top-right) ---
+        # --- Back button (bottom-left) ---
         back_w, back_h = 120, 52
         self.btn_back = pygame.Rect(
-            inner_rect.right - 24 - back_w,
-            inner_rect.top + 20,
+            inner_rect.left + 24,
+            inner_rect.bottom - 20 - back_h,
             back_w, back_h,
         )
-        self._draw_button(screen, self.btn_back, "Back", "back", radius=16)
+        self._draw_button(screen, self.btn_back, "Back", "back", radius=16, font=self.app.font_body)
 
         # --- Volume section ---
         # Label centered horizontally, ~45% down from inner_rect.top
@@ -211,7 +211,7 @@ class SettingsScene(BaseScene):
         listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=inner_rect.centerx, top=listen_top))
 
-        val_surf = self.app.font_title.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
+        val_surf = self.app.font_body.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
         val_rect = val_surf.get_rect(centerx=inner_rect.centerx, top=listen_top + listen_lbl.get_height() + 20)
         screen.blit(val_surf, val_rect)
 
@@ -262,5 +262,5 @@ class SettingsScene(BaseScene):
             by = dlg_y + dlg_h - bh - 22
             self.btn_confirm_yes = pygame.Rect(width // 2 - bw - 14, by, bw, bh)
             self.btn_confirm_no = pygame.Rect(width // 2 + 14, by, bw, bh)
-            self._draw_button(screen, self.btn_confirm_yes, "Yes", "confirm_yes")
-            self._draw_button(screen, self.btn_confirm_no, "No", "confirm_no")
+            self._draw_button(screen, self.btn_confirm_yes, "Yes", "confirm_yes", font=self.app.font_body)
+            self._draw_button(screen, self.btn_confirm_no, "No", "confirm_no", font=self.app.font_body)
