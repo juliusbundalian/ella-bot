@@ -114,7 +114,9 @@ class SettingsScene(BaseScene):
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_button(self, screen, rect, label, key, radius=16) -> None:
+    def _draw_button(self, screen, rect, label, key, radius=16, font=None) -> None:
+        if font is None:
+            font = self.app.font_title
         is_pressed = self.pressed_button == key
         bg = _BTN_PRESSED if is_pressed else _BTN_FILL
         if not is_pressed:
@@ -123,7 +125,7 @@ class SettingsScene(BaseScene):
                              border_radius=radius)
         pygame.draw.rect(screen, bg, rect, border_radius=radius)
         pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=radius)
-        surf = self.app.font_title.render(label, True, _WHITE)
+        surf = font.render(label, True, _WHITE)
         screen.blit(surf, surf.get_rect(center=rect.center))
 
     def render(self) -> None:
@@ -176,8 +178,8 @@ class SettingsScene(BaseScene):
         btn_sz = 62
         self.btn_vol_minus = pygame.Rect(seg_x0 - btn_sz - 12, seg_y, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 12, seg_y, btn_sz, btn_sz)
-        self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14)
-        self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14)
+        self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, font=self.app.font_button)
+        self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14, font=self.app.font_button)
 
         # --- Listening Time section ---
         listen_top = seg_y + seg_h + 30
@@ -190,8 +192,8 @@ class SettingsScene(BaseScene):
 
         self.btn_listen_minus = pygame.Rect(val_rect.left - btn_sz - 12, val_rect.top, btn_sz, btn_sz)
         self.btn_listen_plus = pygame.Rect(val_rect.right + 12, val_rect.top, btn_sz, btn_sz)
-        self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14)
-        self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14)
+        self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14, font=self.app.font_button)
+        self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14, font=self.app.font_button)
 
         # --- Reset Progress button ---
         reset_w, reset_h = 380, 70
