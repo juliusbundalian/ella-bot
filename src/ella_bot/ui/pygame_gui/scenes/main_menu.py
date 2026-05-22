@@ -107,7 +107,7 @@ class MainMenuScene(BaseScene):
                              border_radius=radius)
         pygame.draw.rect(screen, bg, rect, border_radius=radius)
         pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=radius)
-        surf = self.app.font_title.render(label, True, _WHITE)
+        surf = self.app.font_body.render(label, True, _WHITE)
         screen.blit(surf, surf.get_rect(center=rect.center))
 
     def render(self) -> None:
