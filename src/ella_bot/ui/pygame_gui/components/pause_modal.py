@@ -33,6 +33,7 @@ class PauseModal:
 
         self._icon_add = None
         self._icon_remove = None
+        self._icon_close = None
 
         self.restart_rect: Optional[pygame.Rect] = None
         self.main_menu_rect: Optional[pygame.Rect] = None
@@ -77,6 +78,7 @@ class PauseModal:
         for attr, filename, size in [
             ("_icon_add", "assets/ic_add.svg", 32),
             ("_icon_remove", "assets/ic_remove.svg", 32),
+            ("_icon_close", "assets/ic_close.svg", 28),
         ]:
             if getattr(self, attr) is None:
                 try:
@@ -186,19 +188,17 @@ class PauseModal:
         title_cy = modal_rect.top + _HEADER_H // 2
         screen.blit(title_surf, title_surf.get_rect(left=modal_rect.left + 24, centery=title_cy))
 
-        # × close button
         close_w, close_h = 44, 44
         close_rect = pygame.Rect(modal_rect.right - 16 - close_w, modal_rect.top + 14, close_w, close_h)
         self.close_rect = close_rect
+        # Shadow-rect style with danger fill
+        pygame.draw.rect(screen, _BTN_OUTLINE,
+                         pygame.Rect(close_rect.left + 4, close_rect.top + 4, close_w, close_h),
+                         border_radius=12)
         pygame.draw.rect(screen, _DANGER, close_rect, border_radius=12)
-        # Draw × lines
-        pad = 12
-        pygame.draw.line(screen, _WHITE,
-                         (close_rect.left + pad, close_rect.top + pad),
-                         (close_rect.right - pad, close_rect.bottom - pad), width=3)
-        pygame.draw.line(screen, _WHITE,
-                         (close_rect.left + pad, close_rect.bottom - pad),
-                         (close_rect.right - pad, close_rect.top + pad), width=3)
+        pygame.draw.rect(screen, _BTN_OUTLINE, close_rect, width=2, border_radius=12)
+        if self._icon_close:
+            screen.blit(self._icon_close, self._icon_close.get_rect(center=close_rect.center))
 
         # --- Body ---
         if not self.show_confirm:
