@@ -188,7 +188,7 @@ class SettingsScene(BaseScene):
 
         # --- Volume section ---
         vol_label_y = inner_rect.centery - 130
-        vol_lbl = self.app.font_button.render("Volume", True, (50, 50, 50))
+        vol_lbl = self.app.font_body.render("Volume", True, (50, 50, 50))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=inner_rect.centerx, top=vol_label_y))
 
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
@@ -214,12 +214,13 @@ class SettingsScene(BaseScene):
         self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, icon=self._icon_remove or None)
         self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14, icon=self._icon_add or None)
 
+
         # --- Listening Time section ---
         listen_label_y = vol_row_cy + btn_sz // 2 + 28
-        listen_lbl = self.app.font_button.render("Listening Time", True, (50, 50, 50))
+        listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=inner_rect.centerx, top=listen_label_y))
 
-        val_surf = self.app.font_button.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
+        val_surf = self.app.font_body.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
         listen_row_cy = listen_label_y + listen_lbl.get_height() + 24 + btn_sz // 2
         val_rect = val_surf.get_rect(centerx=inner_rect.centerx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)
