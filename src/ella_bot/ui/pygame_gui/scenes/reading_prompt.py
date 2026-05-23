@@ -18,7 +18,7 @@ class ReadingPromptScene(BaseScene):
         self.worker_thread: Optional[threading.Thread] = None
         self.idle_timeout_seconds = 10
         self.last_activity_monotonic = time.monotonic()
-        self.modal = PauseModal()
+        self.modal = PauseModal(self.app)
         self.is_paused = False
         self.menu_button_rect: Optional[pygame.Rect] = None
         self.bot = BotSprite()
@@ -50,21 +50,23 @@ class ReadingPromptScene(BaseScene):
                 if action == "resume":
                     self._set_paused(False)
                     return
+                if action == "ask_restart":
+                    self.modal.show_confirm = True
+                    self.modal.confirm_action = "restart"
+                    return
                 if action == "ask_main_menu":
                     self.modal.show_confirm = True
                     self.modal.confirm_action = "main_menu"
                     return
-                if action == "ask_exit":
-                    self.modal.show_confirm = True
-                    self.modal.confirm_action = "exit"
-                    return
                 if action == "confirm_yes":
+                    if self.modal.confirm_action == "restart":
+                        self.modal.close()
+                        self._start_attempt()
+                        return
                     if self.modal.confirm_action == "main_menu":
                         self.modal.close()
                         self.is_paused = False
                         self.app.switch_scene("main_menu")
-                    elif self.modal.confirm_action == "exit":
-                        self.app.running = False
                     return
                 if action == "confirm_no":
                     self.modal.show_confirm = False
@@ -189,7 +191,7 @@ class ReadingPromptScene(BaseScene):
         pygame.draw.rect(screen, outer_border, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, inner_border, inner_rect, width=12, border_radius=36)
 
-        self.modal.render(screen, self.app.font_body, self.app.font_small, inner_rect)
+        self.modal.render(screen, inner_rect)
 
     def _start_attempt(self) -> None:
         if self.worker_thread and self.worker_thread.is_alive():
