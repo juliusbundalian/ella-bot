@@ -197,7 +197,7 @@ class PauseModal:
                          border_radius=12)
         pygame.draw.rect(screen, _DANGER, close_rect, border_radius=12)
         pygame.draw.rect(screen, _BTN_OUTLINE, close_rect, width=2, border_radius=12)
-        if self._icon_close:
+        if self._icon_close not in (None, False):
             screen.blit(self._icon_close, self._icon_close.get_rect(center=close_rect.center))
 
         # --- Body ---
