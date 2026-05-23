@@ -19,6 +19,7 @@ _HEADER_H = 72
 _BODY_H = 310
 _FOOTER_H = 160
 _MODAL_H = _HEADER_H + _BODY_H + _FOOTER_H   # 542
+_MODAL_H_CONFIRM = _HEADER_H + 140   # 212 — header + message + yes/no buttons
 
 
 class PauseModal:
@@ -175,30 +176,41 @@ class PauseModal:
         overlay.fill((0, 0, 0, 160))
         screen.blit(overlay, (0, 0))
 
-        # Modal rect — 520×560, centered on prompt_rect
+        # Modal rect — width 520, height responsive, centered on prompt_rect
+        modal_h = _MODAL_H_CONFIRM if self.show_confirm else _MODAL_H
         modal_x = prompt_rect.centerx - _MODAL_W // 2
-        modal_y = prompt_rect.centery - _MODAL_H // 2
-        modal_rect = pygame.Rect(modal_x, modal_y, _MODAL_W, _MODAL_H)
+        modal_y = prompt_rect.centery - modal_h // 2
+        modal_rect = pygame.Rect(modal_x, modal_y, _MODAL_W, modal_h)
 
         header_rect = pygame.Rect(modal_rect.left, modal_rect.top, modal_rect.width, _HEADER_H)
-        footer_rect = pygame.Rect(
-            modal_rect.left, modal_rect.bottom - _FOOTER_H,
-            modal_rect.width, _FOOTER_H
-        )
-        body_rect = pygame.Rect(
-            modal_rect.left, modal_rect.top + _HEADER_H,
-            modal_rect.width, _BODY_H
-        )
+
+        if not self.show_confirm:
+            footer_rect = pygame.Rect(
+                modal_rect.left, modal_rect.bottom - _FOOTER_H,
+                modal_rect.width, _FOOTER_H
+            )
+            body_rect = pygame.Rect(
+                modal_rect.left, modal_rect.top + _HEADER_H,
+                modal_rect.width, _BODY_H
+            )
+        else:
+            footer_rect = None
+            body_rect = pygame.Rect(
+                modal_rect.left, modal_rect.top + _HEADER_H,
+                modal_rect.width, modal_h - _HEADER_H
+            )
+
         # Draw modal base (white, fully rounded)
         pygame.draw.rect(screen, _WHITE, modal_rect, border_radius=24)
         # Header (pink, top corners only)
         pygame.draw.rect(screen, _BTN_FILL, header_rect,
                          border_top_left_radius=24, border_top_right_radius=24,
                          border_bottom_left_radius=0, border_bottom_right_radius=0)
-        # Footer (pink, bottom corners only)
-        pygame.draw.rect(screen, _BTN_FILL, footer_rect,
-                         border_top_left_radius=0, border_top_right_radius=0,
-                         border_bottom_left_radius=24, border_bottom_right_radius=24)
+        # Footer (pink, bottom corners only) — normal mode only
+        if footer_rect is not None:
+            pygame.draw.rect(screen, _BTN_FILL, footer_rect,
+                             border_top_left_radius=0, border_top_right_radius=0,
+                             border_bottom_left_radius=24, border_bottom_right_radius=24)
         # Outer border on top
         pygame.draw.rect(screen, _BTN_OUTLINE, modal_rect, width=4, border_radius=24)
 
