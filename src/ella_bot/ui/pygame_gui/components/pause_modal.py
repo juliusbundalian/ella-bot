@@ -15,8 +15,10 @@ _SEG_ACTIVE_FILL = (255, 185, 210)
 _SEG_INACTIVE_BORDER = (56, 56, 56)
 
 _MODAL_W = 520
-_MODAL_H = 560
 _HEADER_H = 72
+_BODY_H = 310
+_FOOTER_H = 160
+_MODAL_H = _HEADER_H + _BODY_H + _FOOTER_H   # 542
 
 
 class PauseModal:
@@ -179,17 +181,24 @@ class PauseModal:
         modal_rect = pygame.Rect(modal_x, modal_y, _MODAL_W, _MODAL_H)
 
         header_rect = pygame.Rect(modal_rect.left, modal_rect.top, modal_rect.width, _HEADER_H)
+        footer_rect = pygame.Rect(
+            modal_rect.left, modal_rect.bottom - _FOOTER_H,
+            modal_rect.width, _FOOTER_H
+        )
         body_rect = pygame.Rect(
             modal_rect.left, modal_rect.top + _HEADER_H,
-            modal_rect.width, modal_rect.height - _HEADER_H
+            modal_rect.width, _BODY_H
         )
-
-        # Draw modal body (white, fully rounded)
+        # Draw modal base (white, fully rounded)
         pygame.draw.rect(screen, _WHITE, modal_rect, border_radius=24)
-        # Draw header (pink, only top corners rounded)
+        # Header (pink, top corners only)
         pygame.draw.rect(screen, _BTN_FILL, header_rect,
                          border_top_left_radius=24, border_top_right_radius=24,
                          border_bottom_left_radius=0, border_bottom_right_radius=0)
+        # Footer (pink, bottom corners only)
+        pygame.draw.rect(screen, _BTN_FILL, footer_rect,
+                         border_top_left_radius=0, border_top_right_radius=0,
+                         border_bottom_left_radius=24, border_bottom_right_radius=24)
         # Outer border on top
         pygame.draw.rect(screen, _BTN_OUTLINE, modal_rect, width=4, border_radius=24)
 
@@ -212,11 +221,11 @@ class PauseModal:
 
         # --- Body ---
         if not self.show_confirm:
-            self._draw_body(screen, modal_rect, body_rect)
+            self._draw_body(screen, modal_rect, body_rect, footer_rect)
         else:
             self._draw_confirm(screen, modal_rect, body_rect)
 
-    def _draw_body(self, screen, modal_rect, body_rect) -> None:
+    def _draw_body(self, screen, modal_rect, body_rect, footer_rect) -> None:
         seg_w, seg_h, seg_gap = 48, 24, 8
         total_seg_w = 6 * seg_w + 5 * seg_gap
         btn_sz = 56
@@ -273,19 +282,19 @@ class PauseModal:
         self._draw_button(screen, self._listen_plus_rect, "+", "listen_plus", radius=btn_radius,
                           icon=self._icon_add)
 
-        # --- Divider ---
-        div_y = listen_row_cy + btn_sz // 2 + 18
+        # --- Divider (at bottom of body) ---
+        div_y = body_rect.bottom - 1
         div_margin = int(modal_rect.width * 0.10)
         pygame.draw.line(screen, _SEG_INACTIVE_BORDER,
                          (modal_rect.left + div_margin, div_y),
                          (modal_rect.right - div_margin, div_y), width=1)
 
-        # --- Action buttons ---
+        # --- Action buttons (inside footer) ---
         btn_w = int(modal_rect.width * 0.82)
         btn_h = 56
         stack_gap = 12
         btn_x = modal_rect.centerx - btn_w // 2
-        btn_y = div_y + 16
+        btn_y = footer_rect.top + (footer_rect.height - 2 * btn_h - stack_gap) // 2
 
         self.restart_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self._draw_button(screen, self.restart_rect, "Restart Level", "restart", radius=18)
