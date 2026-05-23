@@ -34,6 +34,7 @@ class PauseModal:
         self._icon_add = None
         self._icon_remove = None
         self._icon_close = None
+        self._modal_title_font = None
 
         self.restart_rect: Optional[pygame.Rect] = None
         self.main_menu_rect: Optional[pygame.Rect] = None
@@ -89,6 +90,15 @@ class PauseModal:
                     setattr(self, attr, pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha())
                 except Exception:
                     setattr(self, attr, False)
+
+        if self._modal_title_font is None:
+            try:
+                self._modal_title_font = pygame.font.SysFont(
+                    ["Changa One", "Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"],
+                    36
+                )
+            except Exception:
+                self._modal_title_font = self.app.font_body
 
     def _tap_volume(self, delta: int) -> None:
         from ella_bot.config.app_config import save_setting
@@ -184,7 +194,7 @@ class PauseModal:
         pygame.draw.rect(screen, _BTN_OUTLINE, modal_rect, width=4, border_radius=24)
 
         # --- Header content ---
-        title_surf = self.app.font_title.render("Options", True, _WHITE)
+        title_surf = self._modal_title_font.render("Options", True, _WHITE)
         title_cy = modal_rect.top + _HEADER_H // 2
         screen.blit(title_surf, title_surf.get_rect(left=modal_rect.left + 24, centery=title_cy))
 
