@@ -91,7 +91,8 @@ class PauseModal:
     def _tap_volume(self, delta: int) -> None:
         from ella_bot.config.app_config import save_setting
         self.volume_level = max(1, min(6, self.volume_level + delta))
-        self.app.tts.set_volume(self.volume_level / 6)
+        if self.app.tts is not None:
+            self.app.tts.set_volume(self.volume_level / 6)
         save_setting("TTS", "volume", str(self.volume_level))
 
     def _tap_listen(self, delta: int) -> None:
@@ -240,9 +241,9 @@ class PauseModal:
         self._vol_minus_rect = pygame.Rect(seg_x0 - btn_gap - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + btn_gap, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_button(screen, self._vol_minus_rect, "-", "vol_minus", radius=btn_radius,
-                          icon=self._icon_remove or None)
+                          icon=self._icon_remove)
         self._draw_button(screen, self._vol_plus_rect, "+", "vol_plus", radius=btn_radius,
-                          icon=self._icon_add or None)
+                          icon=self._icon_add)
 
         # --- Listening Time section ---
         listen_label_y = vol_row_cy + btn_sz // 2 + 20
@@ -258,9 +259,9 @@ class PauseModal:
         self._listen_minus_rect = pygame.Rect(body_cx - listen_btn_offset - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._listen_plus_rect = pygame.Rect(body_cx + listen_btn_offset, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_button(screen, self._listen_minus_rect, "-", "listen_minus", radius=btn_radius,
-                          icon=self._icon_remove or None)
+                          icon=self._icon_remove)
         self._draw_button(screen, self._listen_plus_rect, "+", "listen_plus", radius=btn_radius,
-                          icon=self._icon_add or None)
+                          icon=self._icon_add)
 
         # --- Divider ---
         div_y = listen_row_cy + btn_sz // 2 + 18
