@@ -19,7 +19,7 @@ _HEADER_H = 72
 _BODY_H = 310
 _FOOTER_H = 160
 _MODAL_H = _HEADER_H + _BODY_H + _FOOTER_H   # 542
-_MODAL_H_CONFIRM = _HEADER_H + 140   # 212 — header + message + yes/no buttons
+_MODAL_H_CONFIRM = _HEADER_H + 160   # 232 — header + message + yes/no buttons with margin
 
 
 class PauseModal:
@@ -301,12 +301,12 @@ class PauseModal:
                          (modal_rect.left + div_margin, div_y),
                          (modal_rect.right - div_margin, div_y), width=1)
 
-        # --- Action buttons (inside footer) ---
+        # --- Action buttons (straddling the body/footer boundary) ---
         btn_w = int(modal_rect.width * 0.82)
         btn_h = 56
         stack_gap = 12
         btn_x = modal_rect.centerx - btn_w // 2
-        btn_y = footer_rect.top + (footer_rect.height - 2 * btn_h - stack_gap) // 2
+        btn_y = footer_rect.top - btn_h // 2
 
         self.restart_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self._draw_button(screen, self.restart_rect, "Restart Level", "restart", radius=18)
