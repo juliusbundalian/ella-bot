@@ -10,7 +10,10 @@ from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
-from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
+from ella_bot.core.events import (
+    StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
+    SubLevelCompleted, SessionCompleted,
+)
 from ella_bot.services.attempt_runner import AttemptRunner
 
 class ReadingPromptScene(BaseScene):
@@ -408,6 +411,15 @@ class ReadingPromptScene(BaseScene):
                 pass
             elif isinstance(event, AttemptReady):
                 self.app.latest_attempt = event.view_model
+            elif isinstance(event, SubLevelCompleted):
+                self.app.latest_result = event.result
+                self.app.latest_result_kind = event.kind
+                self.app.switch_scene("results")
+                return
+            elif isinstance(event, SessionCompleted):
+                self.app.latest_result = event.result
+                self.app.switch_scene("final_eval")
+                return
 
     def _set_paused(self, paused: bool) -> None:
         self.is_paused = paused
