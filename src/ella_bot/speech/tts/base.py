@@ -24,7 +24,7 @@ class TTSConfig:
 
 
 class BaseTTS:
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         raise NotImplementedError
 
     def stop(self) -> None:
@@ -42,9 +42,10 @@ class EspeakTTS(BaseTTS):
             raise RuntimeError("No espeak-ng/espeak binary found in PATH.")
         self._process: Optional[subprocess.Popen] = None
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         self.stop()
-        cmd = [self.binary, "-s", str(self.config.rate)]
+        actual_rate = rate if rate is not None else self.config.rate
+        cmd = [self.binary, "-s", str(actual_rate)]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
         cmd.append(text)
@@ -80,7 +81,7 @@ class Pyttsx3TTS(BaseTTS):
         except Exception as exc:
             raise RuntimeError("pyttsx3 is not installed. Run: pip install pyttsx3") from exc
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         import pyttsx3
         import platform
         
@@ -96,7 +97,8 @@ class Pyttsx3TTS(BaseTTS):
         try:
             print("[TTS] Initializing pyttsx3 engine...")
             engine = pyttsx3.init()
-            engine.setProperty("rate", self.config.rate)
+            actual_rate = rate if rate is not None else self.config.rate
+            engine.setProperty("rate", actual_rate)
 
             if self.config.voice:
                 for voice in engine.getProperty("voices"):
@@ -130,13 +132,14 @@ class MacSayTTS(BaseTTS):
             self.config.voice = "Samantha"
         self._process: Optional[subprocess.Popen] = None
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         self.stop()
         cmd = [self.binary]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
         # Approximate words per minute setting.
-        cmd.extend(["-r", str(self.config.rate), text])
+        actual_rate = rate if rate is not None else self.config.rate
+        cmd.extend(["-r", str(actual_rate), text])
 
         if self.config.non_blocking:
             self._process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -173,10 +176,11 @@ class ReSpeakerTTS(BaseTTS):
             )
         self._process: Optional[subprocess.Popen] = None
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         """Use espeak with ReSpeaker audio output via ALSA."""
         self.stop()
-        cmd = [self.espeak_binary, "-s", str(self.config.rate)]
+        actual_rate = rate if rate is not None else self.config.rate
+        cmd = [self.espeak_binary, "-s", str(actual_rate)]
         if self.config.voice:
             cmd.extend(["-v", self.config.voice])
         cmd.append(text)

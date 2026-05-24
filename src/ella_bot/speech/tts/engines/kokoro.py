@@ -35,11 +35,11 @@ class KokoroTTS(BaseTTS):
                     print(f"[TTS Error] Failed to load Kokoro model: {e}")
             return self._kokoro
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         if self.config.non_blocking:
-            threading.Thread(target=self._speak_sync, args=(text,), daemon=True).start()
+            threading.Thread(target=self._speak_sync, args=(text, rate), daemon=True).start()
         else:
-            self._speak_sync(text)
+            self._speak_sync(text, rate)
 
     def stop(self) -> None:
         try:
@@ -47,7 +47,7 @@ class KokoroTTS(BaseTTS):
         except Exception:
             pass
 
-    def _speak_sync(self, text: str) -> None:
+    def _speak_sync(self, text: str, rate: Optional[int] = None) -> None:
         if not text.strip():
             return
 
@@ -58,11 +58,9 @@ class KokoroTTS(BaseTTS):
             voice = self.config.voice or "af_heart"
             
             # Map rate to speed (Kokoro uses 1.0 as normal)
-            # Ella's rate is usually around 150 (wpm). 
-            # We'll use 1.0 as default.
-            speed = 1.0
-            if self.config.rate != 150:
-                speed = self.config.rate / 150.0
+            # Ella's rate is usually around 150 (wpm).
+            actual_rate = rate if rate is not None else (self.config.rate or 150)
+            speed = actual_rate / 150.0
 
             print(f"[Kokoro TTS] Generating speech with voice '{voice}' at speed {speed:.2f}...")
             samples, sample_rate = kokoro.create(

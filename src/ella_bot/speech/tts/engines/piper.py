@@ -31,11 +31,11 @@ class PiperTTS(BaseTTS):
         self.piper_model = piper_model
         self._process: subprocess.Popen | None = None
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         if self.config.non_blocking:
-            threading.Thread(target=self._speak_sync, args=(text,), daemon=True).start()
+            threading.Thread(target=self._speak_sync, args=(text, rate), daemon=True).start()
         else:
-            self._speak_sync(text)
+            self._speak_sync(text, rate)
 
     def stop(self) -> None:
         try:
@@ -50,19 +50,23 @@ class PiperTTS(BaseTTS):
                 pass
         self._process = None
 
-    def _speak_sync(self, text: str) -> None:
+    def _speak_sync(self, text: str, rate: Optional[int] = None) -> None:
         if not text.strip():
             return
 
         process = None
         try:
+            actual_rate = rate if rate is not None else (self.config.rate or 150)
+            if actual_rate > 0:
+                length_scale = self.config.length_scale * (150.0 / actual_rate)
+
             cmd = [
                 self.piper_binary,
                 "--model", self.piper_model,
                 "--output-raw",
                 "--noise_scale", str(self.config.noise_scale),
                 "--noise_w", str(self.config.noise_w),
-                "--length_scale", str(self.config.length_scale),
+                "--length_scale", str(length_scale),
             ]
             process = subprocess.Popen(
                 cmd,

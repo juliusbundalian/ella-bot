@@ -158,6 +158,7 @@ def build_tts_if_enabled(args: argparse.Namespace):
     )
 
 
+
 def run_gui(args: argparse.Namespace) -> None:
     gui = EllaGUIApp(
         expected_sentence="",
