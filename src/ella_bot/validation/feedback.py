@@ -76,19 +76,97 @@ def simple_syllable_split(word: str) -> str:
     return "-".join(chunks)
 
 
+def get_target_type(expected_sentence: str) -> str:
+    """Determine the type of target text: 'sound', 'word', 'phrase', or 'sentence'."""
+    text = expected_sentence.strip().lower()
+    if not text:
+        return "sentence"
+        
+    words = text.split()
+    
+    # 1. Single character is always a sound (Level 1a, 1b)
+    if len(text) == 1:
+        return "sound"
+        
+    # 2. Syllable blends in Level 1c
+    level_1c_blends = {
+        "ba", "be", "bi", "bo", "bu",
+        "ca", "ce", "ci", "co", "cu",
+        "da", "de", "di", "do", "du",
+        "fa", "fe", "fi", "fo", "fu",
+        "ga", "ge", "gi", "go", "gu",
+        "ha", "he", "hi", "ho", "hu",
+        "ja", "je", "ji", "jo", "ju",
+        "ka", "ke", "ki", "ko", "ku",
+        "la", "le", "li", "lo", "lu",
+        "ma", "me", "mi", "mo", "mu",
+        "na", "ne", "ni", "no", "nu",
+        "pa", "pe", "pi", "po", "pu",
+        "qua", "que", "qui", "quo",
+        "ra", "re", "ri", "ro", "ru",
+        "sa", "se", "si", "so", "su",
+        "ta", "te", "ti", "to", "tu",
+        "va", "ve", "vi", "vo", "vu",
+        "wa", "we", "wi", "wo", "wu",
+        "xa", "xe", "xi", "xo", "xu",
+        "ya", "ye", "yi", "yo", "yu",
+        "za", "ze", "zi", "zo", "zu"
+    }
+    if len(words) == 1 and text in level_1c_blends:
+        return "sound"
+        
+    # 3. Single word is a word
+    if len(words) == 1:
+        return "word"
+        
+    # 4. Multi-word but doesn't end with a sentence punctuation (like ".", "!", "?") or under 4 words is a phrase
+    if len(words) <= 3 or not text.endswith((".", "!", "?")):
+        return "phrase"
+        
+    return "sentence"
+
+
 def pronunciation_hints(
     validation: ValidationResult,
     spoken_confidence_by_word: Dict[str, float],
 ) -> List[str]:
-    _INCORRECT_HINTS = [
-        "Hmm, let's work on the word, {word}. Can you say it again?",
-        "Let's take another look at, {word}. Give it another try!",
-        "The word, {word}, is a little tricky. Let's practice it!",
-    ]
-    _MISSING_HINTS = [
-        "I think you skipped the word, {word}. Try including it this time!",
-        "Don't forget, {word}! Let's make sure we say every word.",
-    ]
+    # Determine the target type from the alignment tokens
+    expected_words = [token.expected for token in validation.alignment if token.expected]
+    expected_sentence = " ".join(expected_words)
+    t_type = get_target_type(expected_sentence)
+
+    if t_type == "sound":
+        _INCORRECT_HINTS = [
+            "Hmm, let's work on the sound, {word}. Can you say it again?",
+            "Let's take another look at, {word}. Give it another try!",
+            "The sound, {word}, is a little tricky. Let's practice it!",
+        ]
+        _MISSING_HINTS = [
+            "I think you skipped the sound, {word}. Try including it this time!",
+            "Don't forget, {word}! Let's make sure we say the sound.",
+        ]
+    elif t_type == "word":
+        _INCORRECT_HINTS = [
+            "Hmm, let's work on the word, {word}. Can you say it again?",
+            "Let's take another look at, {word}. Give it another try!",
+            "The word, {word}, is a little tricky. Let's practice it!",
+        ]
+        _MISSING_HINTS = [
+            "I think you skipped the word, {word}. Try including it this time!",
+            "Don't forget, {word}! Let's make sure we say the word.",
+        ]
+    else:
+        # For phrases and sentences: ELLA is giving a hint about a single word that was missed/incorrect.
+        # So she says "skipped the word, {word}" and "let's make sure we say every word."
+        _INCORRECT_HINTS = [
+            "Hmm, let's work on the word, {word}. Can you say it again?",
+            "Let's take another look at, {word}. Give it another try!",
+            "The word, {word}, is a little tricky. Let's practice it!",
+        ]
+        _MISSING_HINTS = [
+            "I think you skipped the word, {word}. Try including it this time!",
+            "Don't forget, {word}! Let's make sure we say every word.",
+        ]
 
     hints: List[str] = []
 
@@ -243,7 +321,15 @@ def build_spoken_feedback_with_coaching(
     # 4. Append target sentence read demonstration with targeted overrides applied
     sentence_line = _sanitize_for_tts(expected_sentence)
     if sentence_line:
-        lines.append("Alright, let me read the sentence for you.")
+        t_type = get_target_type(expected_sentence)
+        if t_type == "sound":
+            lines.append("Alright, let me make the sound for you.")
+        elif t_type == "word":
+            lines.append("Alright, let me read the word for you.")
+        elif t_type == "phrase":
+            lines.append("Alright, let me read the phrase for you.")
+        else:
+            lines.append("Alright, let me read the sentence for you.")
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
         lines.append(overridden_sentence + ".")
 

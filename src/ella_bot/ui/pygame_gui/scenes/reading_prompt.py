@@ -393,7 +393,7 @@ class ReadingPromptScene(BaseScene):
                     "work on the word", "look at", "tricky", "skipped", "forget",
                     "say it with me", "sounds like", "listen carefully"
                 ]):
-                    if "let me read the sentence" in lower_line:
+                    if "let me read" in lower_line or "let me make" in lower_line:
                         self.app.tts.speak(line)
                     else:
                         slow_rate = int(self.app.tts.config.rate * 0.8)
