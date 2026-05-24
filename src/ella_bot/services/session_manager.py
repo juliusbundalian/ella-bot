@@ -4,7 +4,7 @@ import json
 import random
 from typing import Dict, List
 
-from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS
+from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS, TIER_SUBLEVELS, tier_of
 from ella_bot.utils.file_utils import resolve_config_path
 
 
@@ -90,6 +90,35 @@ class SessionManager:
         self.current_level = self.level_order[idx + 1]
         self.reset_current_level()
         return True
+
+    def tier_of(self, level: str) -> int:
+        return tier_of(level)
+
+    def is_last_sublevel_of_tier(self, level: str) -> bool:
+        subs = TIER_SUBLEVELS.get(tier_of(level), [])
+        return bool(subs) and level == subs[-1]
+
+    def is_last_tier(self, tier: int) -> bool:
+        return tier == max(TIER_SUBLEVELS)
+
+    def current_sublevel_complete(self) -> bool:
+        if self.current_level == "hard":
+            return False
+        return self.completed_in_level >= self.level_goal
+
+    def retry_sublevel(self, level: str) -> None:
+        self.current_level = level
+        self.reset_current_level()
+
+    def retry_tier(self, tier: int) -> None:
+        subs = TIER_SUBLEVELS.get(tier, [])
+        for sub in subs:
+            self.level_indices[sub] = 0
+        if subs:
+            self.current_level = subs[0]
+        self.completed_in_level = 0
+        self.level_goal = self.current_pool_size()
+        self.expected_sentence = self.pick_sentence_for_level(self.current_level)
 
     def try_level_up(self, accuracy: float) -> bool:
         if self.current_level == "hard":

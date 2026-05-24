@@ -93,3 +93,68 @@ def test_reset_to_start_returns_to_level_1a():
     assert sm.completed_in_level == 0
     assert sm.level_indices["1a"] == 0
     assert sm.expected_sentence in ("cat", "dog")
+
+
+FULL_POOLS = {
+    "1a": ["a"], "1b": ["b"], "1c": ["c"], "1d": ["d"],
+    "1e": ["e"], "1f": ["f"], "1g": ["g"],
+    "2a": ["go"], "2b": ["up"], "2c": ["in"], "2d": ["on"],
+    "3": ["the cat"], "4": ["the big dog"],
+}
+
+
+def test_tier_of_and_is_last_sublevel_of_tier():
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="1a")
+    assert s.tier_of("1a") == 1
+    assert s.tier_of("2c") == 2
+    assert s.is_last_sublevel_of_tier("1g") is True
+    assert s.is_last_sublevel_of_tier("1a") is False
+    assert s.is_last_sublevel_of_tier("2d") is True
+    assert s.is_last_sublevel_of_tier("3") is True
+    assert s.is_last_sublevel_of_tier("4") is True
+
+
+def test_is_last_tier():
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="1a")
+    assert s.is_last_tier(4) is True
+    assert s.is_last_tier(1) is False
+
+
+def test_current_sublevel_complete_does_not_depend_on_threshold():
+    # Level 3 has threshold 1.01 (unreachable) but completion is goal-based.
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="3")
+    assert s.current_sublevel_complete() is False
+    s.completed_in_level = s.level_goal
+    assert s.current_sublevel_complete() is True
+
+
+def test_current_sublevel_complete_false_for_hard():
+    s = SessionManager(level_pools={"1a": ["a"], "hard": ["x y"]}, start_level="1a")
+    s.current_level = "hard"
+    s.completed_in_level = 99
+    assert s.current_sublevel_complete() is False
+
+
+def test_advance_to_higher_stage_crosses_tier_boundary():
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="1g")
+    assert s.advance_to_higher_stage() is True
+    assert s.current_level == "2a"
+    assert s.completed_in_level == 0
+
+
+def test_retry_sublevel_resets_progress():
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="1c")
+    s.completed_in_level = 1
+    s.level_indices["1c"] = 0
+    s.retry_sublevel("1c")
+    assert s.current_level == "1c"
+    assert s.completed_in_level == 0
+
+
+def test_retry_tier_returns_to_first_sublevel():
+    s = SessionManager(level_pools=dict(FULL_POOLS), start_level="1g")
+    s.completed_in_level = 1
+    s.retry_tier(1)
+    assert s.current_level == "1a"
+    assert s.completed_in_level == 0
+    assert s.level_indices["1g"] == 0
