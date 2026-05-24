@@ -322,8 +322,9 @@ def build_spoken_feedback_with_coaching(
 
     # 3. Only append the target reading demonstration if the user made errors and needs a model demonstration
     sentence_line = _sanitize_for_tts(expected_sentence)
+    t_type = get_target_type(expected_sentence)
+    
     if not is_correct and sentence_line:
-        t_type = get_target_type(expected_sentence)
         if t_type == "sound":
             lines.append("Alright, let me make the sound for you.")
         elif t_type == "word":
@@ -335,42 +336,47 @@ def build_spoken_feedback_with_coaching(
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
         lines.append(overridden_sentence + ".")
 
-    # 4. Generate exactly ONE highly focused, actionable coaching line for the first meaningful error
+    # 4. Generate exactly ONE highly focused, actionable coaching line for the first meaningful error.
+    # Note: If the target itself is already a single sound or word, ELLA's direct demonstration
+    # of the target is already complete and sufficient. We only append a focused single-word coaching
+    # line for multi-word phrases and sentences to keep the interaction clean and fast!
     coaching: List[str] = []
-    _COACHING_TEMPLATES = [
-        "Say it with me, {spoken_form}!",
-        "The word sounds like, {spoken_form}. Can you try that?",
-        "Listen carefully, {spoken_form}. Now you try!",
-    ]
     
-    # We loop to find the first coachable word, bypassing tiny stop words in multi-word sentences
-    for hint in feedback.pronunciation_hints:
-        # Match words from comma-separated template format: "..., word. ..."
-        match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
-        if not match:
-            continue
-        word = match.group(1).lower()
+    if not is_correct and t_type in ("phrase", "sentence"):
+        _COACHING_TEMPLATES = [
+            "Say it with me, {spoken_form}!",
+            "The word sounds like, {spoken_form}. Can you try that?",
+            "Listen carefully, {spoken_form}. Now you try!",
+        ]
         
-        # If this is a multi-word phrase or sentence lesson, completely bypass tiny grammatical stop words/articles
-        # so we don't subject the student to awkward coaching on words like "the", "a", "of", "and".
-        if len(expected_sentence.split()) > 1 and word in {
-            "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", 
-            "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do", "does", 
-            "did", "as", "by", "if", "this", "that", "it", "they", "we", "he", "she", "you", "i"
-        }:
-            continue
+        # We loop to find the first coachable word, bypassing tiny stop words in multi-word sentences
+        for hint in feedback.pronunciation_hints:
+            # Match words from comma-separated template format: "..., word. ..."
+            match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
+            if not match:
+                continue
+            word = match.group(1).lower()
             
-        # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
-        if len(expected_sentence.split()) > 1 and word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
-            spoken_form = auto_pronunciation_coaching(word)
-        else:
-            spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
-            
-        if spoken_form:
-            template = random.choice(_COACHING_TEMPLATES)
-            coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
-            # Break as soon as we coach exactly ONE meaningful word
-            break
+            # If this is a multi-word phrase or sentence lesson, completely bypass tiny grammatical stop words/articles
+            # so we don't subject the student to awkward coaching on words like "the", "a", "of", "and".
+            if word in {
+                "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", 
+                "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do", "does", 
+                "did", "as", "by", "if", "this", "that", "it", "they", "we", "he", "she", "you", "i"
+            }:
+                continue
+                
+            # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
+            if word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
+                spoken_form = auto_pronunciation_coaching(word)
+            else:
+                spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
+                
+            if spoken_form:
+                template = random.choice(_COACHING_TEMPLATES)
+                coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
+                # Break as soon as we coach exactly ONE meaningful word
+                break
 
     return lines + coaching
 
