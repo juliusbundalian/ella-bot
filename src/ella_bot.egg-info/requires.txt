@@ -1,5 +1,0 @@
-vosk
-sounddevice
-pygame-ce
-pyttsx3
-pronouncing

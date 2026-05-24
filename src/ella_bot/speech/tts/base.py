@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib
-import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
+
+from ella_bot.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -18,6 +21,7 @@ class TTSConfig:
     noise_scale: float = 0.667
     noise_w: float = 0.8
     length_scale: float = 1.0
+    volume: float = 1.0
     kokoro_model: Optional[str] = None
     kokoro_voices: Optional[str] = None
 
@@ -29,6 +33,9 @@ class BaseTTS:
 
     def stop(self) -> None:
         """Stop any active playback if supported."""
+        return None
+
+    def set_volume(self, fraction: float) -> None:
         return None
 
 
@@ -95,7 +102,7 @@ class Pyttsx3TTS(BaseTTS):
 
         # Initialize locally per-call to avoid cross-thread COM errors on Windows
         try:
-            print("[TTS] Initializing pyttsx3 engine...")
+            logger.info("[TTS] Initializing pyttsx3 engine...")
             engine = pyttsx3.init()
             actual_rate = rate if rate is not None else self.config.rate
             engine.setProperty("rate", actual_rate)
@@ -106,16 +113,16 @@ class Pyttsx3TTS(BaseTTS):
                         engine.setProperty("voice", voice.id)
                         break
 
-            print(f"[TTS] Speaking: {text[:40]}...")
+            logger.info(f"[TTS] Speaking: {text[:40]}...")
             engine.say(text)
-            print("[TTS] Calling runAndWait()...")
+            logger.info("[TTS] Calling runAndWait()...")
             engine.runAndWait()
-            print("[TTS] runAndWait() finished.")
-            
+            logger.info("[TTS] runAndWait() finished.")
+
             # Explicitly delete engine to free COM references
             del engine
         except Exception as e:
-            print(f"[TTS Error] pyttsx3 failed: {e}")
+            logger.warning(f"[TTS Error] pyttsx3 failed: {e}")
             raise
 
 

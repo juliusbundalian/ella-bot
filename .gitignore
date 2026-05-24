@@ -1,3 +1,6 @@
+# Build artifacts
+*.egg-info/
+
 # Python bytecode
 __pycache__/
 *.py[cod]
@@ -27,4 +30,4 @@ htmlcov/
 
 models/
 piper/
-sounds/
+sounds/.mcp.json
