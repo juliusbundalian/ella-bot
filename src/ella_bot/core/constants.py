@@ -22,3 +22,18 @@ LEVEL_THRESHOLDS: Dict[str, float] = {
     "3": 1.01,
     "4": 1.01,
 }
+
+TIER_SUBLEVELS: Dict[int, List[str]] = {
+    1: ["1a", "1b", "1c", "1d", "1e", "1f", "1g"],
+    2: ["2a", "2b", "2c", "2d"],
+    3: ["3"],
+    4: ["4"],
+}
+
+
+def tier_of(level: str) -> int:
+    """Return the tier number (1-4) a sub-level belongs to, or 0 if unknown."""
+    for tier, subs in TIER_SUBLEVELS.items():
+        if level in subs:
+            return tier
+    return 0
