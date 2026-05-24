@@ -1,15 +1,16 @@
-import random
 import queue
 import threading
 import time
-import json
 from typing import Dict, List, Optional
 
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
-from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene, AttemptViewModel
+from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
+from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
+from ella_bot.services.attempt_runner import AttemptViewModel
+from ella_bot.services.session_manager import SessionManager
 
 class EllaGUIApp:
     """Pygame GUI loop for E.L.L.A. serving as a SceneManager."""
@@ -31,42 +32,16 @@ class EllaGUIApp:
         self.pronunciation_overrides = pronunciation_overrides
         self.config = config or GUIConfig()
 
-        self.level_order = ["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"]
-        self.level_thresholds = {
-            "1a": 0.85,
-            "1b": 0.85,
-            "1c": 0.85,
-            "1d": 0.85,
-            "1e": 0.85,
-            "1f": 0.85,
-            "1g": 0.85,
-            "2a": 0.88,
-            "2b": 0.90,
-            "2c": 0.92,
-            "2d": 0.95,
-            "3": 1.01,
-            "4": 1.01,
-        }
-
-        with open("config/level_pools.json", "r") as f:
-            self.level_pools = json.load(f)
-        if hard_sentences:
-            self.level_pools["hard"] = hard_sentences
-        elif expected_sentence and expected_sentence not in self.level_pools["hard"]:
-            self.level_pools["hard"] = [expected_sentence]
-
-        if start_level not in self.level_order:
-            start_level = "1a"
-        self.current_level = start_level
-        self.level_indices: Dict[str, int] = {level: 0 for level in self.level_order}
-        self.expected_sentence = self._pick_sentence_for_level(self.current_level)
-        self.completed_in_level = 0
-        self.level_goal = len(self.level_pools.get(self.current_level, []))
+        self.session = SessionManager.from_config_file(
+            start_level=start_level,
+            hard_sentences=hard_sentences,
+            seed_sentence=expected_sentence,
+        )
 
         self.state = "idle"
         self.message = ""
         self.latest_attempt: Optional[AttemptViewModel] = None
-        self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.event_queue: queue.Queue = queue.Queue()
         self.prompt_active = False
 
         self.running = False
@@ -78,20 +53,39 @@ class EllaGUIApp:
         self.scenes = {}
         self.active_scene = None
 
-    def _current_item_number(self) -> int:
-        return self.level_indices.get(self.current_level, 0) + 1
+    # --- Property delegators for session state ---
 
-    def _build_start_announcement(self) -> tuple[str, str]:
-        import random
-        target_sentence = self.expected_sentence.strip() or "the next item"
-        level = self._display_level_name()
-        item = self._current_item_number()
-        intros = [
-            (f"Alright! You're on the {level} level, item {item}. When you're ready, please read,", target_sentence),
-            (f"Okay, let's do this! {level} level, item {item}. Go ahead and read,", target_sentence),
-            (f"Here we go! Item {item} on the {level} level. Please read out loud,", target_sentence),
-        ]
-        return random.choice(intros)
+    @property
+    def expected_sentence(self) -> str:
+        return self.session.expected_sentence
+
+    @expected_sentence.setter
+    def expected_sentence(self, value: str) -> None:
+        self.session.expected_sentence = value
+
+    @property
+    def current_level(self) -> str:
+        return self.session.current_level
+
+    @property
+    def completed_in_level(self) -> int:
+        return self.session.completed_in_level
+
+    @completed_in_level.setter
+    def completed_in_level(self, value: int) -> None:
+        self.session.completed_in_level = value
+
+    @property
+    def level_goal(self) -> int:
+        return self.session.level_goal
+
+    # --- Thin delegators for session methods ---
+
+    def _current_item_number(self) -> int:
+        return self.session.current_item_number()
+
+    def _build_start_announcement(self) -> str:
+        return self.session.build_start_announcement()
 
     def _get_sys_font(self, size, bold=False):
         """Helper to get a system font with cross-platform fallbacks."""
@@ -109,56 +103,25 @@ class EllaGUIApp:
         return self.font_prompt_small
 
     def _pick_sentence_for_level(self, level: str) -> str:
-        pool = self.level_pools.get(level, [])
-        if not pool:
-            return ""
-        if level == "hard":
-            return random.choice(pool)
-        index = self.level_indices.get(level, 0)
-        index = max(0, min(index, len(pool) - 1))
-        return pool[index]
+        return self.session.pick_sentence_for_level(level)
 
     def _display_level_name(self) -> str:
-        return self.current_level.replace("-", " ").title()
+        return self.session.display_level_name()
 
     def _current_pool_size(self) -> int:
-        return len(self.level_pools.get(self.current_level, []))
+        return self.session.current_pool_size()
 
     def _advance_to_next_sentence(self) -> None:
-        if self.current_level == "hard":
-            self.expected_sentence = self._pick_sentence_for_level(self.current_level)
-            return
-        pool = self.level_pools.get(self.current_level, [])
-        if not pool:
-            self.expected_sentence = ""
-            return
-        next_index = min(self.level_indices.get(self.current_level, 0) + 1, len(pool) - 1)
-        self.level_indices[self.current_level] = next_index
-        self.expected_sentence = pool[next_index]
+        self.session.advance_to_next_sentence()
 
     def _reset_current_level(self) -> None:
-        self.completed_in_level = 0
-        self.level_goal = self._current_pool_size()
-        self.level_indices[self.current_level] = 0
-        self.expected_sentence = self._pick_sentence_for_level(self.current_level)
+        self.session.reset_current_level()
 
     def _advance_to_higher_stage(self) -> bool:
-        idx = self.level_order.index(self.current_level)
-        if idx + 1 >= len(self.level_order):
-            return False
-        self.current_level = self.level_order[idx + 1]
-        self._reset_current_level()
-        return True
+        return self.session.advance_to_higher_stage()
 
     def _try_level_up(self, accuracy: float) -> bool:
-        if self.current_level == "hard":
-            return False
-        threshold = self.level_thresholds.get(self.current_level, 1.0)
-        if self.completed_in_level < self.level_goal:
-            return False
-        if accuracy < threshold:
-            return False
-        return self._advance_to_higher_stage()
+        return self.session.try_level_up(accuracy)
 
     def switch_scene(self, scene_name: str) -> None:
         if self.active_scene:
@@ -175,7 +138,7 @@ class EllaGUIApp:
         pygame.init()
         pygame.font.init()
 
-        fullscreen = True if not self.config.fullscreen else self.config.fullscreen
+        fullscreen = self.config.fullscreen
         if fullscreen:
             flags = pygame.FULLSCREEN
             self.screen = pygame.display.set_mode((0, 0), flags)
@@ -188,7 +151,7 @@ class EllaGUIApp:
         width, height = self.screen.get_size()
         
         # Cache standard fonts
-        self.font_title = self._get_sys_font(42)
+        self.font_title = self._get_sys_font(64)
         self.font_subtitle = self._get_sys_font(24)
         self.font_body = self._get_sys_font(30)
         self.font_small = self._get_sys_font(22)
@@ -216,6 +179,7 @@ class EllaGUIApp:
             "intro": IntroScene(self),
             "main_menu": MainMenuScene(self),
             "reading_prompt": ReadingPromptScene(self),
+            "settings": SettingsScene(self),
         }
         self.switch_scene("intro")
 

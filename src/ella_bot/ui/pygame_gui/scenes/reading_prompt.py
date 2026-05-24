@@ -1,64 +1,36 @@
+import io
 import time
 import queue
 import threading
-import re
 from pathlib import Path
 import pygame
-from dataclasses import dataclass
 from typing import Optional
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
-from ella_bot.validation.feedback import FeedbackResult, build_feedback, build_spoken_feedback_with_coaching
-from ella_bot.validation.validators import ValidationResult, validate_spoken_text, normalize, spoken_word_confidence_map, build_highlighted_expected
-from ella_bot.utils.file_utils import get_project_root
-
-@dataclass
-class AttemptViewModel:
-    expected_sentence: str
-    spoken_sentence: str
-    highlighted_expected: str
-    validation: ValidationResult
-    feedback: FeedbackResult
+from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
+from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
+from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
+from ella_bot.services.attempt_runner import AttemptRunner
 
 class ReadingPromptScene(BaseScene):
     def __init__(self, app):
         super().__init__(app)
         self.worker_thread: Optional[threading.Thread] = None
-        self.error_log = []
-        self.max_errors = 5
         self.idle_timeout_seconds = 10
         self.last_activity_monotonic = time.monotonic()
-        self.show_pause_modal = False
-        self.show_confirm_modal = False
-        self.confirm_action: Optional[str] = None
+        self.modal = PauseModal(self.app)
         self.is_paused = False
         self.menu_button_rect: Optional[pygame.Rect] = None
-        self.pause_resume_rect: Optional[pygame.Rect] = None
-        self.pause_main_menu_rect: Optional[pygame.Rect] = None
-        self.pause_exit_rect: Optional[pygame.Rect] = None
-        self.confirm_yes_rect: Optional[pygame.Rect] = None
-        self.confirm_no_rect: Optional[pygame.Rect] = None
-        self.bot_frames = self._load_bot_frames()
-        self.bot_state = "idle"
-        self.bot_frame_index = 0
-        self.bot_last_tick_ms = 0
-        self.bot_intervals_ms = {
-            "idle": 1400,
-            "listening": 320,
-            "speaking": 160,
-            "thinking": 200,
-            "warmup": 200,
-            "error": 1200,
-        }
+        self._icon_menu = None
+        self.bot = BotSprite()
+        self.runner = AttemptRunner(self.app, lambda: self.is_paused)
 
     def on_enter(self) -> None:
         self.app.state = "idle"
         self.app.message = ""
         self.app.prompt_active = False
-        self.show_pause_modal = False
-        self.show_confirm_modal = False
-        self.confirm_action = None
+        self.modal.close()
         self.is_paused = False
         self._touch_activity()
         self.app.animator.set_state("idle", reset=True)
@@ -68,36 +40,41 @@ class ReadingPromptScene(BaseScene):
 
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.show_confirm_modal:
-                if self.confirm_yes_rect and self.confirm_yes_rect.collidepoint(event.pos):
-                    if self.confirm_action == "main_menu":
-                        self.show_confirm_modal = False
-                        self.show_pause_modal = False
-                        self.confirm_action = None
-                        self.is_paused = False
-                        self.app.switch_scene("main_menu")
-                    elif self.confirm_action == "exit":
-                        self.app.running = False
+            if self.modal.visible:
+                action = self.modal.hit_test(event.pos)
+                if action == "close":
+                    if self.modal.show_confirm:
+                        self.modal.show_confirm = False
+                        self.modal.confirm_action = None
+                    else:
+                        self._set_paused(False)
                     return
-                if self.confirm_no_rect and self.confirm_no_rect.collidepoint(event.pos):
-                    self.show_confirm_modal = False
-                    self.confirm_action = None
-                    return
-                return
-
-            if self.show_pause_modal:
-                if self.pause_resume_rect and self.pause_resume_rect.collidepoint(event.pos):
+                if action == "resume":
                     self._set_paused(False)
                     return
-                if self.pause_main_menu_rect and self.pause_main_menu_rect.collidepoint(event.pos):
-                    self.show_confirm_modal = True
-                    self.confirm_action = "main_menu"
+                if action == "ask_restart":
+                    self.modal.show_confirm = True
+                    self.modal.confirm_action = "restart"
                     return
-                if self.pause_exit_rect and self.pause_exit_rect.collidepoint(event.pos):
-                    self.show_confirm_modal = True
-                    self.confirm_action = "exit"
+                if action == "ask_main_menu":
+                    self.modal.show_confirm = True
+                    self.modal.confirm_action = "main_menu"
                     return
-                return
+                if action == "confirm_yes":
+                    if self.modal.confirm_action == "restart":
+                        self.modal.close()
+                        self._start_attempt()
+                        return
+                    if self.modal.confirm_action == "main_menu":
+                        self.modal.close()
+                        self.is_paused = False
+                        self.app.switch_scene("main_menu")
+                    return
+                if action == "confirm_no":
+                    self.modal.show_confirm = False
+                    self.modal.confirm_action = None
+                    return
+                return  # "consumed" — click inside modal but no button hit
 
             if self.menu_button_rect and self.menu_button_rect.collidepoint(event.pos):
                 self._set_paused(True)
@@ -105,7 +82,7 @@ class ReadingPromptScene(BaseScene):
 
             self._start_attempt()
         elif event.type == pygame.KEYDOWN:
-            if self.show_pause_modal or self.show_confirm_modal:
+            if self.modal.visible:
                 return
             if event.key == pygame.K_ESCAPE:
                 self.app.switch_scene("main_menu")
@@ -118,16 +95,16 @@ class ReadingPromptScene(BaseScene):
 
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
-        if not self.show_pause_modal and not self.show_confirm_modal:
-            self._update_bot_animation(now_ms)
-        
-        if self.show_pause_modal or self.show_confirm_modal:
+        if not self.modal.visible:
+            self.bot.update(now_ms, self.app.state)
+
+        if self.modal.visible:
             return
 
         if self.app.state == "listening" and not self.app.prompt_active:
             if time.monotonic() - self.last_activity_monotonic >= self.idle_timeout_seconds:
-                self.app.event_queue.put(("state", "idle"))
-                self.app.event_queue.put(("message", ""))
+                self.app.event_queue.put(StateChanged("idle"))
+                self.app.event_queue.put(MessageChanged(""))
 
     def render(self) -> None:
         screen = self.app.screen
@@ -144,7 +121,7 @@ class ReadingPromptScene(BaseScene):
 
         card_color = (0, 0, 0)
         inner_card_color = (255, 255, 255)
-        outer_border = (230, 127, 159)
+        outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
         pygame.draw.rect(screen, card_color, prompt_rect, border_radius=0)
 
@@ -173,24 +150,25 @@ class ReadingPromptScene(BaseScene):
 
         menu_rect = pygame.Rect(inner_rect.right - 84, inner_rect.top + 24, 56, 56)
         self.menu_button_rect = menu_rect
-        pygame.draw.rect(screen, label_bg, menu_rect, border_radius=12)
-        line_color = (255, 255, 255)
-        line_thickness = 3
-        line_gap = 6
-        line_len = int(menu_rect.width * 0.52)
-        total_height = line_thickness * 3 + line_gap * 2
-        start_y = menu_rect.centery - total_height // 2
-        line_x_left = menu_rect.centerx - line_len // 2
-        line_x_right = menu_rect.centerx + line_len // 2
-        for idx in range(3):
-            y = start_y + idx * (line_thickness + line_gap)
-            pygame.draw.line(
-                screen,
-                line_color,
-                (line_x_left, y),
-                (line_x_right, y),
-                width=line_thickness,
-            )
+        if self._icon_menu is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_asset_path
+                svg_text = resolve_asset_path("assets/ic_menu.svg").read_text()
+                svg_sized = (svg_text
+                             .replace('height="24px"', 'height="32px"')
+                             .replace('width="24px"', 'width="32px"'))
+                self._icon_menu = pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha()
+            except Exception:
+                self._icon_menu = False
+        btn_fill = (255, 182, 193)
+        btn_outline = (94, 42, 59)
+        pygame.draw.rect(screen, btn_outline,
+                         pygame.Rect(menu_rect.left + 4, menu_rect.top + 4, menu_rect.width, menu_rect.height),
+                         border_radius=12)
+        pygame.draw.rect(screen, btn_fill, menu_rect, border_radius=12)
+        pygame.draw.rect(screen, btn_outline, menu_rect, width=2, border_radius=12)
+        if self._icon_menu not in (None, False):
+            screen.blit(self._icon_menu, self._icon_menu.get_rect(center=menu_rect.center))
 
         prompt_font = self.app._prompt_font(pygame)
         prompt_top = inner_rect.top + 120
@@ -211,12 +189,12 @@ class ReadingPromptScene(BaseScene):
             valign="center",
         )
 
-        self._draw_bot(screen, inner_rect)
+        self.bot.draw(screen, inner_rect)
 
         pygame.draw.rect(screen, outer_border, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, inner_border, inner_rect, width=12, border_radius=36)
 
-        self._draw_pause_modal(screen, inner_rect)
+        self.modal.render(screen, inner_rect)
 
     def _start_attempt(self) -> None:
         if self.worker_thread and self.worker_thread.is_alive():
@@ -225,7 +203,7 @@ class ReadingPromptScene(BaseScene):
             return
 
         self.app.prompt_active = True
-        self.worker_thread = threading.Thread(target=self._attempt_worker, daemon=True)
+        self.worker_thread = threading.Thread(target=self.runner.run, daemon=True)
         self.worker_thread.start()
 
     def _attempt_worker(self) -> None:
@@ -409,223 +387,39 @@ class ReadingPromptScene(BaseScene):
 
         if self.worker_thread and self.worker_thread.is_alive():
             return
-
-        self.worker_thread = threading.Thread(target=_worker, daemon=True)
+        self.worker_thread = threading.Thread(target=self.runner.replay, daemon=True)
         self.worker_thread.start()
 
     def _drain_event_queue(self) -> None:
         while True:
             try:
-                event, payload = self.app.event_queue.get_nowait()
+                event = self.app.event_queue.get_nowait()
             except queue.Empty:
                 break
 
-            if event == "state" and isinstance(payload, str):
-                self.app.state = payload
+            if isinstance(event, StateChanged):
+                self.app.state = event.state
                 self._touch_activity()
-                if payload in {"idle", "warmup", "listening", "processing", "speaking", "success", "retry"}:
-                    self.app.animator.set_state(payload, reset=True)
-            elif event == "message" and isinstance(payload, str):
-                self.app.message = payload
-            elif event == "error" and isinstance(payload, str):
+                if event.state in {"idle", "warmup", "listening", "processing", "speaking", "success", "retry"}:
+                    self.app.animator.set_state(event.state, reset=True)
+            elif isinstance(event, MessageChanged):
+                self.app.message = event.message
+            elif isinstance(event, ErrorOccurred):
                 pass
-            elif event == "attempt_ready" and isinstance(payload, AttemptViewModel):
-                self.app.latest_attempt = payload
-
-    def _load_bot_frames(self) -> dict[str, list[pygame.Surface]]:
-        base = get_project_root() / "bot"
-        mapping = {
-            "idle": base / "idle",
-            "listening": base / "listening",
-            "speaking": base / "speaking",
-            "thinking": base / "thinking",
-            "warmup": base / "warmup",
-            "error": base / "error",
-        }
-        frames: dict[str, list[pygame.Surface]] = {}
-        for state, folder in mapping.items():
-            images: list[pygame.Surface] = []
-            if folder.exists():
-                for image_path in sorted(folder.glob("*.png")):
-                    try:
-                        image = pygame.image.load(str(image_path)).convert_alpha()
-                        images.append(image)
-                    except Exception:
-                        continue
-            if images:
-                frames[state] = images
-        return frames
-
-    def _bot_state_for_app(self) -> str:
-        state = self.app.state
-        if state == "processing":
-            return "thinking"
-        if state == "retry":
-            return "error"
-        if state == "success":
-            return "idle"
-        if state in {"idle", "listening", "speaking", "warmup"}:
-            return state
-        return "idle"
-
-    def _update_bot_animation(self, now_ms: int) -> None:
-        next_state = self._bot_state_for_app()
-        if next_state != self.bot_state:
-            self.bot_state = next_state
-            self.bot_frame_index = 0
-            self.bot_last_tick_ms = 0
-
-        frames = self.bot_frames.get(self.bot_state, [])
-        if len(frames) <= 1:
-            return
-
-        if self.bot_last_tick_ms == 0:
-            self.bot_last_tick_ms = now_ms
-            return
-
-        interval_ms = self.bot_intervals_ms.get(self.bot_state, 240)
-        if now_ms - self.bot_last_tick_ms >= interval_ms:
-            self.bot_frame_index = (self.bot_frame_index + 1) % len(frames)
-            self.bot_last_tick_ms = now_ms
-
-    def _draw_bot(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
-        frames = self.bot_frames.get(self.bot_state) or self.bot_frames.get("idle")
-        if not frames:
-            return
-        frame = frames[self.bot_frame_index % len(frames)]
-
-        max_width = int(prompt_rect.width * 0.32)
-        max_height = int(prompt_rect.height * 0.42)
-        frame_w = max(1, frame.get_width())
-        frame_h = max(1, frame.get_height())
-        scale = min(max_width / frame_w, max_height / frame_h)
-        target_size = (max(1, int(frame_w * scale)), max(1, int(frame_h * scale)))
-        rendered = pygame.transform.smoothscale(frame, target_size)
-
-        # Position the bot so its lower part extends beyond the inner card bottom,
-        # then clip the blit to the inner card rect so the lower portion is hidden.
-        overlap = int(target_size[1] * 0.28)
-        target_rect = rendered.get_rect(
-            bottomright=(prompt_rect.right - 26, prompt_rect.bottom + overlap - 48)
-        )
-
-        # Clip drawing to the prompt_rect (inner card) so the sprite appears 'cut off'
-        old_clip = screen.get_clip()
-        try:
-            screen.set_clip(prompt_rect)
-            screen.blit(rendered, target_rect)
-        finally:
-            screen.set_clip(old_clip)
-
-    def _draw_pause_modal(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
-        if not (self.show_pause_modal or self.show_confirm_modal):
-            return
-
-        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
-        screen.blit(overlay, (0, 0))
-
-        dialog_w = int(prompt_rect.width * 0.72)
-        dialog_h = int(prompt_rect.height * 0.40)
-        dialog_x = prompt_rect.centerx - dialog_w // 2
-        dialog_y = prompt_rect.centery - dialog_h // 2
-        dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
-
-        pygame.draw.rect(screen, (255, 255, 255), dialog_rect, border_radius=18)
-        pygame.draw.rect(screen, (230, 127, 159), dialog_rect, width=6, border_radius=18)
-
-        title_text = "Paused" if not self.show_confirm_modal else "Confirm"
-        title_surf = self.app.font_body.render(title_text, True, (40, 40, 40))
-        title_rect = title_surf.get_rect(center=(dialog_rect.centerx, dialog_rect.top + 46))
-        screen.blit(title_surf, title_rect)
-
-        button_w = int(dialog_rect.width * 0.34)
-        button_h = 64
-        button_y = dialog_rect.bottom - button_h - 28
-        left_x = dialog_rect.centerx - button_w - 16
-        right_x = dialog_rect.centerx + 16
-
-        if self.show_confirm_modal:
-            msg = "Return to main menu?" if self.confirm_action == "main_menu" else "Exit the app?"
-            msg_surf = self.app.font_small.render(msg, True, (50, 50, 50))
-            msg_rect = msg_surf.get_rect(center=(dialog_rect.centerx, dialog_rect.centery))
-            screen.blit(msg_surf, msg_rect)
-
-            yes_rect = pygame.Rect(left_x, button_y, button_w, button_h)
-            no_rect = pygame.Rect(right_x, button_y, button_w, button_h)
-            self.confirm_yes_rect = yes_rect
-            self.confirm_no_rect = no_rect
-            self.pause_main_menu_rect = None
-            self.pause_exit_rect = None
-
-            pygame.draw.rect(screen, (236, 133, 165), yes_rect, border_radius=14)
-            pygame.draw.rect(screen, (230, 127, 159), yes_rect, width=4, border_radius=14)
-            yes_text = self.app.font_small.render("Yes", True, (255, 255, 255))
-            screen.blit(yes_text, yes_text.get_rect(center=yes_rect.center))
-
-            pygame.draw.rect(screen, (236, 133, 165), no_rect, border_radius=14)
-            pygame.draw.rect(screen, (230, 127, 159), no_rect, width=4, border_radius=14)
-            no_text = self.app.font_small.render("No", True, (255, 255, 255))
-            screen.blit(no_text, no_text.get_rect(center=no_rect.center))
-            return
-
-        button_w = int(dialog_rect.width * 0.48)
-        button_h = 62
-        stack_gap = 16
-        stack_height = button_h * 3 + stack_gap * 2
-        stack_top = dialog_rect.centery - stack_height // 2 + 12
-
-        resume_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top,
-            button_w,
-            button_h,
-        )
-        main_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top + button_h + stack_gap,
-            button_w,
-            button_h,
-        )
-        exit_rect = pygame.Rect(
-            dialog_rect.centerx - button_w // 2,
-            stack_top + (button_h + stack_gap) * 2,
-            button_w,
-            button_h,
-        )
-
-        self.pause_resume_rect = resume_rect
-        self.pause_main_menu_rect = main_rect
-        self.pause_exit_rect = exit_rect
-        self.confirm_yes_rect = None
-        self.confirm_no_rect = None
-
-        pygame.draw.rect(screen, (236, 133, 165), resume_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), resume_rect, width=4, border_radius=14)
-        resume_text = self.app.font_small.render("Resume", True, (255, 255, 255))
-        screen.blit(resume_text, resume_text.get_rect(center=resume_rect.center))
-
-        pygame.draw.rect(screen, (236, 133, 165), main_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), main_rect, width=4, border_radius=14)
-        main_text = self.app.font_small.render("Main Menu", True, (255, 255, 255))
-        screen.blit(main_text, main_text.get_rect(center=main_rect.center))
-
-        pygame.draw.rect(screen, (236, 133, 165), exit_rect, border_radius=14)
-        pygame.draw.rect(screen, (230, 127, 159), exit_rect, width=4, border_radius=14)
-        exit_text = self.app.font_small.render("Exit", True, (255, 255, 255))
-        screen.blit(exit_text, exit_text.get_rect(center=exit_rect.center))
+            elif isinstance(event, AttemptReady):
+                self.app.latest_attempt = event.view_model
 
     def _set_paused(self, paused: bool) -> None:
         self.is_paused = paused
-        self.show_pause_modal = paused
-        if not paused:
-            self.show_confirm_modal = False
-            self.confirm_action = None
+        if paused:
+            self.modal.open()
+        else:
+            self.modal.close()
         if paused and self.app.tts is not None:
             try:
                 self.app.tts.stop()
             except Exception:
                 pass
         self.app.prompt_active = False
-        self.app.event_queue.put(("state", "idle"))
-        self.app.event_queue.put(("message", ""))
+        self.app.event_queue.put(StateChanged("idle"))
+        self.app.event_queue.put(MessageChanged(""))
