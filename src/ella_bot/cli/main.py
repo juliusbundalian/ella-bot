@@ -22,6 +22,11 @@ def parse_args() -> argparse.Namespace:
         help="Starting level for GUI progression mode.",
     )
     parser.add_argument(
+        "--session-log",
+        default="./data/sessions.jsonl",
+        help="Path to the JSONL evaluation log (relative paths resolve against the project root).",
+    )
+    parser.add_argument(
         "--spoken",
         default="",
         help="Simulated spoken sentence text. If omitted with --use-mic, microphone ASR is used.",
@@ -161,6 +166,10 @@ def build_tts_if_enabled(args: argparse.Namespace):
 
 
 def run_gui(args: argparse.Namespace) -> None:
+    session_log = Path(args.session_log)
+    if not session_log.is_absolute():
+        session_log = get_project_root() / args.session_log
+
     gui = EllaGUIApp(
         expected_sentence="",
         asr=build_asr(args),
@@ -172,6 +181,7 @@ def run_gui(args: argparse.Namespace) -> None:
             width=args.gui_width,
             height=args.gui_height,
             fullscreen=args.fullscreen,
+            session_log_path=session_log,
         ),
     )
     gui.run()

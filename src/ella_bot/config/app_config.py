@@ -37,6 +37,8 @@ def load_settings() -> Dict[str, Any]:
             defaults["start_level"] = parser.get("System", "start_level")
         if parser.has_option("System", "sentence_file"):
             defaults["sentence_file"] = parser.get("System", "sentence_file")
+        if parser.has_option("System", "session_log"):
+            defaults["session_log"] = parser.get("System", "session_log")
 
     if parser.has_section("Speech"):
         if parser.has_option("Speech", "use_mic"):
