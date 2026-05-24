@@ -1,3 +1,4 @@
+import io
 import time
 import queue
 import threading
@@ -21,6 +22,7 @@ class ReadingPromptScene(BaseScene):
         self.modal = PauseModal(self.app)
         self.is_paused = False
         self.menu_button_rect: Optional[pygame.Rect] = None
+        self._icon_menu = None
         self.bot = BotSprite()
         self.runner = AttemptRunner(self.app, lambda: self.is_paused)
 
@@ -148,24 +150,25 @@ class ReadingPromptScene(BaseScene):
 
         menu_rect = pygame.Rect(inner_rect.right - 84, inner_rect.top + 24, 56, 56)
         self.menu_button_rect = menu_rect
-        pygame.draw.rect(screen, label_bg, menu_rect, border_radius=12)
-        line_color = (255, 255, 255)
-        line_thickness = 3
-        line_gap = 6
-        line_len = int(menu_rect.width * 0.52)
-        total_height = line_thickness * 3 + line_gap * 2
-        start_y = menu_rect.centery - total_height // 2
-        line_x_left = menu_rect.centerx - line_len // 2
-        line_x_right = menu_rect.centerx + line_len // 2
-        for idx in range(3):
-            y = start_y + idx * (line_thickness + line_gap)
-            pygame.draw.line(
-                screen,
-                line_color,
-                (line_x_left, y),
-                (line_x_right, y),
-                width=line_thickness,
-            )
+        if self._icon_menu is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_asset_path
+                svg_text = resolve_asset_path("assets/ic_menu.svg").read_text()
+                svg_sized = (svg_text
+                             .replace('height="24px"', 'height="32px"')
+                             .replace('width="24px"', 'width="32px"'))
+                self._icon_menu = pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha()
+            except Exception:
+                self._icon_menu = False
+        btn_fill = (255, 182, 193)
+        btn_outline = (94, 42, 59)
+        pygame.draw.rect(screen, btn_outline,
+                         pygame.Rect(menu_rect.left + 4, menu_rect.top + 4, menu_rect.width, menu_rect.height),
+                         border_radius=12)
+        pygame.draw.rect(screen, btn_fill, menu_rect, border_radius=12)
+        pygame.draw.rect(screen, btn_outline, menu_rect, width=2, border_radius=12)
+        if self._icon_menu not in (None, False):
+            screen.blit(self._icon_menu, self._icon_menu.get_rect(center=menu_rect.center))
 
         prompt_font = self.app._prompt_font(pygame)
         prompt_top = inner_rect.top + 120
