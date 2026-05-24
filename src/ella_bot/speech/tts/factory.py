@@ -32,15 +32,23 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
     if name == "piper":
         from ella_bot.speech.tts.engines.piper import PiperTTS
         from ella_bot.utils.file_utils import resolve_model_path
+        from pathlib import Path
         model = resolve_model_path(
             (config.piper_model if config else None) or "en_US-hfc_female-medium.onnx"
         )
+        if not Path(model).exists():
+            print(f"[TTS Warning] Piper model file not found at {model}. falling back to auto-selection.")
+            return build_tts("auto", config)
         return PiperTTS(config=config, piper_model=str(model))
     if name == "kokoro":
         from ella_bot.speech.tts.engines.kokoro import KokoroTTS
         from ella_bot.utils.file_utils import resolve_model_path
+        from pathlib import Path
         model = resolve_model_path((config.kokoro_model if config else None) or "kokoro-v1.0.onnx")
         voices = resolve_model_path((config.kokoro_voices if config else None) or "voices-v1.0.bin")
+        if not Path(model).exists() or not Path(voices).exists():
+            print(f"[TTS Warning] Kokoro model or voices not found. falling back to auto-selection.")
+            return build_tts("auto", config)
         return KokoroTTS(config=config, model_path=str(model), voices_path=str(voices))
 
     if name == "auto":
