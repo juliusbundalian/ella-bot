@@ -148,22 +148,10 @@ def main():
     # Ensure windowed mode
     settings["fullscreen"] = False
     
-    # Custom level pools override: exactly 1 representative item per level for fast e2e walkthrough
-    custom_level_pools = {
-        "1a": ["a"],
-        "1b": ["s"],
-        "1c": ["ba"],
-        "1d": ["day"],
-        "1e": ["this"],
-        "1f": ["high"],
-        "1g": ["blue"],
-        "2a": ["on"],
-        "2b": ["giant"],
-        "2c": ["phrase"],
-        "2d": ["prose"],
-        "3": ["in the morning"],
-        "4": ["the sun was shining brightly this morning."]
-    }
+    # Load full real level pools from config/level_pools.json
+    pools_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "level_pools.json"))
+    with open(pools_path, "r") as f:
+        real_level_pools = json.load(f)
     
     # Load pronunciation overrides
     overrides_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "pronunciation_overrides.json"))
@@ -210,14 +198,14 @@ def main():
     
     # Inject references and custom pools
     asr.app = app
-    app.level_pools = custom_level_pools
-    app.level_goal = len(custom_level_pools[app.current_level])
+    app.level_pools = real_level_pools
+    app.level_goal = len(real_level_pools[app.current_level])
     app.expected_sentence = app._pick_sentence_for_level(app.current_level)
     
     print("\n==================================================")
     print("  Starting ELLA GUI E2E Automated Integration Test")
     print("  Flow: 1 Failed Attempt -> 1 Successful Attempt")
-    print("        Leveled Up -> Next Level (1a to 4)")
+    print("        All Items -> Level Up -> Next Level (1a to 4)")
     print("==================================================\n")
     
     app.run()
