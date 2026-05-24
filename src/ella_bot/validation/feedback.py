@@ -174,6 +174,38 @@ def build_spoken_feedback_with_overrides(
     return [apply_pronunciation_overrides(line, overrides) for line in lines]
 
 
+def build_targeted_overrides(expected_sentence: str, overrides: Mapping[str, str]) -> Dict[str, str]:
+    if not expected_sentence:
+        return {}
+    
+    clean_target = expected_sentence.strip().lower()
+    targeted: Dict[str, str] = {}
+    
+    # Check if the entire target sentence is a single word or single phoneme (no spaces)
+    if " " not in clean_target:
+        # Single word/letter lesson: apply the override if it exists
+        if clean_target in overrides:
+            targeted[clean_target] = overrides[clean_target]
+        return targeted
+
+    # Multi-word sentence lesson:
+    # Find all words in the target sentence
+    words = re.findall(r"\b[A-Za-z0-9'-]+\b", clean_target)
+    for w in words:
+        # Skip single-letter overrides (like "a", "i") in multi-word sentences
+        # to prevent mangling pronouns/articles in the carrier phrases.
+        if len(w) <= 1:
+            continue
+        # Also skip common open-syllable overrides like "we", "me", "be", "he", "do"
+        # in multi-word sentences because they are pronounced standardly in fluent speech.
+        if w in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
+            continue
+        if w in overrides:
+            targeted[w] = overrides[w]
+            
+    return targeted
+
+
 def build_spoken_feedback_clean(feedback: FeedbackResult, max_hints: int = 2) -> List[str]:
     """Build spoken lines without overrides but with TTS-safe text sanitation."""
     lines = build_spoken_feedback(feedback=feedback, max_hints=max_hints)
@@ -187,15 +219,25 @@ def build_spoken_feedback_with_coaching(
     max_hints: int = 2,
 ) -> List[str]:
     """Build spoken lines and add explicit pronunciation coaching for matched words."""
-    lines = build_spoken_feedback_with_overrides(
+    # 1. Build targeted overrides based only on the expected target sentence words
+    targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
+
+    # 2. Build clean spoken feedback carrier lines
+    lines = build_spoken_feedback_clean(
         feedback=feedback,
-        overrides=overrides,
         max_hints=max_hints,
     )
 
+    # 3. Apply targeted overrides to the conversational carrier lines
+    # This ensures only target words (like "a" or "t") are overridden in the hints!
+    lines = [apply_pronunciation_overrides(line, targeted_overrides) for line in lines]
+
+    # 4. Append target sentence read demonstration with targeted overrides applied
     sentence_line = _sanitize_for_tts(expected_sentence)
     if sentence_line:
-        lines.append(_sanitize_for_tts(f"Alright, let me read the sentence for you. {sentence_line}."))
+        lines.append("Alright, let me read the sentence for you.")
+        overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
+        lines.append(overridden_sentence + ".")
 
     coaching: List[str] = []
     _COACHING_TEMPLATES = [
