@@ -79,6 +79,10 @@ class EllaGUIApp:
     def level_goal(self) -> int:
         return self.session.level_goal
 
+    @level_goal.setter
+    def level_goal(self, value: int) -> None:
+        self.session.level_goal = value
+
     # --- Thin delegators for session methods ---
 
     def _current_item_number(self) -> int:
