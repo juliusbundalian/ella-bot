@@ -139,3 +139,47 @@ class EvaluationService:
             "ts": _now(),
         })
         return result
+
+    def finish_tier(self, tier: int) -> TierResult:
+        levels = TIER_SUBLEVELS.get(tier, [])
+        items_total, first_try, fluency, _ = self._aggregate(levels)
+        result = TierResult(
+            tier=tier, fluency=fluency, rating=rating_for(fluency),
+            items_total=items_total, first_try_correct=first_try,
+            passed=fluency >= self.pass_bar,
+        )
+        self._tier_results[tier] = result
+        self._append({
+            "type": "tier", "session_id": self.session_id, "tier": tier,
+            "fluency": round(result.fluency, 4), "rating": result.rating,
+            "items_total": result.items_total, "first_try_correct": result.first_try_correct,
+            "passed": result.passed, "ts": _now(),
+        })
+        return result
+
+    def finish_session(self) -> CumulativeResult:
+        items_total, first_try, fluency, _ = self._aggregate(list(self._attempts.keys()))
+        tiers = [self._tier_results[t] for t in sorted(self._tier_results)]
+        result = CumulativeResult(
+            overall_fluency=fluency, overall_rating=rating_for(fluency),
+            items_total=items_total, first_try_correct=first_try,
+            tiers=tiers, duration_s=(datetime.now() - self._started).total_seconds(),
+        )
+        self._append({
+            "type": "session", "session_id": self.session_id,
+            "overall_fluency": round(result.overall_fluency, 4),
+            "overall_rating": result.overall_rating,
+            "items_total": result.items_total, "first_try_correct": result.first_try_correct,
+            "tiers": [asdict(t) for t in tiers],
+            "started_ts": self._started.isoformat(timespec="seconds"),
+            "ended_ts": _now(), "duration_s": round(result.duration_s, 1), "ts": _now(),
+        })
+        return result
+
+    def reset_sublevel(self, level: str) -> None:
+        self._attempts[level] = []
+
+    def reset_tier(self, tier: int) -> None:
+        for level in TIER_SUBLEVELS.get(tier, []):
+            self._attempts[level] = []
+        self._tier_results.pop(tier, None)
