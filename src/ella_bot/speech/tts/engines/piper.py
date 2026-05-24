@@ -29,12 +29,26 @@ class PiperTTS(BaseTTS):
         self.config = config
         self.piper_binary = piper_binary
         self.piper_model = piper_model
+        self._process: subprocess.Popen | None = None
 
     def speak(self, text: str) -> None:
         if self.config.non_blocking:
             threading.Thread(target=self._speak_sync, args=(text,), daemon=True).start()
         else:
             self._speak_sync(text)
+
+    def stop(self) -> None:
+        try:
+            sd.stop()
+        except Exception:
+            pass
+        if self._process and self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=2)
+            except Exception:
+                pass
+        self._process = None
 
     def _speak_sync(self, text: str) -> None:
         if not text.strip():
@@ -56,6 +70,7 @@ class PiperTTS(BaseTTS):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
             )
+            self._process = process
             process.stdin.write(text.encode("utf-8") + b"\n")
             process.stdin.close()
 
@@ -90,3 +105,4 @@ class PiperTTS(BaseTTS):
                     process.wait()
                 except Exception:
                     pass
+            self._process = None

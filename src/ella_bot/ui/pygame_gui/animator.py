@@ -11,7 +11,7 @@ class AvatarAnimator:
         self,
         pygame_module,
         assets_dir: Path,
-        frame_size: tuple[int, int],
+        frame_size: tuple[int, int] | None,
         animation_fps: int = 10,
         speaking_fps: int = 5,
         loading_fps: int = 8,
@@ -19,7 +19,8 @@ class AvatarAnimator:
     ) -> None:
         self.pg = pygame_module
         self.assets_dir = assets_dir
-        self.frame_size = frame_size
+        self.frame_size = frame_size or (360, 360)
+        self._use_native_size = frame_size is None
         self.animation_interval_ms = max(40, int(1000 / max(1, animation_fps)))
         self.speaking_interval_ms = max(40, int(1000 / max(1, speaking_fps)))
         self.loading_interval_ms = max(40, int(1000 / max(1, loading_fps)))
@@ -93,7 +94,8 @@ class AvatarAnimator:
                 for image_path in sorted(folder.glob("*.png")):
                     try:
                         image = self.pg.image.load(str(image_path)).convert_alpha()
-                        image = self.pg.transform.smoothscale(image, self.frame_size)
+                        if not self._use_native_size:
+                            image = self.pg.transform.smoothscale(image, self.frame_size)
                         frames.append(image)
                     except Exception:
                         continue

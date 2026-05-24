@@ -96,7 +96,7 @@ class EllaGUIApp:
     def _get_sys_font(self, size, bold=False):
         """Helper to get a system font with cross-platform fallbacks."""
         import pygame
-        fonts = ["Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"]
+        fonts = ["Changa One","Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"]
         return pygame.font.SysFont(fonts, size, bold=bold)
 
     def _prompt_font(self, pygame_module):
@@ -195,12 +195,12 @@ class EllaGUIApp:
         self.font_button = self._get_sys_font(48, bold=True)
         
         # Cache prompt fonts to avoid recreation in render loop
-        self.font_prompt_large = self._get_sys_font(max(72, int(height * 0.28)))
-        self.font_prompt_medium = self._get_sys_font(max(54, int(height * 0.12)))
-        self.font_prompt_small = self._get_sys_font(max(42, int(height * 0.08)))
+        self.font_prompt_large = self._get_sys_font(max(96, int(height * 0.28)))
+        self.font_prompt_medium = self._get_sys_font(max(96, int(height * 0.12)))
+        self.font_prompt_small = self._get_sys_font(max(96, int(height * 0.09)))
         self.font_button = self._get_sys_font(48, bold=True)
 
-        avatar_size = (360, 360)
+        avatar_size = None
         self.animator = AvatarAnimator(
             pygame_module=pygame,
             assets_dir=self.config.assets_dir,

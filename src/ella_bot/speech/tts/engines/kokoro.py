@@ -41,6 +41,12 @@ class KokoroTTS(BaseTTS):
         else:
             self._speak_sync(text)
 
+    def stop(self) -> None:
+        try:
+            sd.stop()
+        except Exception:
+            pass
+
     def _speak_sync(self, text: str) -> None:
         if not text.strip():
             return
