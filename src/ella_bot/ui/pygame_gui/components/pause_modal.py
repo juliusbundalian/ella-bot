@@ -16,10 +16,10 @@ _SEG_INACTIVE_BORDER = (56, 56, 56)
 
 _MODAL_W = 520
 _HEADER_H = 72
-_FOOTER_H = 54        # pink decorative strip — change only this
+_FOOTER_H = 36        # pink decorative strip — change only this
 _MODAL_H = 542        # total height — fixed regardless of footer size
 _BODY_H = _MODAL_H - _HEADER_H - _FOOTER_H   # auto-computed
-_MODAL_H_CONFIRM = _HEADER_H + 160   # 232 — header + message + yes/no buttons with margin
+_MODAL_H_CONFIRM = _HEADER_H + 200   # 232 — header + message + yes/no buttons with margin
 
 
 class PauseModal:
@@ -260,14 +260,14 @@ class PauseModal:
             rx = seg_x0 + i * (seg_w + seg_gap)
             if (i + 1) <= self.volume_level:
                 pygame.draw.rect(screen, _BTN_OUTLINE,
-                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
+                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
             else:
                 pygame.draw.rect(screen, _SEG_INACTIVE_BORDER,
-                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
+                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
 
         self._vol_minus_rect = pygame.Rect(seg_x0 - btn_gap - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + btn_gap, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
@@ -295,18 +295,18 @@ class PauseModal:
                           icon=self._icon_add)
 
         # --- Action buttons (anchored below listen section) ---
-        btn_w = int(modal_rect.width * 0.82)
+        btn_w = int(modal_rect.width * 0.90)
         btn_h = 56
-        stack_gap = 12
+        stack_gap = 16
         btn_x = modal_rect.centerx - btn_w // 2
         btn_y = listen_row_cy + btn_sz // 2 + 28
 
         # Divider just above action buttons
         div_y = btn_y - 12
-        div_margin = int(modal_rect.width * 0.10)
+        div_margin = int(modal_rect.width * 0.90)
         pygame.draw.line(screen, _SEG_INACTIVE_BORDER,
                          (modal_rect.left + div_margin, div_y),
-                         (modal_rect.right - div_margin, div_y), width=1)
+                         (modal_rect.right - div_margin, div_y), width=2)
 
         self.restart_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self._draw_button(screen, self.restart_rect, "Restart Level", "restart", radius=18)

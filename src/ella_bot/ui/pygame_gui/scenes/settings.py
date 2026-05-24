@@ -183,8 +183,8 @@ class SettingsScene(BaseScene):
 
         # Shared sizing for both control rows
         btn_sz = 64
-        btn_gap = 20  # gap between button and content
-        seg_w, seg_h, seg_gap = 56, 32, 10
+        btn_gap = 28  # gap between button and content
+        seg_w, seg_h, seg_gap = 56, 32, 16
 
         # --- Volume section ---
         vol_label_y = inner_rect.centery - 130
@@ -200,20 +200,19 @@ class SettingsScene(BaseScene):
             rx = seg_x0 + i * (seg_w + seg_gap)
             if (i + 1) <= self.volume_level:
                 pygame.draw.rect(screen, _BTN_OUTLINE,
-                                 pygame.Rect(rx + 2, seg_y + 2, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
+                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
             else:
                 pygame.draw.rect(screen, _SEG_INACTIVE_BORDER,
-                                 pygame.Rect(rx + 2, seg_y + 2, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=6)
-                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=6)
+                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=8)
+                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
 
         self.btn_vol_minus = pygame.Rect(seg_x0 - btn_gap - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + btn_gap, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_button(screen, self.btn_vol_minus, "-", "vol_minus", radius=14, icon=self._icon_remove or None)
         self._draw_button(screen, self.btn_vol_plus, "+", "vol_plus", radius=14, icon=self._icon_add or None)
-
 
         # --- Listening Time section ---
         listen_label_y = vol_row_cy + btn_sz // 2 + 28
@@ -225,8 +224,8 @@ class SettingsScene(BaseScene):
         val_rect = val_surf.get_rect(centerx=inner_rect.centerx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)
 
-        self.btn_listen_minus = pygame.Rect(val_rect.left - btn_gap - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self.btn_listen_plus = pygame.Rect(val_rect.right + btn_gap, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_listen_minus = pygame.Rect(val_rect.left - 164 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_listen_plus = pygame.Rect(val_rect.right + 164, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14, icon=self._icon_remove or None)
         self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14, icon=self._icon_add or None)
 

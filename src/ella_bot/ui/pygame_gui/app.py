@@ -151,7 +151,7 @@ class EllaGUIApp:
         width, height = self.screen.get_size()
         
         # Cache standard fonts
-        self.font_title = self._get_sys_font(42)
+        self.font_title = self._get_sys_font(64)
         self.font_subtitle = self._get_sys_font(24)
         self.font_body = self._get_sys_font(30)
         self.font_small = self._get_sys_font(22)
