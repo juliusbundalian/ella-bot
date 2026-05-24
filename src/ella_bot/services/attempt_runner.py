@@ -5,7 +5,10 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
+from ella_bot.core.events import (
+    StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
+    SubLevelCompleted, SessionCompleted,
+)
 from ella_bot.utils.logging import get_logger
 from ella_bot.validation.feedback import (
     FeedbackResult,
@@ -123,31 +126,60 @@ class AttemptRunner:
                     self.app.tts.speak(line)
                 logger.debug("Audio feedback finished")
 
-            if feedback.level_message == "Correct!":
-                self.app.session.completed_in_level = min(
-                    self.app.session.completed_in_level + 1, self.app.session.level_goal
+            session = self.app.session
+            evaluation = self.app.evaluation
+            level = session.current_level
+            correct = feedback.level_message == "Correct!"
+
+            evaluation.record_attempt(
+                level=level,
+                item=session.current_item_number(),
+                expected=session.expected_sentence,
+                heard=asr_result.transcript,
+                accuracy=validation.accuracy,
+                wer=validation.wer,
+                correct=correct,
+            )
+
+            if correct:
+                session.completed_in_level = min(
+                    session.completed_in_level + 1, session.level_goal
                 )
                 self.app.event_queue.put(StateChanged("success"))
             else:
                 self.app.event_queue.put(StateChanged("retry"))
 
-            if self.app.session.try_level_up(validation.accuracy):
-                level_name = self.app.session.display_level_name()
-                if self.app.audio_feedback and self.app.tts is not None:
-                    if self._is_paused():
-                        return
-                    self.app.tts.speak(
-                        f"Wow, you leveled up! Welcome to the {level_name} level. You're doing amazing!"
-                    )
-                self.app.event_queue.put(MessageChanged(f"Level up! You reached {level_name}!"))
-            else:
-                if feedback.level_message.startswith(
-                    ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
-                ):
-                    self.app.session.advance_to_next_sentence()
-                    self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
+            if session.current_sublevel_complete():
+                tier = session.tier_of(level)
+                sub_result = evaluation.finish_sublevel(level)
+                if session.is_last_sublevel_of_tier(level):
+                    tier_result = evaluation.finish_tier(tier)
+                    if session.is_last_tier(tier):
+                        cumulative = evaluation.finish_session()
+                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                            self.app.tts.speak(
+                                "Incredible! You finished every level. Let's see how you did!"
+                            )
+                        self.app.event_queue.put(SessionCompleted(cumulative))
+                    else:
+                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                            self.app.tts.speak(
+                                f"Wow, you finished Level {tier}! You're doing amazing!"
+                            )
+                        self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
                 else:
-                    self.app.event_queue.put(MessageChanged("Give it another try!"))
+                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.tts.speak("Great job! Let's see how you did!")
+                    self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
+                return
+
+            if feedback.level_message.startswith(
+                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
+            ):
+                session.advance_to_next_sentence()
+                self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
+            else:
+                self.app.event_queue.put(MessageChanged("Give it another try!"))
 
             time.sleep(0.6)
             self.app.event_queue.put(StateChanged("listening"))
