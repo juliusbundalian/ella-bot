@@ -88,26 +88,26 @@ def get_target_type(expected_sentence: str) -> str:
     if len(text) == 1:
         return "sound"
         
-    # 2. Syllable blends in Level 1c
+    # 2. Syllable blends in Level 1c (excluding standard sight words to classify them correctly as words)
     level_1c_blends = {
         "ba", "be", "bi", "bo", "bu",
         "ca", "ce", "ci", "co", "cu",
-        "da", "de", "di", "do", "du",
+        "da", "de", "di", "du",
         "fa", "fe", "fi", "fo", "fu",
-        "ga", "ge", "gi", "go", "gu",
-        "ha", "he", "hi", "ho", "hu",
+        "ga", "ge", "gi", "gu",
+        "ha", "hi", "ho", "hu",
         "ja", "je", "ji", "jo", "ju",
         "ka", "ke", "ki", "ko", "ku",
         "la", "le", "li", "lo", "lu",
-        "ma", "me", "mi", "mo", "mu",
-        "na", "ne", "ni", "no", "nu",
+        "ma", "mi", "mo", "mu",
+        "na", "ne", "ni", "nu",
         "pa", "pe", "pi", "po", "pu",
         "qua", "que", "qui", "quo",
         "ra", "re", "ri", "ro", "ru",
-        "sa", "se", "si", "so", "su",
-        "ta", "te", "ti", "to", "tu",
+        "sa", "se", "si", "su",
+        "ta", "te", "ti", "tu",
         "va", "ve", "vi", "vo", "vu",
-        "wa", "we", "wi", "wo", "wu",
+        "wa", "wi", "wo", "wu",
         "xa", "xe", "xi", "xo", "xu",
         "ya", "ye", "yi", "yo", "yu",
         "za", "ze", "zi", "zo", "zu"
@@ -234,7 +234,8 @@ def _sanitize_for_tts(text: str) -> str:
     # Remove quote wrapping around words to prevent odd phoneme output.
     output = re.sub(r"'([A-Za-z]+)'", r"\1", text)
     output = output.replace("->", " to ")
-    output = output.replace(":", ",")
+    # Replace colons with commas unless preceded by "phonemes"
+    output = re.sub(r'(?<!\bphonemes):', ',', output)
     output = re.sub(r"\s+", " ", output).strip()
     return output
 
@@ -304,24 +305,27 @@ def build_spoken_feedback_with_coaching(
     expected_sentence: str = "",
     max_hints: int = 2,
 ) -> List[str]:
-    """Build spoken lines and add explicit pronunciation coaching for matched words."""
+    """Build concise spoken lines and add exactly one highly-focused pronunciation coaching line if needed."""
     # 1. Build targeted overrides based only on the expected target sentence words
     targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
 
-    # 2. Build clean spoken feedback carrier lines
-    lines = build_spoken_feedback_clean(
-        feedback=feedback,
-        max_hints=max_hints,
-    )
-
-    # 3. Apply targeted overrides to the conversational carrier lines
-    # This ensures only target words (like "a" or "t") are overridden in the hints!
+    # 2. Start with only the dynamic level message (encouragement/status).
+    # To keep speech concise and avoid redundant carrier paragraphs, we omit verbose descriptive hints.
+    lines = [_sanitize_for_tts(feedback.level_message)]
     lines = [apply_pronunciation_overrides(line, targeted_overrides) for line in lines]
 
-    # 4. Append target sentence read demonstration with targeted overrides applied
+    # Check if the attempt was successful (i.e. correct accuracy, or no errors reported)
+    is_correct = (
+        "correct" in feedback.level_message.lower() or 
+        "great" in feedback.level_message.lower() or 
+        not feedback.pronunciation_hints
+    )
+
+    # 3. Only append the target reading demonstration if the user made errors and needs a model demonstration
     sentence_line = _sanitize_for_tts(expected_sentence)
-    if sentence_line:
-        t_type = get_target_type(expected_sentence)
+    t_type = get_target_type(expected_sentence)
+    
+    if not is_correct and sentence_line:
         if t_type == "sound":
             lines.append("Alright, let me make the sound for you.")
         elif t_type == "word":
@@ -333,29 +337,49 @@ def build_spoken_feedback_with_coaching(
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
         lines.append(overridden_sentence + ".")
 
+    # 4. Generate exactly ONE highly focused, actionable coaching line for the first meaningful error.
+    # Note: If the target itself is already a single sound or word, ELLA's direct demonstration
+    # of the target is already complete and sufficient. We only append a focused single-word coaching
+    # line for multi-word phrases and sentences to keep the interaction clean and fast!
     coaching: List[str] = []
-    _COACHING_TEMPLATES = [
-        "Say it with me, {spoken_form}!",
-        "The word sounds like, {spoken_form}. Can you try that?",
-        "Listen carefully, {spoken_form}. Now you try!",
-    ]
-    for hint in feedback.pronunciation_hints[:max_hints]:
-        # Match words from comma-separated template format: "..., word. ..."
-        match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
-        if not match:
-            continue
-        word = match.group(1).lower()
-        # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
-        # (like "we", "me", "be", "he", "do") which are pronounced standardly in fluent speech.
-        if len(expected_sentence.split()) > 1 and word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
-            spoken_form = auto_pronunciation_coaching(word)
-        else:
-            spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
-        if spoken_form:
-            template = random.choice(_COACHING_TEMPLATES)
-            coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
+    
+    if not is_correct and t_type in ("phrase", "sentence"):
+        _COACHING_TEMPLATES = [
+            "Say it with me, {spoken_form}!",
+            "The word sounds like, {spoken_form}. Can you try that?",
+            "Listen carefully, {spoken_form}. Now you try!",
+        ]
+        
+        # We loop to find the first coachable word, bypassing tiny stop words in multi-word sentences
+        for hint in feedback.pronunciation_hints:
+            # Match words from comma-separated template format: "..., word. ..."
+            match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
+            if not match:
+                continue
+            word = match.group(1).lower()
+            
+            # If this is a multi-word phrase or sentence lesson, completely bypass tiny grammatical stop words/articles
+            # so we don't subject the student to awkward coaching on words like "the", "a", "of", "and".
+            if word in {
+                "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", 
+                "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do", "does", 
+                "did", "as", "by", "if", "this", "that", "it", "they", "we", "he", "she", "you", "i"
+            }:
+                continue
+                
+            # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
+            if word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
+                spoken_form = auto_pronunciation_coaching(word)
+            else:
+                spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
+                
+            if spoken_form:
+                template = random.choice(_COACHING_TEMPLATES)
+                coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
+                # Break as soon as we coach exactly ONE meaningful word
+                break
 
-    return lines + coaching[:max_hints]
+    return lines + coaching
 
 
 _ARPABET_TO_SOUND = {

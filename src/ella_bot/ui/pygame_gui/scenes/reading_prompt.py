@@ -95,6 +95,11 @@ class ReadingPromptScene(BaseScene):
             elif event.key == pygame.K_r:
                 self._touch_activity()
                 self._speak_last_feedback()
+            elif event.key == pygame.K_RETURN:
+                self._touch_activity()
+                if self.app.asr is not None:
+                    self.app.asr.bypass_transcription = self.app.expected_sentence
+                self._start_attempt()
 
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
@@ -303,7 +308,10 @@ class ReadingPromptScene(BaseScene):
                         self.app.tts.speak(line)
                 print("[DEBUG] Audio feedback finished.")
 
-            if feedback.level_message == "Correct!":
+            # Accuracy >= 95% is considered a successful read
+            is_success = (validation.accuracy >= 0.95)
+
+            if is_success:
                 self.app.completed_in_level = min(self.app.completed_in_level + 1, self.app.level_goal)
                 self.app.event_queue.put(("state", "success"))
             else:
@@ -317,7 +325,7 @@ class ReadingPromptScene(BaseScene):
                     self.app.tts.speak(f"Wow, you leveled up! Welcome to the {level_name} level. You're doing amazing!")
                 self.app.event_queue.put(("message", f"Level up! You reached {level_name}!"))
             else:
-                if feedback.level_message.startswith(("Excellent", "Great", "Wonderful", "That's right", "Perfect")):
+                if is_success:
                     self.app._advance_to_next_sentence()
                     self.app.event_queue.put(("message", "Nice work! Moving to the next one."))
                 else:

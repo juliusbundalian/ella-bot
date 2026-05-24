@@ -26,6 +26,11 @@ class BaseASR:
 	"""Abstract ASR adapter."""
 
 	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+		bypass = getattr(self, "bypass_transcription", None)
+		if bypass is not None:
+			self.bypass_transcription = None  # Clear the bypass flag
+			words = [WordScore(word=w, confidence=0.99) for w in bypass.split()]
+			return ASRResult(transcript=bypass, words=words)
 		raise NotImplementedError
 
 
@@ -93,6 +98,12 @@ class VoskASR(BaseASR):
 			raise RuntimeError(error_msg) from exc
 
 	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+		bypass = getattr(self, "bypass_transcription", None)
+		if bypass is not None:
+			self.bypass_transcription = None  # Clear the bypass flag
+			words = [WordScore(word=w, confidence=0.99) for w in bypass.split()]
+			return ASRResult(transcript=bypass, words=words)
+
 		try:
 			import queue
 			sd = importlib.import_module("sounddevice")

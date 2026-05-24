@@ -43,13 +43,13 @@ class PiperTTS(BaseTTS):
         )
         self._stop = threading.Event()
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, rate: Optional[int] = None) -> None:
         stop_event = threading.Event()
         self._stop = stop_event
         if self.config.non_blocking:
-            threading.Thread(target=self._speak_sync, args=(text, stop_event), daemon=True).start()
+            threading.Thread(target=self._speak_sync, args=(text, stop_event, rate), daemon=True).start()
         else:
-            self._speak_sync(text, stop_event)
+            self._speak_sync(text, stop_event, rate)
 
     def stop(self) -> None:
         self._stop.set()
@@ -66,25 +66,56 @@ class PiperTTS(BaseTTS):
             volume=fraction,
         )
 
-    def _speak_sync(self, text: str, stop_event: threading.Event) -> None:
+    def _speak_sync(self, text: str, stop_event: threading.Event, rate: Optional[int] = None) -> None:
         if not text.strip():
             return
 
+        syn_config = self._syn_config
+        if rate is not None and rate > 0 and self.config.rate > 0:
+            speed_ratio = self.config.rate / rate
+            syn_config = SynthesisConfig(
+                length_scale=self.config.length_scale * speed_ratio,
+                noise_scale=self.config.noise_scale,
+                noise_w_scale=self.config.noise_w,
+                volume=self.config.volume,
+            )
+
         stream = None
         try:
-            for chunk in self._voice.synthesize(text, syn_config=self._syn_config):
-                if stop_event.is_set():
-                    break
-                pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
-                pcm_warm = _apply_warmth(pcm)
-                if stream is None:
-                    stream = sd.RawOutputStream(
-                        samplerate=chunk.sample_rate,
-                        channels=chunk.sample_channels,
-                        dtype="int16",
-                    )
-                    stream.start()
+            if text.startswith(("phonemes:", "phonemes,")):
+                raw_phonemes_str = text[9:].strip().rstrip(".!?")
+                phonemes_list = list(raw_phonemes_str)
+                phoneme_ids = self._voice.phonemes_to_ids(phonemes_list)
+                
+                audio_sample = self._voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config)
+                
+                if audio_sample.dtype == np.float32:
+                    audio_sample = (audio_sample * 32767).astype(np.int16)
+                
+                pcm_warm = _apply_warmth(audio_sample)
+                sample_rate = getattr(self._voice.config, "sample_rate", 22050)
+                
+                stream = sd.RawOutputStream(
+                    samplerate=sample_rate,
+                    channels=1,
+                    dtype="int16",
+                )
+                stream.start()
                 stream.write(pcm_warm.tobytes())
+            else:
+                for chunk in self._voice.synthesize(text, syn_config=syn_config):
+                    if stop_event.is_set():
+                        break
+                    pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
+                    pcm_warm = _apply_warmth(pcm)
+                    if stream is None:
+                        stream = sd.RawOutputStream(
+                            samplerate=chunk.sample_rate,
+                            channels=chunk.sample_channels,
+                            dtype="int16",
+                        )
+                        stream.start()
+                    stream.write(pcm_warm.tobytes())
         except Exception as exc:
             logger.error("PiperTTS error: %s", exc)
         finally:

@@ -27,7 +27,7 @@ class KokoroTTS(BaseTTS):
                     print(f"[TTS] Pre-loading Kokoro model from {self.model_path}...")
                     self._kokoro = Kokoro(self.model_path, self.voices_path)
                     # Warm-up run to initialize ONNX session kernels
-                    self._kokoro.create(" ", voice="af_heart", speed=1.0, lang="en-us")
+                    self._kokoro.create("hello", voice="af_heart", speed=1.0, lang="en-us")
                     print("[TTS] Kokoro model loaded and warmed up.")
                 except ImportError:
                     raise RuntimeError("kokoro-onnx is not installed. Run: pip install kokoro-onnx")

@@ -55,9 +55,19 @@ class AttemptRunner:
                 announcement = self.app.session.build_start_announcement()
                 target_item = self.app.session.expected_sentence.strip()
                 target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
-                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                announcement_with_overrides = pattern.sub(target_override, announcement)
-                self.app.tts.speak(announcement_with_overrides)
+                if "phonemes:" in target_override:
+                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                    parts = pattern.split(announcement, maxsplit=1)
+                    if len(parts) == 2:
+                        intro_part = parts[0].strip().rstrip(",").rstrip(".")
+                        self.app.tts.speak(intro_part)
+                        self.app.tts.speak(target_override)
+                    else:
+                        self.app.tts.speak(announcement)
+                else:
+                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                    announcement_with_overrides = pattern.sub(target_override, announcement)
+                    self.app.tts.speak(announcement_with_overrides)
             except Exception as exc:
                 logger.debug("Intro TTS error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))

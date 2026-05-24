@@ -31,7 +31,7 @@ class SessionManager:
         hard_sentences: List[str] | None = None,
         seed_sentence: str = "",
     ) -> "SessionManager":
-        with open(resolve_config_path("level_pools.json"), "r") as f:
+        with open(resolve_config_path("level_pools.json"), "r", encoding="utf-8") as f:
             level_pools = json.load(f)
         if hard_sentences:
             level_pools["hard"] = hard_sentences
