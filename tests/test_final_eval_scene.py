@@ -1,4 +1,3 @@
-import time
 from unittest.mock import MagicMock
 
 
@@ -16,11 +15,10 @@ def _make_scene(tmp_path):
 
 def test_play_again_resets_and_restarts(tmp_path):
     scene = _make_scene(tmp_path)
-    old_session_id = scene.app.evaluation.session_id
-    time.sleep(1)  # Ensure different second for session_id timestamp
+    old_evaluation = scene.app.evaluation
     scene._do_play_again()
     scene.app.session.reset_to_start.assert_called_once()
-    assert scene.app.evaluation.session_id != old_session_id  # fresh evaluation session
+    assert scene.app.evaluation is not old_evaluation  # fresh EvaluationService created
     scene.app.switch_scene.assert_called_with("reading_prompt")
 
 
