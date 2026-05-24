@@ -9,8 +9,11 @@ from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
+from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
+from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
 from ella_bot.services.attempt_runner import AttemptViewModel
 from ella_bot.services.session_manager import SessionManager
+from ella_bot.services.evaluation import EvaluationService
 
 class EllaGUIApp:
     """Pygame GUI loop for E.L.L.A. serving as a SceneManager."""
@@ -37,6 +40,13 @@ class EllaGUIApp:
             hard_sentences=hard_sentences,
             seed_sentence=expected_sentence,
         )
+
+        self.evaluation = EvaluationService(
+            log_path=self.config.session_log_path,
+            pass_bar=self.config.pass_bar,
+        )
+        self.latest_result = None
+        self.latest_result_kind = None
 
         self.state = "idle"
         self.message = ""
@@ -180,6 +190,8 @@ class EllaGUIApp:
             "main_menu": MainMenuScene(self),
             "reading_prompt": ReadingPromptScene(self),
             "settings": SettingsScene(self),
+            "results": ResultsScene(self),
+            "final_eval": FinalEvaluationScene(self),
         }
         self.switch_scene("intro")
 
