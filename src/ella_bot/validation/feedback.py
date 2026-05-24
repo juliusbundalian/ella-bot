@@ -140,7 +140,15 @@ def build_spoken_feedback(feedback: FeedbackResult, max_hints: int = 2) -> List[
 
 
 def _replace_word_case_insensitive(text: str, word: str, replacement: str) -> str:
-    pattern = re.compile(rf"\b{re.escape(word)}\b", flags=re.IGNORECASE)
+    # If the word is lowercase "i", treat it as case-sensitive to avoid matching capitalized conversational "I"
+    if word == "i":
+        pattern = re.compile(rf"\b{re.escape(word)}\b")
+    # Avoid matching single-letter/phonics overrides if preceded by an apostrophe
+    # (e.g. don't replace "s" in "Let's" or "t" in "Don't")
+    elif len(word) == 1:
+        pattern = re.compile(rf"(?<!')\b{re.escape(word)}\b", flags=re.IGNORECASE)
+    else:
+        pattern = re.compile(rf"\b{re.escape(word)}\b", flags=re.IGNORECASE)
     return pattern.sub(replacement, text)
 
 
@@ -251,7 +259,12 @@ def build_spoken_feedback_with_coaching(
         if not match:
             continue
         word = match.group(1).lower()
-        spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
+        # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
+        # (like "we", "me", "be", "he", "do") which are pronounced standardly in fluent speech.
+        if len(expected_sentence.split()) > 1 and word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
+            spoken_form = auto_pronunciation_coaching(word)
+        else:
+            spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
         if spoken_form:
             template = random.choice(_COACHING_TEMPLATES)
             coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
