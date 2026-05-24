@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.utils.file_utils import resolve_asset_path, get_project_root
 
 
 @dataclass
@@ -17,6 +17,8 @@ class GUIConfig:
     processing_fps: int = 2
     title: str = "E.L.L.A. Reading Assistant"
     assets_dir: Path = resolve_asset_path("assets")
+    session_log_path: Path = get_project_root() / "data" / "sessions.jsonl"
+    pass_bar: float = 0.70
 
     background_top: tuple[int, int, int] = (236, 246, 255)
     background_bottom: tuple[int, int, int] = (212, 233, 246)
