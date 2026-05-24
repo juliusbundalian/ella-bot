@@ -12,7 +12,7 @@ from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
-from ella_bot.speech.asr.base import BaseASR, ASRResult, WordScore
+from ella_bot.speech.asr.vosk_engine import BaseASR, ASRResult, WordScore
 from ella_bot.speech.tts.base import TTSConfig
 from ella_bot.speech.tts.factory import build_tts
 from ella_bot.config.app_config import load_settings
