@@ -236,12 +236,15 @@ class ReadingPromptScene(BaseScene):
             try:
                 if self.is_paused:
                     return
-                announcement = self.app._build_start_announcement()
-                target_item = self.app.expected_sentence.strip()
-                target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
-                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                announcement_with_overrides = pattern.sub(target_override, announcement)
-                self.app.tts.speak(announcement_with_overrides)
+                intro, sentence = self.app._build_start_announcement()
+                target_override = self.app.pronunciation_overrides.get(sentence.lower(), sentence)
+                
+                # Speak intro phrase at normal speed
+                self.app.tts.speak(intro)
+                
+                # Speak actual target sentence at slower speed
+                slow_rate = int(self.app.tts.config.rate * 0.8)
+                self.app.tts.speak(target_override, rate=slow_rate)
             except Exception as exc:
                 print(f"[DEBUG] Intro TTS Error: {exc}")
                 self.app.event_queue.put(("error", str(exc)))
@@ -299,13 +302,24 @@ class ReadingPromptScene(BaseScene):
                 except Exception:
                     spoken_lines = [feedback.level_message]
 
-                for line in spoken_lines:
+                for idx, line in enumerate(spoken_lines):
                     if self.is_paused:
                         break
                     self.app.event_queue.put(("state", "speaking"))
                     self.app.event_queue.put(("message", "Speaking feedback..."))
                     print(f"[DEBUG] Speaking: {line}")
-                    self.app.tts.speak(line)
+                    lower_line = line.lower()
+                    if idx > 0 or any(kw in lower_line for kw in [
+                        "work on the word", "look at", "tricky", "skipped", "forget",
+                        "say it with me", "sounds like", "listen carefully"
+                    ]):
+                        if "let me read the sentence" in lower_line:
+                            self.app.tts.speak(line)
+                        else:
+                            slow_rate = int(self.app.tts.config.rate * 0.8)
+                            self.app.tts.speak(line, rate=slow_rate)
+                    else:
+                        self.app.tts.speak(line)
                 print("[DEBUG] Audio feedback finished.")
 
             if feedback.level_message == "Correct!":
@@ -371,10 +385,21 @@ class ReadingPromptScene(BaseScene):
             except Exception:
                 lines = [feedback.level_message]
 
-            for line in lines:
+            for idx, line in enumerate(lines):
                 self.app.event_queue.put(("state", "speaking"))
                 self.app.event_queue.put(("message", "Replaying feedback..."))
-                self.app.tts.speak(line)
+                lower_line = line.lower()
+                if idx > 0 or any(kw in lower_line for kw in [
+                    "work on the word", "look at", "tricky", "skipped", "forget",
+                    "say it with me", "sounds like", "listen carefully"
+                ]):
+                    if "let me read the sentence" in lower_line:
+                        self.app.tts.speak(line)
+                    else:
+                        slow_rate = int(self.app.tts.config.rate * 0.8)
+                        self.app.tts.speak(line, rate=slow_rate)
+                else:
+                    self.app.tts.speak(line)
 
             if feedback.level_message == "Correct!":
                 self.app.event_queue.put(("state", "success"))

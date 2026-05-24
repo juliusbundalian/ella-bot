@@ -81,15 +81,15 @@ class EllaGUIApp:
     def _current_item_number(self) -> int:
         return self.level_indices.get(self.current_level, 0) + 1
 
-    def _build_start_announcement(self) -> str:
+    def _build_start_announcement(self) -> tuple[str, str]:
         import random
         target_sentence = self.expected_sentence.strip() or "the next item"
         level = self._display_level_name()
         item = self._current_item_number()
         intros = [
-            f"Alright! You're on the {level} level, item {item}. When you're ready, please read, {target_sentence}.",
-            f"Okay, let's do this! {level} level, item {item}. Go ahead and read, {target_sentence}.",
-            f"Here we go! Item {item} on the {level} level. Please read out loud, {target_sentence}.",
+            (f"Alright! You're on the {level} level, item {item}. When you're ready, please read,", target_sentence),
+            (f"Okay, let's do this! {level} level, item {item}. Go ahead and read,", target_sentence),
+            (f"Here we go! Item {item} on the {level} level. Please read out loud,", target_sentence),
         ]
         return random.choice(intros)
 
