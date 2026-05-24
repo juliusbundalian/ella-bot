@@ -21,12 +21,12 @@ def run_tests():
 
     # 1. Load Level Pools
     pools_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "level_pools.json"))
-    with open(pools_path, "r") as f:
+    with open(pools_path, "r", encoding="utf-8") as f:
         level_pools = json.load(f)
 
     # 2. Load Overrides
     overrides_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "pronunciation_overrides.json"))
-    with open(overrides_path, "r") as f:
+    with open(overrides_path, "r", encoding="utf-8") as f:
         overrides = json.load(f)
 
     suspicious_patterns = [
@@ -138,7 +138,7 @@ def run_tests():
 
     # Pick 1 representative sentence from each level to speak out loud
     demo_sentences = {
-        "1a": "a",
+        "1a": "e",
         "1b": "s",
         "1c": "ba",
         "1d": "day",
@@ -173,7 +173,8 @@ def run_tests():
         )
 
         for idx, line in enumerate(spoken_lines):
-            print(f"  [Speaking] -> {line}")
+            # Print using backslashreplace to prevent Windows console encoding crashes on Unicode IPA characters
+            print(f"  [Speaking] -> {line.encode('ascii', 'backslashreplace').decode('ascii')}")
             
             # Determine speech rate using ELLA's UI guidelines
             lower_line = line.lower()

@@ -155,7 +155,7 @@ def main():
     
     # Load pronunciation overrides
     overrides_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "pronunciation_overrides.json"))
-    with open(overrides_path, "r") as f:
+    with open(overrides_path, "r", encoding="utf-8") as f:
         overrides = json.load(f)
         
     asr = E2ETestASR()

@@ -234,7 +234,8 @@ def _sanitize_for_tts(text: str) -> str:
     # Remove quote wrapping around words to prevent odd phoneme output.
     output = re.sub(r"'([A-Za-z]+)'", r"\1", text)
     output = output.replace("->", " to ")
-    output = output.replace(":", ",")
+    # Replace colons with commas unless preceded by "phonemes"
+    output = re.sub(r'(?<!\bphonemes):', ',', output)
     output = re.sub(r"\s+", " ", output).strip()
     return output
 
