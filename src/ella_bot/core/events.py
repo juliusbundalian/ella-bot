@@ -22,3 +22,14 @@ class ErrorOccurred:
 @dataclass(frozen=True)
 class AttemptReady:
     view_model: Any
+
+
+@dataclass(frozen=True)
+class SubLevelCompleted:
+    result: Any
+    kind: str  # "sublevel" | "tier"
+
+
+@dataclass(frozen=True)
+class SessionCompleted:
+    result: Any
