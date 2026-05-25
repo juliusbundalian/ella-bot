@@ -15,7 +15,7 @@ class _FakeValidation:
 
 
 class _FakeFeedback:
-    level_message = "Correct!"
+    level_message = "Excellent work! That was perfect!"
 
 
 class _FakeASRResult:

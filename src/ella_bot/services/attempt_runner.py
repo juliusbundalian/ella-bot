@@ -139,7 +139,9 @@ class AttemptRunner:
             session = self.app.session
             evaluation = self.app.evaluation
             level = session.current_level
-            correct = feedback.level_message == "Correct!"
+            correct = feedback.level_message.startswith(
+                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
+            )
 
             evaluation.record_attempt(
                 level=level,
