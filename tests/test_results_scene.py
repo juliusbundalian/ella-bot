@@ -63,3 +63,18 @@ def test_main_menu_on_failure_resets_sublevel_and_switches_to_menu():
     scene.app.session.retry_sublevel.assert_called_once_with("1a")
     scene.app.evaluation.reset_sublevel.assert_called_once_with("1a")
     scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_confirm_continue_advances_stage_and_goes_to_menu():
+    scene = _make_scene(passed=True)
+    scene._do_continue_to_menu()
+    scene.app.session.advance_to_higher_stage.assert_called_once()
+    scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_confirm_restart_resets_to_start_and_goes_to_menu():
+    scene = _make_scene(passed=True)
+    scene._do_restart_to_menu()
+    scene.app.session.reset_to_start.assert_called_once()
+    scene.app.evaluation.reset_all.assert_called_once()
+    scene.app.switch_scene.assert_called_once_with("main_menu")

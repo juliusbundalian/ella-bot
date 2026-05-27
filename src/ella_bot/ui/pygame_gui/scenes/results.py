@@ -41,6 +41,7 @@ class ResultsScene(BaseScene):
 
     def on_enter(self) -> None:
         self.pressed_button = None
+        self._show_menu_confirm = False
         start = getattr(self.app, "sublevel_start_time", None)
         self._elapsed = (time.monotonic() - start) if start is not None else None
 
@@ -91,9 +92,35 @@ class ResultsScene(BaseScene):
         else:
             self._show_menu_confirm = True
 
+    def _do_continue_to_menu(self) -> None:
+        self.app.session.advance_to_higher_stage()
+        self.app.switch_scene("main_menu")
+
+    def _do_restart_to_menu(self) -> None:
+        self.app.session.reset_to_start()
+        self.app.evaluation.reset_all()
+        self.app.switch_scene("main_menu")
+
     # --- input ---
 
     def handle_event(self, event) -> None:
+        if self._show_menu_confirm:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for key, rect in (
+                    ("confirm_continue", self._confirm_continue_button),
+                    ("confirm_restart", self._confirm_restart_button),
+                ):
+                    if rect and rect.collidepoint(event.pos):
+                        self.pressed_button = key
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                key = self.pressed_button
+                self.pressed_button = None
+                if key == "confirm_continue" and self._confirm_continue_button and self._confirm_continue_button.collidepoint(event.pos):
+                    self._do_continue_to_menu()
+                elif key == "confirm_restart" and self._confirm_restart_button and self._confirm_restart_button.collidepoint(event.pos):
+                    self._do_restart_to_menu()
+            return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for key, rect in (("next", self.next_button), ("menu", self.menu_button)):
                 if rect and rect.collidepoint(event.pos):
@@ -140,6 +167,36 @@ class ResultsScene(BaseScene):
         pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=20)
         surf = self.app.font_body.render(label, True, _WHITE)
         screen.blit(surf, surf.get_rect(center=rect.center))
+
+    def _draw_confirm_overlay(self, screen) -> None:
+        width, height = screen.get_size()
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+
+        dlg_w = int(width * 0.62)
+        dlg_h = int(height * 0.36)
+        dlg_x = (width - dlg_w) // 2
+        dlg_y = (height - dlg_h) // 2
+        dlg_rect = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
+        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
+        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
+
+        msg = self.app.font_body.render("Where would you like to go?", True, _TEXT_DARK)
+        screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.30))))
+
+        btn_w, btn_h = 190, 62
+        gap = 20
+        total_w = btn_w * 2 + gap
+        btn_y = dlg_y + dlg_h - btn_h - 24
+        self._confirm_continue_button = pygame.Rect(
+            width // 2 - total_w // 2, btn_y, btn_w, btn_h
+        )
+        self._confirm_restart_button = pygame.Rect(
+            width // 2 - total_w // 2 + btn_w + gap, btn_y, btn_w, btn_h
+        )
+        self._draw_button(screen, self._confirm_continue_button, "Continue", "confirm_continue")
+        self._draw_button(screen, self._confirm_restart_button, "Restart", "confirm_restart")
 
     def render(self) -> None:
         self._load_assets()
@@ -246,3 +303,6 @@ class ResultsScene(BaseScene):
         # --- Borders drawn last (on top of all content) ---
         pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
+
+        if self._show_menu_confirm:
+            self._draw_confirm_overlay(screen)
