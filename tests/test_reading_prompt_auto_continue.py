@@ -17,6 +17,8 @@ def _make_scene(state="idle", prompt_active=False, is_paused=False,
     scene.modal.visible = modal_visible
     scene.bot = MagicMock()
     scene.worker_thread = None
+    scene.last_activity_monotonic = time.monotonic()
+    scene.idle_timeout_seconds = 10
     scene._drain_event_queue = MagicMock()
     scene._start_attempt = MagicMock()
     return scene
@@ -60,6 +62,7 @@ def test_neither_trigger_fires_when_paused():
     )
     scene.update(0)
     scene._start_attempt.assert_not_called()
+    assert scene._auto_start_at is not None
 
 
 def test_neither_trigger_fires_when_modal_visible():
@@ -69,5 +72,13 @@ def test_neither_trigger_fires_when_modal_visible():
         modal_visible=True,
         auto_start_at=time.monotonic() - 0.1,
     )
+    scene.update(0)
+    scene._start_attempt.assert_not_called()
+    assert scene._auto_start_at is not None
+
+
+def test_state_trigger_does_not_fire_when_not_listening():
+    """State trigger only fires on 'listening'; other states do not trigger."""
+    scene = _make_scene(state="processing", prompt_active=False, auto_start_at=None)
     scene.update(0)
     scene._start_attempt.assert_not_called()
