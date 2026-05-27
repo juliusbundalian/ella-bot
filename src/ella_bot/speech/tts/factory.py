@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import importlib
 import platform
-import shutil
 import subprocess
-from dataclasses import dataclass
 from typing import Optional
 
 
@@ -47,7 +44,7 @@ def build_tts(engine_name: str, config: Optional[TTSConfig] = None) -> BaseTTS:
         model = resolve_model_path((config.kokoro_model if config else None) or "kokoro-v1.0.onnx")
         voices = resolve_model_path((config.kokoro_voices if config else None) or "voices-v1.0.bin")
         if not Path(model).exists() or not Path(voices).exists():
-            print(f"[TTS Warning] Kokoro model or voices not found. falling back to auto-selection.")
+            print("[TTS Warning] Kokoro model or voices not found. falling back to auto-selection.")
             return build_tts("auto", config)
         return KokoroTTS(config=config, model_path=str(model), voices_path=str(voices))
 

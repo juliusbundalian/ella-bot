@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import random
 from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Dict, List, Mapping
@@ -20,8 +21,6 @@ class FeedbackResult:
     pronunciation_hints: List[str]
 
 
-import random
-
 _CORRECT_PHRASES = [
     "Excellent work! That was perfect!",
     "Great job! You read that really well!",
@@ -38,7 +37,7 @@ _ALMOST_PHRASES = [
 ]
 
 _RETRY_PHRASES = [
-    "Hmm, let's give that another shot. You can do it!",
+    "Hmmm, let's give that another shot. You can do it!",
     "That's okay! Let's try reading it again.",
     "Don't worry, let's have another go at it!",
     "It's tricky, I know. Let's try one more time!",

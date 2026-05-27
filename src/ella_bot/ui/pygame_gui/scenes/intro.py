@@ -4,7 +4,6 @@ import time
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
-from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient
 
 class IntroScene(BaseScene):
     def __init__(self, app):
