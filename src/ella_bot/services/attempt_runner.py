@@ -134,6 +134,7 @@ class AttemptRunner:
                     self.app.event_queue.put(MessageChanged("Speaking feedback..."))
                     logger.debug("Speaking: %s", line)
                     self.app.tts.speak(line)
+                    self.app.event_queue.put(StateChanged("idle"))
                 logger.debug("Audio feedback finished")
 
             session = self.app.session
@@ -169,19 +170,25 @@ class AttemptRunner:
                     if session.is_last_tier(tier):
                         cumulative = evaluation.finish_session()
                         if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                            self.app.event_queue.put(StateChanged("speaking"))
                             self.app.tts.speak(
                                 "Incredible! You finished every level. Let's see how you did!"
                             )
+                            self.app.event_queue.put(StateChanged("idle"))
                         self.app.event_queue.put(SessionCompleted(cumulative))
                     else:
                         if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                            self.app.event_queue.put(StateChanged("speaking"))
                             self.app.tts.speak(
                                 f"Wow, you finished Level {tier}! You're doing amazing!"
                             )
+                            self.app.event_queue.put(StateChanged("idle"))
                         self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
                 else:
                     if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
                         self.app.tts.speak("Great job! Let's see how you did!")
+                        self.app.event_queue.put(StateChanged("idle"))
                     self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
                 return
 
