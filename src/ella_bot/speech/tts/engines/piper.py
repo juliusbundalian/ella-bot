@@ -19,7 +19,8 @@ def _apply_warmth(pcm_int16: np.ndarray) -> np.ndarray:
     smoothed = np.convolve(audio, b, mode="same")
     output = 0.70 * audio + 0.30 * smoothed
     peak = np.max(np.abs(output)) if output.size else 0.0
-    if peak > 0.95:
+    if peak > 0.0:
+        # Peak normalization to exactly 0.95 ensures consistent loud and clear volume
         output = output / peak * 0.95
     return (output * 32767).astype(np.int16)
 
@@ -42,6 +43,8 @@ class PiperTTS(BaseTTS):
             volume=self.config.volume,
         )
         self._stop = threading.Event()
+        self._active_stream = None
+        self._lock = threading.Lock()
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
         stop_event = threading.Event()
@@ -53,10 +56,12 @@ class PiperTTS(BaseTTS):
 
     def stop(self) -> None:
         self._stop.set()
-        try:
-            sd.stop()
-        except Exception:
-            pass
+        with self._lock:
+            if self._active_stream is not None:
+                try:
+                    self._active_stream.abort()
+                except Exception:
+                    pass
 
     def set_volume(self, fraction: float) -> None:
         self._syn_config = SynthesisConfig(
@@ -82,8 +87,11 @@ class PiperTTS(BaseTTS):
 
         stream = None
         try:
+            if stop_event.is_set():
+                return
+
             if text.startswith(("phonemes:", "phonemes,")):
-                raw_phonemes_str = text[9:].strip().rstrip(".!?")
+                raw_phonemes_str = text[9:].strip()
                 phonemes_list = list(raw_phonemes_str)
                 phoneme_ids = self._voice.phonemes_to_ids(phonemes_list)
                 
@@ -100,12 +108,23 @@ class PiperTTS(BaseTTS):
                     channels=1,
                     dtype="int16",
                 )
-                stream.start()
+                with self._lock:
+                    if stop_event.is_set():
+                        return
+                    self._active_stream = stream
+                    stream.start()
+                
                 stream.write(pcm_warm.tobytes())
+                
                 # Wait for the phoneme audio to finish playing before closing
                 import time
                 duration = len(pcm_warm) / sample_rate
-                time.sleep(duration + 0.05)
+                # Sleep in small responsive chunks to remain highly responsive to stop events
+                chunk_time = 0.05
+                elapsed = 0.0
+                while elapsed < duration and not stop_event.is_set():
+                    time.sleep(chunk_time)
+                    elapsed += chunk_time
             else:
                 last_chunk_len = 0
                 sample_rate = 22050
@@ -120,25 +139,33 @@ class PiperTTS(BaseTTS):
                             channels=chunk.sample_channels,
                             dtype="int16",
                         )
-                        stream.start()
+                        with self._lock:
+                            if stop_event.is_set():
+                                break
+                            self._active_stream = stream
+                            stream.start()
                     stream.write(pcm_warm.tobytes())
                     last_chunk_len = len(pcm_warm)
                     sample_rate = chunk.sample_rate
                 
                 # Wait briefly for the final chunk of spoken text to finish playing
-                if stream is not None and last_chunk_len > 0:
+                if stream is not None and last_chunk_len > 0 and not stop_event.is_set():
                     import time
                     duration = last_chunk_len / sample_rate
-                    time.sleep(duration + 0.05)
+                    # Sleep in small responsive chunks to remain highly responsive to stop events
+                    chunk_time = 0.05
+                    elapsed = 0.0
+                    while elapsed < duration and not stop_event.is_set():
+                        time.sleep(chunk_time)
+                        elapsed += chunk_time
         except Exception as exc:
             logger.error("PiperTTS error: %s", exc)
         finally:
+            with self._lock:
+                self._active_stream = None
             if stream is not None:
                 try:
-                    if stop_event.is_set():
-                        stream.abort()
-                    else:
-                        stream.stop()
+                    stream.stop()
                     stream.close()
                 except Exception:
                     pass

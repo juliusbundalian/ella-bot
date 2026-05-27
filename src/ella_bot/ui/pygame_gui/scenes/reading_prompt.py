@@ -225,9 +225,14 @@ class ReadingPromptScene(BaseScene):
                 # Speak intro phrase at normal speed
                 self.app.tts.speak(intro)
                 
-                # Speak actual target sentence at slower speed
-                slow_rate = int(self.app.tts.config.rate * 0.8)
-                self.app.tts.speak(target_override, rate=slow_rate)
+                is_level_1 = str(self.app.current_level).startswith("1")
+                if is_level_1:
+                    # Speak target at normal speed on Level 1
+                    self.app.tts.speak(target_override)
+                else:
+                    # Speak target at slower speed on Levels 2-4
+                    slow_rate = int(self.app.tts.config.rate * 0.8)
+                    self.app.tts.speak(target_override, rate=slow_rate)
             except Exception as exc:
                 print(f"[DEBUG] Intro TTS Error: {exc}")
                 self.app.event_queue.put(("error", str(exc)))
@@ -276,6 +281,7 @@ class ReadingPromptScene(BaseScene):
 
             if self.app.audio_feedback and self.app.tts is not None:
                 try:
+                    is_level_1 = str(self.app.current_level).startswith("1")
                     spoken_lines = build_spoken_feedback_with_coaching(
                         feedback=feedback,
                         overrides=self.app.pronunciation_overrides,
@@ -292,11 +298,24 @@ class ReadingPromptScene(BaseScene):
                     self.app.event_queue.put(("message", "Speaking feedback..."))
                     print(f"[DEBUG] Speaking: {line}")
                     lower_line = line.lower()
-                    if idx > 0 or any(kw in lower_line for kw in [
+                    
+                    is_sound_line = (
+                        line.startswith("phonemes:") or 
+                        len(line.strip()) == 1 or 
+                        (line.endswith(".") and len(line.strip()) == 2)
+                    )
+                    
+                    if is_level_1:
+                        # On Level 1, all feedback and coaching are spoken at normal speed
+                        self.app.tts.speak(line)
+                    elif is_sound_line:
+                        # Sounds and phonemes are always spoken at normal speed to sound natural
+                        self.app.tts.speak(line)
+                    elif idx > 0 or any(kw in lower_line for kw in [
                         "work on the word", "look at", "tricky", "skipped", "forget",
                         "say it with me", "sounds like", "listen carefully"
                     ]):
-                        if "let me read the sentence" in lower_line:
+                        if "let me read the sentence" in lower_line or "let me make the sound" in lower_line:
                             self.app.tts.speak(line)
                         else:
                             slow_rate = int(self.app.tts.config.rate * 0.8)
@@ -362,6 +381,7 @@ class ReadingPromptScene(BaseScene):
         def _worker() -> None:
             feedback = self.app.latest_attempt.feedback
             try:
+                is_level_1 = str(self.app.current_level).startswith("1")
                 lines = build_spoken_feedback_with_coaching(
                     feedback=feedback,
                     overrides=self.app.pronunciation_overrides,
@@ -375,7 +395,20 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.put(("state", "speaking"))
                 self.app.event_queue.put(("message", "Replaying feedback..."))
                 lower_line = line.lower()
-                if idx > 0 or any(kw in lower_line for kw in [
+                
+                is_sound_line = (
+                    line.startswith("phonemes:") or 
+                    len(line.strip()) == 1 or 
+                    (line.endswith(".") and len(line.strip()) == 2)
+                )
+                
+                if is_level_1:
+                    # On Level 1, all feedback and coaching are spoken at normal speed
+                    self.app.tts.speak(line)
+                elif is_sound_line:
+                    # Sounds and phonemes are always spoken at normal speed to sound natural
+                    self.app.tts.speak(line)
+                elif idx > 0 or any(kw in lower_line for kw in [
                     "work on the word", "look at", "tricky", "skipped", "forget",
                     "say it with me", "sounds like", "listen carefully"
                 ]):
