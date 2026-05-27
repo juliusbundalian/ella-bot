@@ -92,7 +92,7 @@ class ReadingPromptScene(BaseScene):
             elif event.key == pygame.K_r:
                 self._touch_activity()
                 self._speak_last_feedback()
-            elif event.key == pygame.K_RETURN:
+            elif event.key == pygame.K_o:
                 self._touch_activity()
                 if self.app.asr is not None:
                     self.app.asr.bypass_transcription = self.app.expected_sentence
