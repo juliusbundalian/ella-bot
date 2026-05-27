@@ -47,6 +47,11 @@ def load_settings() -> Dict[str, Any]:
             defaults["listen_seconds"] = parser.getint("Speech", "listen_seconds")
         if parser.has_option("Speech", "sample_rate"):
             defaults["sample_rate"] = parser.getint("Speech", "sample_rate")
+        if parser.has_option("Speech", "input_device"):
+            try:
+                defaults["input_device"] = parser.getint("Speech", "input_device")
+            except ValueError:
+                defaults["input_device"] = None
 
     if parser.has_section("TTS"):
         if parser.has_option("TTS", "audio_feedback"):

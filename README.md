@@ -38,21 +38,29 @@ Ensure you have created a virtual environment and installed the package:
 **macOS/Linux:**
 ```bash
 # Create environment (ensure you are using Python 3.10+)
-# TIP: On Windows, use 'py -3.14 -m venv .venv_314' to pick a specific version
-python -m venv .venv_314
-# On Windows use: .\.venv_314\Scripts\activate
-source .venv_314/bin/activate
+# TIP: On Windows, use 'py -3.10 -m venv .venv' to pick a specific version
+python -m venv .venv
+# On Windows use: .\.venv\Scripts\activate
+source .venv/bin/activate
 
 # Upgrade pip and install
 python -m pip install --upgrade pip
 pip install -e .
 ```
 
-## Quick Start (Windows)
+## Quick Start
 
 To quickly activate the virtual environment and start the assistant, run:
+
+**macOS/Linux:**
+```bash
+source .venv/bin/activate
+ella-bot
+```
+
+**Windows:**
 ```powershell
-.\.venv_314\Scripts\activate
+.\.venv\Scripts\activate
 ella-bot
 ```
 
