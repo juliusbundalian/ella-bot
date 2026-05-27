@@ -105,3 +105,13 @@ def test_reset_tier_drops_all_sublevel_attempts(tmp_path):
     _, _, fluency, attempts = svc._aggregate(["1a", "1b"])
     assert attempts == 0
     assert fluency == 0.0
+
+
+def test_reset_all_clears_all_state(tmp_path):
+    svc = make_service(tmp_path)
+    svc.record_attempt("1a", 1, "a", "uh", 0.30, 0.5, False)
+    svc.record_attempt("1b", 1, "cat", "cap", 0.40, 0.3, False)
+    svc.finish_tier(1)
+    svc.reset_all()
+    assert svc._attempts == {}
+    assert svc._tier_results == {}

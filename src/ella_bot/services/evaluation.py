@@ -183,3 +183,7 @@ class EvaluationService:
         for level in TIER_SUBLEVELS.get(tier, []):
             self._attempts[level] = []
         self._tier_results.pop(tier, None)
+
+    def reset_all(self) -> None:
+        self._attempts.clear()
+        self._tier_results.clear()
