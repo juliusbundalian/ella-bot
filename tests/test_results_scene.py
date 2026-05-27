@@ -13,6 +13,11 @@ def _make_scene(kind="sublevel", passed=True, level="1c", tier=1):
     scene = object.__new__(ResultsScene)
     scene.app = app
     scene.pressed_button = None
+    scene._show_menu_confirm = False
+    scene._confirm_continue_button = None
+    scene._confirm_restart_button = None
+    scene.next_button = None
+    scene.menu_button = None
     return scene
 
 
