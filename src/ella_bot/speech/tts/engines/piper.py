@@ -145,15 +145,7 @@ class PiperTTS(BaseTTS):
                     sample_rate = chunk.sample_rate
                 
                 # Wait briefly for the final chunk of spoken text to finish playing
-                if stream is not None and last_chunk_len > 0 and not stop_event.is_set():
-                    import time
-                    duration = last_chunk_len / sample_rate
-                    # Sleep in small responsive chunks to remain highly responsive to stop events
-                    chunk_time = 0.05
-                    elapsed = 0.0
-                    while elapsed < duration and not stop_event.is_set():
-                        time.sleep(chunk_time)
-                        elapsed += chunk_time
+                
         except Exception as exc:
             logger.error("PiperTTS error: %s", exc)
         finally:
