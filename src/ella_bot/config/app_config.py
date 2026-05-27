@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import configparser
-from pathlib import Path
 from typing import Dict, Any
 
 from ella_bot.utils.file_utils import get_project_root

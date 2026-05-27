@@ -2,7 +2,6 @@ import io
 import time
 import queue
 import threading
-from pathlib import Path
 import pygame
 from typing import Optional
 
@@ -11,7 +10,17 @@ from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady
-from ella_bot.services.attempt_runner import AttemptRunner
+from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
+from ella_bot.validation.validators import (
+    validate_spoken_text,
+    normalize,
+    spoken_word_confidence_map,
+    build_highlighted_expected,
+)
+from ella_bot.validation.feedback import (
+    build_feedback,
+    build_spoken_feedback_with_coaching,
+)
 
 class ReadingPromptScene(BaseScene):
     def __init__(self, app):
@@ -358,7 +367,7 @@ class ReadingPromptScene(BaseScene):
             error_msg = str(exc)
             tb = traceback.format_exc()
             print(f"\n{'='*60}")
-            print(f"ERROR DURING VALIDATION:")
+            print("ERROR DURING VALIDATION:")
             print(tb)
             print(f"{'='*60}\n")
             self.error_log.append(error_msg)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from typing import Optional
 
 import numpy as np
 import sounddevice as sd
@@ -36,15 +37,22 @@ class PiperTTS(BaseTTS):
         self.config = config or TTSConfig()
         self.piper_model = piper_model
         self._voice = PiperVoice.load(piper_model)
-        self._syn_config = SynthesisConfig(
-            length_scale=self.config.length_scale,
-            noise_scale=self.config.noise_scale,
-            noise_w_scale=self.config.noise_w,
-            volume=self.config.volume,
-        )
+        self._syn_config = self._get_syn_config()
         self._stop = threading.Event()
         self._active_stream = None
         self._lock = threading.Lock()
+
+    def _get_syn_config(self, volume: Optional[float] = None, rate: Optional[int] = None) -> SynthesisConfig:
+        base_rate = 200.0
+        target_rate = rate if (rate is not None and rate > 0) else (self.config.rate if (self.config.rate and self.config.rate > 0) else 200)
+        speed_ratio = base_rate / target_rate
+        
+        return SynthesisConfig(
+            length_scale=self.config.length_scale * speed_ratio,
+            noise_scale=self.config.noise_scale,
+            noise_w_scale=self.config.noise_w,
+            volume=volume if volume is not None else self.config.volume,
+        )
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
         stop_event = threading.Event()
@@ -64,26 +72,14 @@ class PiperTTS(BaseTTS):
                     pass
 
     def set_volume(self, fraction: float) -> None:
-        self._syn_config = SynthesisConfig(
-            length_scale=self.config.length_scale,
-            noise_scale=self.config.noise_scale,
-            noise_w_scale=self.config.noise_w,
-            volume=fraction,
-        )
+        self.config.volume = fraction
+        self._syn_config = self._get_syn_config(volume=fraction)
 
     def _speak_sync(self, text: str, stop_event: threading.Event, rate: Optional[int] = None) -> None:
         if not text.strip():
             return
 
-        syn_config = self._syn_config
-        if rate is not None and rate > 0 and self.config.rate > 0:
-            speed_ratio = self.config.rate / rate
-            syn_config = SynthesisConfig(
-                length_scale=self.config.length_scale * speed_ratio,
-                noise_scale=self.config.noise_scale,
-                noise_w_scale=self.config.noise_w,
-                volume=self.config.volume,
-            )
+        syn_config = self._get_syn_config(rate=rate)
 
         stream = None
         try:

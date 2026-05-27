@@ -1,6 +1,4 @@
 import queue
-import threading
-import time
 from typing import Dict, List, Optional
 
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
