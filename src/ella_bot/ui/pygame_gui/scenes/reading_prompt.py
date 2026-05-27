@@ -34,6 +34,7 @@ class ReadingPromptScene(BaseScene):
         self._icon_menu = None
         self.bot = BotSprite()
         self.runner = AttemptRunner(self.app, lambda: self.is_paused)
+        self._auto_start_at: float | None = None
 
     def on_enter(self) -> None:
         self.app.state = "idle"
@@ -43,6 +44,8 @@ class ReadingPromptScene(BaseScene):
         self.is_paused = False
         self._touch_activity()
         self.app.animator.set_state("idle", reset=True)
+        self.app.sublevel_start_time = time.monotonic()
+        self._auto_start_at = time.monotonic() + 1.5
 
     def _touch_activity(self) -> None:
         self.last_activity_monotonic = time.monotonic()
@@ -114,6 +117,13 @@ class ReadingPromptScene(BaseScene):
 
         if self.modal.visible:
             return
+
+        if not self.is_paused and not self.app.prompt_active:
+            if self._auto_start_at is not None and time.monotonic() >= self._auto_start_at:
+                self._auto_start_at = None
+                self._start_attempt()
+            elif self._auto_start_at is None and self.app.state == "listening":
+                self._start_attempt()
 
         if self.app.state == "listening" and not self.app.prompt_active:
             if time.monotonic() - self.last_activity_monotonic >= self.idle_timeout_seconds:
