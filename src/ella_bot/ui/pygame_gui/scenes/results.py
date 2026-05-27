@@ -35,6 +35,9 @@ class ResultsScene(BaseScene):
         self._elapsed = None
         self.next_button = None
         self.menu_button = None
+        self._show_menu_confirm = False
+        self._confirm_continue_button = None
+        self._confirm_restart_button = None
 
     def on_enter(self) -> None:
         self.pressed_button = None
@@ -81,7 +84,12 @@ class ResultsScene(BaseScene):
         self.app.active_scene._start_attempt()
 
     def _do_main_menu(self) -> None:
-        self.app.switch_scene("main_menu")
+        result = self.app.latest_result
+        if not getattr(result, "passed", True):
+            self._reset_for_retry()
+            self.app.switch_scene("main_menu")
+        else:
+            self._show_menu_confirm = True
 
     # --- input ---
 

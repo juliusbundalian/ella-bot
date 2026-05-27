@@ -50,7 +50,16 @@ def test_retry_tier_resets_tier():
     scene.app.evaluation.reset_tier.assert_called_once_with(2)
 
 
-def test_main_menu_switches_scene():
-    scene = _make_scene()
+def test_main_menu_on_success_shows_confirm_overlay():
+    scene = _make_scene(passed=True)
     scene._do_main_menu()
+    assert scene._show_menu_confirm is True
+    scene.app.switch_scene.assert_not_called()
+
+
+def test_main_menu_on_failure_resets_sublevel_and_switches_to_menu():
+    scene = _make_scene(kind="sublevel", passed=False, level="1a")
+    scene._do_main_menu()
+    scene.app.session.retry_sublevel.assert_called_once_with("1a")
+    scene.app.evaluation.reset_sublevel.assert_called_once_with("1a")
     scene.app.switch_scene.assert_called_once_with("main_menu")
