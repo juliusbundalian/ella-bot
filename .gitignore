@@ -30,4 +30,7 @@ htmlcov/
 
 models/
 piper/
-sounds/.mcp.json
+sounds/
+
+# MCP config (local dev only)
+.mcp.json
