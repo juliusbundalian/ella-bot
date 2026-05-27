@@ -238,7 +238,10 @@ class ResultsScene(BaseScene):
         screen.blit(lv_surf, lv_rect)
 
         # "COMPLETE!" / "LEVEL UP!" — large, white, shadow, centered on ribbon
-        complete_text = "LEVEL UP!" if kind == "tier" else "COMPLETE!"
+        if kind == "tier" and getattr(result, "passed", True):
+            complete_text = "LEVEL UP!"
+        else:
+            complete_text = "COMPLETE!"
         cmp_surf = self._font_complete.render(complete_text, True, _WHITE)
         cmp_shadow = self._font_complete.render(complete_text, True, _TEXT_DARK)
         cmp_rect = cmp_surf.get_rect(centerx=ribbon_cx, top=ribbon_y + 45)

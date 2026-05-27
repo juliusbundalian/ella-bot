@@ -65,6 +65,14 @@ def test_main_menu_on_failure_resets_sublevel_and_switches_to_menu():
     scene.app.switch_scene.assert_called_once_with("main_menu")
 
 
+def test_main_menu_on_tier_failure_resets_tier_and_switches_to_menu():
+    scene = _make_scene(kind="tier", passed=False, tier=2)
+    scene._do_main_menu()
+    scene.app.session.retry_tier.assert_called_once_with(2)
+    scene.app.evaluation.reset_tier.assert_called_once_with(2)
+    scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
 def test_confirm_continue_advances_stage_and_goes_to_menu():
     scene = _make_scene(passed=True)
     scene._do_continue_to_menu()
