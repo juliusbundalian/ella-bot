@@ -33,7 +33,7 @@ ASR_HOMOPHONES: Dict[str, set[str]] = {
     "b": {"buh", "but", "ba", "b"},
     "c": {"car", "cuh", "cat", "cow", "huh", "her", "cur", "cup", "cut", "come", "co", "can", "with into"},
     "d": {"duh", "the", "do", "done", "du", "d"},
-    "e": {"eh", "ed", "head", "hey", "he", "egg", "it", "the", "in", "eight", "is", "under"},
+    "e": {"a", "eh", "ed", "head", "hey", "he", "egg", "it", "the", "in", "eight", "is", "under"},
     "f": {"fah", "fuck", "fe", "fa", "fu", "for", "far", "four", "ha"},
     "g": {"gah", "guh", "gay", "go", "good", "got", "get", "god", "the"},
     "h": {"ha", "huh", "her", "he", "him", "his", "hot", "house"},
