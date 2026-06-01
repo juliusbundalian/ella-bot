@@ -37,7 +37,7 @@ _ALMOST_PHRASES = [
 ]
 
 _RETRY_PHRASES = [
-    "Hmmm, let's give that another shot. You can do it!",
+    "Alright, let's give that another shot. You can do it!",
     "That is okay! Let's try reading it again.",
     "Don't worry, let's have another go at it!",
     "It is tricky, I know. Let's try one more time!",
@@ -136,7 +136,7 @@ def pronunciation_hints(
 
     if t_type == "sound":
         _INCORRECT_HINTS = [
-            "Hmm, let's work on the sound, {word}. Can you say it again?",
+            "Alright, let's work on the sound, {word}. Can you say it again?",
             "Let's take another look at, {word}. Give it another try!",
             "The sound, {word}, is a little tricky. Let's practice it!",
         ]
@@ -146,7 +146,7 @@ def pronunciation_hints(
         ]
     elif t_type == "word":
         _INCORRECT_HINTS = [
-            "Hmm, let's work on the word, {word}. Can you say it again?",
+            "Alright, let's work on the word, {word}. Can you say it again?",
             "Let's take another look at, {word}. Give it another try!",
             "The word, {word}, is a little tricky. Let's practice it!",
         ]
@@ -158,7 +158,7 @@ def pronunciation_hints(
         # For phrases and sentences: ELLA is giving a hint about a single word that was missed/incorrect.
         # So she says "skipped the word, {word}" and "let's make sure we say every word."
         _INCORRECT_HINTS = [
-            "Hmm, let's work on the word, {word}. Can you say it again?",
+            "Alright, let's work on the word, {word}. Can you say it again?",
             "Let's take another look at, {word}. Give it another try!",
             "The word, {word}, is a little tricky. Let's practice it!",
         ]
