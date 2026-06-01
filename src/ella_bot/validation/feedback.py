@@ -23,7 +23,7 @@ class FeedbackResult:
 
 _CORRECT_PHRASES = [
     "Excellent work! That was perfect!",
-    "Great job! You read that really well!",
+    "Great job! You red that really well!",
     "Wonderful! You got it!",
     "That's right! Amazing reading!",
     "Perfect! I knew you could do it!",
@@ -304,81 +304,84 @@ def build_spoken_feedback_with_coaching(
     expected_sentence: str = "",
     max_hints: int = 2,
 ) -> List[str]:
-    """Build concise spoken lines and add exactly one highly-focused pronunciation coaching line if needed."""
-    # 1. Build targeted overrides based only on the expected target sentence words
-    targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
+    """Build child-facing spoken lines for an attempt, with target model demonstrations and natural word coaching."""
+    t_type = get_target_type(expected_sentence)
 
-    # 2. Start with only the dynamic level message (encouragement/status).
-    # To keep speech concise and avoid redundant carrier paragraphs, we omit verbose descriptive hints.
-    lines = [_sanitize_for_tts(feedback.level_message)]
-    lines = [apply_pronunciation_overrides(line, targeted_overrides) for line in lines]
-
-    # Check if the attempt was successful (i.e. correct accuracy, or no errors reported)
+    # Check if the attempt was successful
     is_correct = (
+        "excellent" in feedback.level_message.lower() or 
+        "wonderful" in feedback.level_message.lower() or 
+        "that's right" in feedback.level_message.lower() or 
+        "perfect" in feedback.level_message.lower() or 
+        "good" in feedback.level_message.lower() or 
         "correct" in feedback.level_message.lower() or 
         "great" in feedback.level_message.lower() or 
         not feedback.pronunciation_hints
     )
 
-    # 3. Only append the target reading demonstration if the user made errors and needs a model demonstration
-    sentence_line = _sanitize_for_tts(expected_sentence)
-    t_type = get_target_type(expected_sentence)
-    
-    if not is_correct and sentence_line:
+    if is_correct:
+        return [_sanitize_for_tts(feedback.level_message)]
+
+    # --- INCORRECT ANSWER / COACHING FLOW ---
+    lines: List[str] = [_sanitize_for_tts(feedback.level_message)]
+
+    if t_type in ("sound", "word"):
+        # For single sounds or single words:
         if t_type == "sound":
             lines.append("Alright, let me make the sound for you.")
-        elif t_type == "word":
-            lines.append("Alright, let me read the word for you.")
-        elif t_type == "phrase":
-            lines.append("Alright, let me read the phrase for you.")
         else:
-            lines.append("Alright, let me read the sentence for you.")
+            lines.append("Alright, let me read the word for you.")
+            
+        sentence_line = _sanitize_for_tts(expected_sentence)
+        targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
         lines.append(overridden_sentence + ".")
-
-    # 4. Generate exactly ONE highly focused, actionable coaching line for the first meaningful error.
-    # Note: If the target itself is already a single sound or word, ELLA's direct demonstration
-    # of the target is already complete and sufficient. We only append a focused single-word coaching
-    # line for multi-word phrases and sentences to keep the interaction clean and fast!
-    coaching: List[str] = []
-    
-    if not is_correct and t_type in ("phrase", "sentence"):
-        _COACHING_TEMPLATES = [
-            "Say it with me, {spoken_form}!",
-            "The word sounds like, {spoken_form}. Can you try that?",
-            "Listen carefully, {spoken_form}. Now you try!",
-        ]
         
-        # We loop to find the first coachable word, bypassing tiny stop words in multi-word sentences
+    else:
+        # For multi-word phrases and sentences:
+        # Focus on exactly ONE coachable word they missed, rather than reading the entire long sentence.
+        coachable_word = None
         for hint in feedback.pronunciation_hints:
-            # Match words from comma-separated template format: "..., word. ..."
             match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
             if not match:
                 continue
             word = match.group(1).lower()
-            
-            # If this is a multi-word phrase or sentence lesson, completely bypass tiny grammatical stop words/articles
-            # so we don't subject the student to awkward coaching on words like "the", "a", "of", "and".
             if word in {
                 "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", 
                 "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do", "does", 
                 "did", "as", "by", "if", "this", "that", "it", "they", "we", "he", "she", "you", "i"
             }:
                 continue
-                
-            # If this is a multi-word sentence lesson, bypass phonics overrides for common sight words
-            if word in {"we", "me", "be", "he", "do", "to", "so", "go", "no", "by", "my"}:
-                spoken_form = auto_pronunciation_coaching(word)
+            coachable_word = word
+            break
+            
+        if coachable_word:
+            # Look up standard or pronunciation override (keep word fully intact, don't decompose it!)
+            spoken_form = overrides.get(coachable_word) or coachable_word
+            
+            lines.append(f"Hmm, let's work on the word, {coachable_word}.")
+            lines.append(f"Listen carefully, {spoken_form}. Now you try!")
+        else:
+            # Fallback: Read the full phrase or sentence if no specific word could be coached
+            if t_type == "phrase":
+                lines.append("Alright, let me read the phrase for you.")
             else:
-                spoken_form = overrides.get(word) or auto_pronunciation_coaching(word)
-                
-            if spoken_form:
-                template = random.choice(_COACHING_TEMPLATES)
-                coaching.append(_sanitize_for_tts(template.format(spoken_form=spoken_form)))
-                # Break as soon as we coach exactly ONE meaningful word
-                break
+                lines.append("Alright, let me read the sentence for you.")
+            
+            sentence_line = _sanitize_for_tts(expected_sentence)
+            targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
+            overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
+            lines.append(overridden_sentence + ".")
 
-    return lines + coaching
+    # Clean and sanitize lines for final playback
+    sanitized_lines: List[str] = []
+    for line in lines:
+        if line.startswith("phonemes:"):
+            sanitized_lines.append(line)
+        else:
+            sanitized_lines.append(_sanitize_for_tts(line))
+            
+    return sanitized_lines
 
 
 _ARPABET_TO_SOUND = {
