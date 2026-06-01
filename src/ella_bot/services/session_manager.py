@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from pathlib import Path
 from typing import Dict, List
 
 from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS, TIER_SUBLEVELS, tier_of
@@ -140,3 +141,41 @@ class SessionManager:
             f"Here we go! Item {item} on the {level} level. Please read out loud, {target_sentence}.",
         ]
         return random.choice(intros)
+
+
+def get_resume_level(log_path: Path, default_level: str = "1a") -> str:
+    """Read the JSONL sessions log file and determine the next incomplete level to resume from."""
+    if not log_path or not log_path.exists():
+        return default_level
+
+    last_passed_level = None
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("type") == "sublevel" and data.get("passed") is True:
+                        lvl = data.get("level")
+                        if lvl in LEVEL_ORDER:
+                            last_passed_level = lvl
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    if last_passed_level is None:
+        return default_level
+
+    # Find the next level in LEVEL_ORDER
+    try:
+        idx = LEVEL_ORDER.index(last_passed_level)
+        if idx + 1 < len(LEVEL_ORDER):
+            return LEVEL_ORDER[idx + 1]
+        else:
+            # If they completed the very last level, stay on the last level
+            return last_passed_level
+    except ValueError:
+        return default_level
