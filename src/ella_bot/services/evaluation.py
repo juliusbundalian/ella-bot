@@ -187,3 +187,12 @@ class EvaluationService:
     def reset_all(self) -> None:
         self._attempts.clear()
         self._tier_results.clear()
+        if self.log_path and self.log_path.exists():
+            try:
+                self.log_path.unlink()
+            except Exception:
+                try:
+                    with open(self.log_path, "w", encoding="utf-8") as f:
+                        pass
+                except Exception:
+                    pass

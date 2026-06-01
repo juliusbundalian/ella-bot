@@ -91,6 +91,7 @@ class SettingsScene(BaseScene):
             if self.show_reset_confirm:
                 if self.pressed_button == "confirm_yes" and self.btn_confirm_yes and self.btn_confirm_yes.collidepoint(pos):
                     self.app.session.reset_to_start()
+                    self.app.evaluation.reset_all()
                     self.app.switch_scene("main_menu")
                 elif self.pressed_button == "confirm_no" and self.btn_confirm_no and self.btn_confirm_no.collidepoint(pos):
                     self.show_reset_confirm = False

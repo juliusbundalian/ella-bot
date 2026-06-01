@@ -141,9 +141,9 @@ class SessionManager:
         level = self.display_level_name()
         item = self.current_item_number()
         intros = [
-            f"Alright! You're on the {level} level, item {item}. When you're ready, please read, {clean_target}.",
-            f"Okay, let's do this! {level} level, item {item}. Go ahead and read, {clean_target}.",
-            f"Here we go! Item {item} on the {level} level. Please read out loud, {clean_target}.",
+            f"Alright! You're on level {level}, item {item}. When you're ready, please read, {clean_target}.",
+            f"Okay, let's do this! Level {level}, item {item}. Go ahead and read, {clean_target}.",
+            f"Here we go! Item {item} on level {level}. Please read out loud, {clean_target}.",
         ]
         return random.choice(intros)
 

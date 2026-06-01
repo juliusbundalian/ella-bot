@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable, Callable
 
 
 @runtime_checkable
 class ASREngine(Protocol):
     """Anything that can turn speech into a transcript with per-word scores."""
 
-    def transcribe(self, expected_sentence: Optional[str] = None): ...
+    def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None): ...
 
 
 @runtime_checkable

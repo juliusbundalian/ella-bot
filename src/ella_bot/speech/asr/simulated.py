@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 
 @dataclass
@@ -21,7 +21,7 @@ class ASRResult:
 class BaseASR:
 	"""Abstract ASR adapter."""
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		raise NotImplementedError
 
 
@@ -31,7 +31,7 @@ class SimulatedASR(BaseASR):
 	def __init__(self, simulated_text: str):
 		self.simulated_text = simulated_text
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		words = [WordScore(word=w, confidence=0.9) for w in self.simulated_text.split()]
 		return ASRResult(transcript=self.simulated_text, words=words)
 
@@ -60,7 +60,7 @@ class VoskASR(BaseASR):
 		self.listen_seconds = listen_seconds
 		self.input_device = input_device
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		try:
 			import queue
 			sd = importlib.import_module("sounddevice")
@@ -100,6 +100,9 @@ class VoskASR(BaseASR):
 		):
 			total_blocks = max(1, int((self.listen_seconds * self.sample_rate) / 8000))
 			for _ in range(total_blocks):
+				if is_paused is not None and is_paused():
+					print("[ASR] Aborted due to pause/quit.")
+					return ASRResult(transcript="", words=[])
 				data = audio_queue.get()
 				recognizer.AcceptWaveform(data)
 

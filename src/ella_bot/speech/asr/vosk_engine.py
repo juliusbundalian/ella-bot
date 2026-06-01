@@ -4,7 +4,7 @@ import importlib
 import json
 import queue
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from ella_bot.utils.logging import get_logger
 
@@ -26,7 +26,7 @@ class ASRResult:
 class BaseASR:
 	"""Abstract ASR adapter."""
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		bypass = getattr(self, "bypass_transcription", None)
 		if bypass is not None:
 			self.bypass_transcription = None  # Clear the bypass flag
@@ -41,7 +41,7 @@ class SimulatedASR(BaseASR):
 	def __init__(self, simulated_text: str):
 		self.simulated_text = simulated_text
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		words = [WordScore(word=w, confidence=0.9) for w in self.simulated_text.split()]
 		return ASRResult(transcript=self.simulated_text, words=words)
 
@@ -122,7 +122,7 @@ class VoskASR(BaseASR):
 		except Exception as exc:
 			logger.error("[ASR] Could not start persistent background microphone stream: %s", exc)
 
-	def transcribe(self, expected_sentence: Optional[str] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
 		bypass = getattr(self, "bypass_transcription", None)
 		if bypass is not None:
 			self.bypass_transcription = None  # Clear the bypass flag
@@ -160,6 +160,10 @@ class VoskASR(BaseASR):
 		last_log_time = start_time
 		
 		while True:
+			if is_paused is not None and is_paused():
+				logger.info("[ASR] Transcription aborted due to pause/quit.")
+				return ASRResult(transcript="", words=[])
+
 			elapsed = time.time() - start_time
 			if elapsed >= self.listen_seconds:
 				break

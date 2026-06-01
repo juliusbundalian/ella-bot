@@ -85,7 +85,7 @@ class AttemptRunner:
         try:
             target_sentence = self.app.session.expected_sentence
             logger.debug("Starting ASR transcription for: %s", target_sentence)
-            asr_result = self.app.asr.transcribe(expected_sentence=target_sentence)
+            asr_result = self.app.asr.transcribe(expected_sentence=target_sentence, is_paused=self._is_paused)
             logger.debug("Transcription finished. Result: %r", asr_result.transcript)
 
             if self._is_paused():

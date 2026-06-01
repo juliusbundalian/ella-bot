@@ -32,6 +32,8 @@ class MainMenuScene(BaseScene):
     def on_enter(self) -> None:
         self.show_exit_confirm = False
         self.pressed_button = None
+        if hasattr(self.app, "session") and self.app.session is not None:
+            self.app.session.reset_current_level()
 
     def _load_assets(self) -> None:
         if self._title_img is None:
