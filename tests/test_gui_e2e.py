@@ -12,6 +12,9 @@ from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
+from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
+from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
+from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
 from ella_bot.speech.asr.vosk_engine import BaseASR, ASRResult, WordScore
 from ella_bot.speech.tts.base import TTSConfig
 from ella_bot.speech.tts.factory import build_tts
@@ -54,15 +57,6 @@ class AutoMainMenuScene(MainMenuScene):
 class AutoReadingPromptScene(ReadingPromptScene):
     def update(self, now_ms: int) -> None:
         super().update(now_ms)
-        
-        # Check if we successfully completed level 4
-        if self.app.current_level == "4" and self.app.completed_in_level >= self.app.level_goal:
-            print("\n==================================================")
-            print("  SUCCESS: E2E GUI Test Completed All Levels!")
-            print("==================================================")
-            time.sleep(2)
-            self.app.running = False
-            return
 
         # Automatically start the next attempt if ELLA is back in 'listening' state and prompt isn't active
         if self.app.state == "listening" and not self.app.prompt_active and not self.is_paused:
@@ -71,6 +65,37 @@ class AutoReadingPromptScene(ReadingPromptScene):
             if self.app.state == "listening" and not self.app.prompt_active:
                 print(f"[TEST MANAGER] Triggering next automated attempt for target: '{self.app.expected_sentence}'")
                 self._start_attempt()
+
+
+class AutoResultsScene(ResultsScene):
+    def on_enter(self) -> None:
+        super().on_enter()
+        self._auto_next_at = time.monotonic() + 2.0
+
+    def update(self, now_ms: int) -> None:
+        super().update(now_ms)
+        if hasattr(self, "_auto_next_at") and time.monotonic() >= self._auto_next_at:
+            delattr(self, "_auto_next_at")
+            print("[TEST MANAGER] Results screen active, automatically continuing...")
+            if getattr(self.app.latest_result, "passed", True):
+                self._do_next()
+            else:
+                self._do_retry()
+
+
+class AutoFinalEvaluationScene(FinalEvaluationScene):
+    def on_enter(self) -> None:
+        super().on_enter()
+        self._auto_exit_at = time.monotonic() + 3.0
+
+    def update(self, now_ms: int) -> None:
+        super().update(now_ms)
+        if hasattr(self, "_auto_exit_at") and time.monotonic() >= self._auto_exit_at:
+            delattr(self, "_auto_exit_at")
+            print("\n==================================================")
+            print("  SUCCESS: E2E GUI Test Completed All Levels!")
+            print("==================================================")
+            self.app.running = False
 
 
 class E2EInteractiveApp(EllaGUIApp):
@@ -119,6 +144,9 @@ class E2EInteractiveApp(EllaGUIApp):
             "intro": IntroScene(self),
             "main_menu": AutoMainMenuScene(self),
             "reading_prompt": AutoReadingPromptScene(self),
+            "settings": SettingsScene(self),
+            "results": AutoResultsScene(self),
+            "final_eval": AutoFinalEvaluationScene(self),
         }
         self.switch_scene("intro")
 
@@ -164,6 +192,7 @@ def main():
         width=1280,
         height=720,
         fullscreen=False,
+        pass_bar=0.50,
     )
     
     # Build TTS Config
