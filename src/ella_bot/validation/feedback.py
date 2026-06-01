@@ -335,43 +335,28 @@ def build_spoken_feedback_with_coaching(
         sentence_line = _sanitize_for_tts(expected_sentence)
         targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
-        lines.append(overridden_sentence + ".")
+        if overridden_sentence.endswith((".", "!", "?")):
+            lines.append(overridden_sentence)
+        else:
+            lines.append(overridden_sentence + ".")
+        lines.append("Now you try!")
         
     else:
         # For multi-word phrases and sentences:
-        # Focus on exactly ONE coachable word they missed, rather than reading the entire long sentence.
-        coachable_word = None
-        for hint in feedback.pronunciation_hints:
-            match = re.search(r",\s*([A-Za-z]+)[.!?]", hint) or re.search(r"\b([A-Za-z]{3,})\b", hint)
-            if not match:
-                continue
-            word = match.group(1).lower()
-            if word in {
-                "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", 
-                "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do", "does", 
-                "did", "as", "by", "if", "this", "that", "it", "they", "we", "he", "she", "you", "i"
-            }:
-                continue
-            coachable_word = word
-            break
-            
-        if coachable_word:
-            # Look up standard or pronunciation override (keep word fully intact, don't decompose it!)
-            spoken_form = overrides.get(coachable_word) or coachable_word
-            
-            lines.append(f"Hmm, let's work on the word, {coachable_word}.")
-            lines.append(f"Listen carefully, {spoken_form}. Now you try!")
+        # Read the entire phrase/sentence clearly so they hear the full context, instead of repeating a single word!
+        if t_type == "phrase":
+            lines.append("Alright, let me read the phrase for you.")
         else:
-            # Fallback: Read the full phrase or sentence if no specific word could be coached
-            if t_type == "phrase":
-                lines.append("Alright, let me read the phrase for you.")
-            else:
-                lines.append("Alright, let me read the sentence for you.")
+            lines.append("Alright, let me read the sentence for you.")
             
-            sentence_line = _sanitize_for_tts(expected_sentence)
-            targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
-            overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
+        sentence_line = _sanitize_for_tts(expected_sentence)
+        targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
+        overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
+        if overridden_sentence.endswith((".", "!", "?")):
+            lines.append(overridden_sentence)
+        else:
             lines.append(overridden_sentence + ".")
+        lines.append("Now you try!")
 
     # Clean and sanitize lines for final playback
     sanitized_lines: List[str] = []
