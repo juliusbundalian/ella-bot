@@ -25,22 +25,22 @@ _CORRECT_PHRASES = [
     "Excellent work! That was perfect!",
     "Great job! You red that really well!",
     "Wonderful! You got it!",
-    "That's right! Amazing reading!",
+    "That is right! Amazing reading!",
     "Perfect! I knew you could do it!",
 ]
 
 _ALMOST_PHRASES = [
-    "So close! You're almost there, just a tiny bit more.",
-    "Really good try! You've almost got it.",
+    "So close! You are almost there, just a tiny bit more.",
+    "Really good try! You have almost got it.",
     "Nice effort! Let's try that one more time.",
-    "That was good! You're really close — let's try again.",
+    "That was good! You are really close — let's try again.",
 ]
 
 _RETRY_PHRASES = [
     "Hmmm, let's give that another shot. You can do it!",
-    "That's okay! Let's try reading it again.",
+    "That is okay! Let's try reading it again.",
     "Don't worry, let's have another go at it!",
-    "It's tricky, I know. Let's try one more time!",
+    "It is tricky, I know. Let's try one more time!",
 ]
 
 
