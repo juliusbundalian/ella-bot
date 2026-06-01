@@ -35,6 +35,7 @@ class KokoroTTS(BaseTTS):
             return self._kokoro
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
+        print(f"[ELLA] Speaking: {text}")
         if self.config.non_blocking:
             threading.Thread(target=self._speak_sync, args=(text, rate), daemon=True).start()
         else:

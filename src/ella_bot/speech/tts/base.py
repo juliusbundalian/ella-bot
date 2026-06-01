@@ -50,6 +50,7 @@ class EspeakTTS(BaseTTS):
         self._process: Optional[subprocess.Popen] = None
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
+        print(f"[ELLA] Speaking: {text}")
         self.stop()
         actual_rate = rate if rate is not None else self.config.rate
         cmd = [self.binary, "-s", str(actual_rate)]
@@ -89,6 +90,7 @@ class Pyttsx3TTS(BaseTTS):
             raise RuntimeError("pyttsx3 is not installed. Run: pip install pyttsx3") from exc
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
+        print(f"[ELLA] Speaking: {text}")
         import pyttsx3
         import platform
         
@@ -140,6 +142,7 @@ class MacSayTTS(BaseTTS):
         self._process: Optional[subprocess.Popen] = None
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
+        print(f"[ELLA] Speaking: {text}")
         self.stop()
         cmd = [self.binary]
         if self.config.voice:
@@ -185,6 +188,7 @@ class ReSpeakerTTS(BaseTTS):
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
         """Use espeak with ReSpeaker audio output via ALSA."""
+        print(f"[ELLA] Speaking: {text}")
         self.stop()
         actual_rate = rate if rate is not None else self.config.rate
         cmd = [self.espeak_binary, "-s", str(actual_rate)]

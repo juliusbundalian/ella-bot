@@ -55,6 +55,7 @@ class PiperTTS(BaseTTS):
         )
 
     def speak(self, text: str, rate: Optional[int] = None) -> None:
+        print(f"[ELLA] Speaking: {text}")
         stop_event = threading.Event()
         self._stop = stop_event
         if self.config.non_blocking:
