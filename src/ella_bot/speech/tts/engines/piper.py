@@ -123,8 +123,9 @@ class PiperTTS(BaseTTS):
                     time.sleep(chunk_time)
                     elapsed += chunk_time
             else:
-                last_chunk_len = 0
+                total_samples = 0
                 sample_rate = 22050
+                start_time = None
                 for chunk in self._voice.synthesize(text, syn_config=syn_config):
                     if stop_event.is_set():
                         break
@@ -141,11 +142,22 @@ class PiperTTS(BaseTTS):
                                 break
                             self._active_stream = stream
                             stream.start()
+                            import time
+                            start_time = time.monotonic()
                     stream.write(pcm_warm.tobytes())
-                    last_chunk_len = len(pcm_warm)
+                    total_samples += len(pcm_warm)
                     sample_rate = chunk.sample_rate
                 
-                # Wait briefly for the final chunk of spoken text to finish playing
+                # Wait for the entire speech to finish playing naturally before closing the stream
+                if total_samples > 0 and stream is not None and start_time is not None:
+                    import time
+                    duration = total_samples / sample_rate
+                    chunk_time = 0.05
+                    while not stop_event.is_set():
+                        elapsed = time.monotonic() - start_time
+                        if elapsed >= duration:
+                            break
+                        time.sleep(chunk_time)
                 
         except Exception as exc:
             logger.error("PiperTTS error: %s", exc)

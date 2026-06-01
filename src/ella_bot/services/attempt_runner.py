@@ -48,12 +48,19 @@ class AttemptRunner:
         self.app.event_queue.put(StateChanged("speaking"))
         self.app.event_queue.put(MessageChanged(""))
 
-        if self.app.audio_feedback and self.app.tts is not None:
+        is_retry = False
+        target_item = self.app.session.expected_sentence.strip()
+        if hasattr(self.app.session, "last_announced_sentence"):
+            if self.app.session.last_announced_sentence == target_item:
+                is_retry = True
+            else:
+                self.app.session.last_announced_sentence = target_item
+
+        if not is_retry and self.app.audio_feedback and self.app.tts is not None:
             try:
                 if self._is_paused():
                     return
                 announcement = self.app.session.build_start_announcement()
-                target_item = self.app.session.expected_sentence.strip()
                 target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
                 if "phonemes:" in target_override:
                     pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)

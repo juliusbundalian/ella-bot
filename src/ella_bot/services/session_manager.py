@@ -24,6 +24,7 @@ class SessionManager:
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
         self.completed_in_level = 0
         self.level_goal = len(self.level_pools.get(self.current_level, []))
+        self.last_announced_sentence = ""
 
     @classmethod
     def from_config_file(
@@ -76,6 +77,7 @@ class SessionManager:
         self.level_goal = self.current_pool_size()
         self.level_indices[self.current_level] = 0
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
+        self.last_announced_sentence = ""
 
     def reset_to_start(self) -> None:
         self.current_level = "1a"
@@ -83,6 +85,7 @@ class SessionManager:
         self.completed_in_level = 0
         self.level_goal = len(self.level_pools.get("1a", []))
         self.expected_sentence = self.pick_sentence_for_level("1a")
+        self.last_announced_sentence = ""
 
     def advance_to_higher_stage(self) -> bool:
         idx = self.level_order.index(self.current_level)
@@ -120,6 +123,7 @@ class SessionManager:
         self.completed_in_level = 0
         self.level_goal = self.current_pool_size()
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
+        self.last_announced_sentence = ""
 
     def try_level_up(self, accuracy: float) -> bool:
         if self.current_level == "hard":
@@ -133,12 +137,13 @@ class SessionManager:
 
     def build_start_announcement(self) -> str:
         target_sentence = self.expected_sentence.strip() or "the next item"
+        clean_target = target_sentence.rstrip(".!?")
         level = self.display_level_name()
         item = self.current_item_number()
         intros = [
-            f"Alright! You're on the {level} level, item {item}. When you're ready, please read, {target_sentence}.",
-            f"Okay, let's do this! {level} level, item {item}. Go ahead and read, {target_sentence}.",
-            f"Here we go! Item {item} on the {level} level. Please read out loud, {target_sentence}.",
+            f"Alright! You're on the {level} level, item {item}. When you're ready, please read, {clean_target}.",
+            f"Okay, let's do this! {level} level, item {item}. Go ahead and read, {clean_target}.",
+            f"Here we go! Item {item} on the {level} level. Please read out loud, {clean_target}.",
         ]
         return random.choice(intros)
 
