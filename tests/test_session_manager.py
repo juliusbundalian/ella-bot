@@ -158,3 +158,67 @@ def test_retry_tier_returns_to_first_sublevel():
     assert s.current_level == "1a"
     assert s.completed_in_level == 0
     assert s.level_indices["1g"] == 0
+
+
+# ── Session item limit tests ──────────────────────────────────────────────────
+
+def _tier2_pools(tier2_pool_size: int = 40) -> dict:
+    """Full pool dict with a large tier-2 pool for limit testing."""
+    return {
+        "1a": ["a"], "1b": ["b"], "1c": ["c"], "1d": ["d"],
+        "1e": ["e"], "1f": ["f"], "1g": ["g"],
+        "2a": [str(i) for i in range(tier2_pool_size)],
+        "2b": ["up"], "2c": ["in"], "2d": ["on"],
+        "3": ["the cat"], "4": ["the big dog"],
+    }
+
+
+def test_tier1_level_goal_equals_full_pool_size():
+    pool = [str(i) for i in range(15)]
+    s = SessionManager(level_pools={"1a": pool}, start_level="1a")
+    assert s.level_goal == 15
+
+
+def test_tier2_level_goal_capped_at_session_limit():
+    s = SessionManager(level_pools=_tier2_pools(40), start_level="2a")
+    assert s.level_goal == 10
+
+
+def test_tier2_small_pool_uses_full_pool_when_below_limit():
+    pools = _tier2_pools()
+    pools["2a"] = ["x", "y", "z"]
+    s = SessionManager(level_pools=pools, start_level="2a")
+    assert s.level_goal == 3
+
+
+def test_tier2_session_items_are_drawn_from_full_pool():
+    pools = _tier2_pools(40)
+    s = SessionManager(level_pools=pools, start_level="2a")
+    items = [s.expected_sentence]
+    for _ in range(9):
+        s.advance_to_next_sentence()
+        items.append(s.expected_sentence)
+    assert len(set(items)) == 10
+    assert all(item in pools["2a"] for item in items)
+
+
+def test_advance_to_higher_stage_builds_tier2_session_pool():
+    s = SessionManager(level_pools=_tier2_pools(40), start_level="1g")
+    s.advance_to_higher_stage()
+    assert s.current_level == "2a"
+    assert s.level_goal == 10
+
+
+def test_reset_current_level_rebuilds_tier2_session_pool():
+    s = SessionManager(level_pools=_tier2_pools(40), start_level="2a")
+    s.completed_in_level = s.level_goal
+    s.reset_current_level()
+    assert s.level_goal == 10
+    assert s.completed_in_level == 0
+
+
+def test_retry_sublevel_rebuilds_tier2_session_pool():
+    s = SessionManager(level_pools=_tier2_pools(40), start_level="2a")
+    s.retry_sublevel("2a")
+    assert s.level_goal == 10
+    assert s.completed_in_level == 0

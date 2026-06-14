@@ -5,7 +5,10 @@ import random
 from pathlib import Path
 from typing import Dict, List
 
-from ella_bot.core.constants import LEVEL_ORDER, LEVEL_THRESHOLDS, TIER_SUBLEVELS, tier_of
+from ella_bot.core.constants import (
+    LEVEL_ORDER, LEVEL_THRESHOLDS, TIER_SUBLEVELS,
+    TIER2_PLUS_SESSION_LIMIT, tier_of,
+)
 from ella_bot.utils.file_utils import resolve_config_path
 
 
@@ -21,9 +24,11 @@ class SessionManager:
             start_level = "1a"
         self.current_level = start_level
         self.level_indices: Dict[str, int] = {level: 0 for level in self.level_order}
+        self._session_pools: Dict[str, List[str]] = {}
+        self._session_pools[self.current_level] = self._build_session_pool(self.current_level)
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
         self.completed_in_level = 0
-        self.level_goal = len(self.level_pools.get(self.current_level, []))
+        self.level_goal = len(self._session_pools.get(self.current_level, []))
         self.last_announced_sentence = ""
 
     @classmethod
@@ -41,15 +46,24 @@ class SessionManager:
             level_pools["hard"] = [seed_sentence]
         return cls(level_pools=level_pools, start_level=start_level)
 
+    def _build_session_pool(self, level: str) -> List[str]:
+        pool = self.level_pools.get(level, [])
+        if tier_of(level) == 1:
+            return list(pool)
+        if len(pool) <= TIER2_PLUS_SESSION_LIMIT:
+            return list(pool)
+        return random.sample(pool, TIER2_PLUS_SESSION_LIMIT)
+
     def current_item_number(self) -> int:
         return self.level_indices.get(self.current_level, 0) + 1
 
     def pick_sentence_for_level(self, level: str) -> str:
-        pool = self.level_pools.get(level, [])
+        if level == "hard":
+            pool = self.level_pools.get(level, [])
+            return random.choice(pool) if pool else ""
+        pool = self._session_pools.get(level, [])
         if not pool:
             return ""
-        if level == "hard":
-            return random.choice(pool)
         index = self.level_indices.get(level, 0)
         index = max(0, min(index, len(pool) - 1))
         return pool[index]
@@ -58,13 +72,13 @@ class SessionManager:
         return self.current_level.replace("-", " ").title()
 
     def current_pool_size(self) -> int:
-        return len(self.level_pools.get(self.current_level, []))
+        return len(self._session_pools.get(self.current_level, []))
 
     def advance_to_next_sentence(self) -> None:
         if self.current_level == "hard":
             self.expected_sentence = self.pick_sentence_for_level(self.current_level)
             return
-        pool = self.level_pools.get(self.current_level, [])
+        pool = self._session_pools.get(self.current_level, [])
         if not pool:
             self.expected_sentence = ""
             return
@@ -73,6 +87,7 @@ class SessionManager:
         self.expected_sentence = pool[next_index]
 
     def reset_current_level(self) -> None:
+        self._session_pools[self.current_level] = self._build_session_pool(self.current_level)
         self.completed_in_level = 0
         self.level_goal = self.current_pool_size()
         self.level_indices[self.current_level] = 0
@@ -83,7 +98,8 @@ class SessionManager:
         self.current_level = "1a"
         self.level_indices = {level: 0 for level in self.level_order}
         self.completed_in_level = 0
-        self.level_goal = len(self.level_pools.get("1a", []))
+        self._session_pools["1a"] = self._build_session_pool("1a")
+        self.level_goal = len(self._session_pools.get("1a", []))
         self.expected_sentence = self.pick_sentence_for_level("1a")
         self.last_announced_sentence = ""
 
@@ -120,6 +136,7 @@ class SessionManager:
             self.level_indices[sub] = 0
         if subs:
             self.current_level = subs[0]
+            self._session_pools[subs[0]] = self._build_session_pool(subs[0])
         self.completed_in_level = 0
         self.level_goal = self.current_pool_size()
         self.expected_sentence = self.pick_sentence_for_level(self.current_level)
