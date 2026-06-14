@@ -54,7 +54,7 @@ class AttemptRunner:
         self.error_log: list[str] = []
         self.max_errors = 5
         self._item_attempt_count: int = 0
-        self._current_item_sentence: str = ""
+        self._current_item_key: tuple = ("", 0)
 
     def run(self) -> None:
         self.app.event_queue.put(StateChanged("speaking"))
@@ -161,9 +161,10 @@ class AttemptRunner:
             level = session.current_level
             correct = validation.accuracy >= 0.95
 
-            # Per-item attempt tracking — reset counter when the sentence changes
-            if session.expected_sentence != self._current_item_sentence:
-                self._current_item_sentence = session.expected_sentence
+            # Per-item attempt tracking — reset counter when the item position changes
+            item_key = (level, session.current_item_number())
+            if item_key != self._current_item_key:
+                self._current_item_key = item_key
                 self._item_attempt_count = 0
             self._item_attempt_count += 1
             max_attempts = max_attempts_for_level(level)
