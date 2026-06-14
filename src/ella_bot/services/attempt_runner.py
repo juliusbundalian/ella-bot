@@ -135,27 +135,6 @@ class AttemptRunner:
             )
             self.app.event_queue.put(AttemptReady(view_model))
 
-            if self.app.audio_feedback and self.app.tts is not None:
-                try:
-                    spoken_lines = build_spoken_feedback_with_coaching(
-                        feedback=feedback,
-                        overrides=self.app.pronunciation_overrides,
-                        expected_sentence=self.app.session.expected_sentence,
-                        max_hints=2,
-                    )
-                except Exception:
-                    spoken_lines = [feedback.level_message]
-
-                for line in spoken_lines:
-                    if self._is_paused():
-                        break
-                    self.app.event_queue.put(StateChanged("speaking"))
-                    self.app.event_queue.put(MessageChanged("Speaking feedback..."))
-                    logger.debug("Speaking: %s", line)
-                    self.app.tts.speak(line)
-                    self.app.event_queue.put(StateChanged("idle"))
-                logger.debug("Audio feedback finished")
-
             session = self.app.session
             evaluation = self.app.evaluation
             level = session.current_level
@@ -169,6 +148,33 @@ class AttemptRunner:
             self._item_attempt_count += 1
             max_attempts = max_attempts_for_level(level)
             exhausted = not correct and self._item_attempt_count >= max_attempts
+
+            if self.app.audio_feedback and self.app.tts is not None:
+                if exhausted:
+                    if not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(random.choice(_EXHAUSTION_PHRASES))
+                        self.app.event_queue.put(StateChanged("idle"))
+                else:
+                    try:
+                        spoken_lines = build_spoken_feedback_with_coaching(
+                            feedback=feedback,
+                            overrides=self.app.pronunciation_overrides,
+                            expected_sentence=self.app.session.expected_sentence,
+                            max_hints=2,
+                        )
+                    except Exception:
+                        spoken_lines = [feedback.level_message]
+
+                    for line in spoken_lines:
+                        if self._is_paused():
+                            break
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.event_queue.put(MessageChanged("Speaking feedback..."))
+                        logger.debug("Speaking: %s", line)
+                        self.app.tts.speak(line)
+                        self.app.event_queue.put(StateChanged("idle"))
+                    logger.debug("Audio feedback finished")
 
             evaluation.record_attempt(
                 level=level,
@@ -225,10 +231,6 @@ class AttemptRunner:
                 session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             elif exhausted:
-                if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                    self.app.event_queue.put(StateChanged("speaking"))
-                    self.app.tts.speak(random.choice(_EXHAUSTION_PHRASES))
-                    self.app.event_queue.put(StateChanged("idle"))
                 session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Let's move on."))
             else:
