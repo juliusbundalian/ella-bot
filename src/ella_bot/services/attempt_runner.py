@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import random
 import re
 import time
 from dataclasses import dataclass
 from typing import Callable
 
+from ella_bot.core.constants import max_attempts_for_level
 from ella_bot.core.events import (
     StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
     SubLevelCompleted, SessionCompleted,
@@ -25,6 +27,14 @@ from ella_bot.validation.validators import (
 
 logger = get_logger(__name__)
 
+_EXHAUSTION_PHRASES = [
+    "That's okay! Keep going, you're doing great!",
+    "Nice try! Let's move to the next one.",
+    "Don't worry, we'll come back to tricky ones. Keep it up!",
+    "Good effort! Moving on.",
+    "That one was tough! You're still doing amazing.",
+]
+
 
 @dataclass
 class AttemptViewModel:
@@ -43,6 +53,8 @@ class AttemptRunner:
         self._is_paused = is_paused
         self.error_log: list[str] = []
         self.max_errors = 5
+        self._item_attempt_count: int = 0
+        self._current_item_sentence: str = ""
 
     def run(self) -> None:
         self.app.event_queue.put(StateChanged("speaking"))
@@ -149,6 +161,14 @@ class AttemptRunner:
             level = session.current_level
             correct = validation.accuracy >= 0.95
 
+            # Per-item attempt tracking — reset counter when the sentence changes
+            if session.expected_sentence != self._current_item_sentence:
+                self._current_item_sentence = session.expected_sentence
+                self._item_attempt_count = 0
+            self._item_attempt_count += 1
+            max_attempts = max_attempts_for_level(level)
+            exhausted = not correct and self._item_attempt_count >= max_attempts
+
             evaluation.record_attempt(
                 level=level,
                 item=session.current_item_number(),
@@ -159,10 +179,13 @@ class AttemptRunner:
                 correct=correct,
             )
 
-            if correct:
+            if correct or exhausted:
                 session.completed_in_level = min(
                     session.completed_in_level + 1, session.level_goal
                 )
+                self._item_attempt_count = 0
+
+            if correct:
                 self.app.event_queue.put(StateChanged("success"))
             else:
                 self.app.event_queue.put(StateChanged("retry"))
@@ -200,6 +223,13 @@ class AttemptRunner:
             if correct:
                 session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
+            elif exhausted:
+                if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                    self.app.event_queue.put(StateChanged("speaking"))
+                    self.app.tts.speak(random.choice(_EXHAUSTION_PHRASES))
+                    self.app.event_queue.put(StateChanged("idle"))
+                session.advance_to_next_sentence()
+                self.app.event_queue.put(MessageChanged("Let's move on."))
             else:
                 self.app.event_queue.put(MessageChanged("Give it another try!"))
 
