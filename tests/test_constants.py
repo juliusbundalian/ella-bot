@@ -36,3 +36,17 @@ def test_tier_of_maps_each_level_to_its_tier():
 
 def test_tier_of_returns_zero_for_unknown_level():
     assert constants.tier_of("hard") == 0
+
+
+def test_max_attempts_for_level_tier1():
+    for level in ["1a", "1b", "1c", "1d", "1e", "1f", "1g"]:
+        assert constants.max_attempts_for_level(level) == 1
+
+
+def test_max_attempts_for_level_tier2_to_4():
+    for level in ["2a", "2b", "2c", "2d", "3", "4"]:
+        assert constants.max_attempts_for_level(level) == 3
+
+
+def test_max_attempts_for_level_unknown_defaults_to_3():
+    assert constants.max_attempts_for_level("hard") == 3

@@ -37,3 +37,8 @@ def tier_of(level: str) -> int:
         if level in subs:
             return tier
     return 0
+
+
+def max_attempts_for_level(level: str) -> int:
+    """Return the maximum attempts allowed per item for the given level."""
+    return 1 if tier_of(level) == 1 else 3
