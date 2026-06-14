@@ -45,7 +45,7 @@ class ReadingPromptScene(BaseScene):
         self._touch_activity()
         self.app.animator.set_state("idle", reset=True)
         self.app.sublevel_start_time = time.monotonic()
-        
+
         # Drain and clear the event queue to prevent any stale background thread events from leaking
         self._drain_event_queue()
         while not self.app.event_queue.empty():
@@ -53,7 +53,7 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.get_nowait()
             except Exception:
                 break
-                
+
         self._auto_start_at = time.monotonic() + 1.5
 
     def on_exit(self) -> None:

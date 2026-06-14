@@ -147,9 +147,7 @@ class AttemptRunner:
             session = self.app.session
             evaluation = self.app.evaluation
             level = session.current_level
-            correct = feedback.level_message.startswith(
-                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
-            )
+            correct = validation.accuracy >= 0.95
 
             evaluation.record_attempt(
                 level=level,
@@ -199,9 +197,7 @@ class AttemptRunner:
                     self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
                 return
 
-            if feedback.level_message.startswith(
-                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
-            ):
+            if correct:
                 session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             else:
