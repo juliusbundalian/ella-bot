@@ -158,6 +158,7 @@ def build_tts_if_enabled(args: argparse.Namespace):
             noise_scale=args.noise_scale,
             noise_w=args.noise_w,
             length_scale=args.length_scale,
+            volume=getattr(args, "volume", 1.0),
             kokoro_model=args.kokoro_model,
             kokoro_voices=args.kokoro_voices,
         ),
