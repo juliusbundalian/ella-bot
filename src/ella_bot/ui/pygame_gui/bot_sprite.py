@@ -9,7 +9,7 @@ def bot_state_for_app(app_state: str) -> str:
     if app_state == "processing":
         return "thinking"
     if app_state == "retry":
-        return "error"
+        return "idle"
     if app_state == "success":
         return "idle"
     if app_state in {"idle", "listening", "speaking", "warmup"}:
