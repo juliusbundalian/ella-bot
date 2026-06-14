@@ -50,3 +50,7 @@ def test_max_attempts_for_level_tier2_to_4():
 
 def test_max_attempts_for_level_unknown_defaults_to_3():
     assert constants.max_attempts_for_level("hard") == 3
+
+
+def test_tier2_plus_session_limit_is_10():
+    assert constants.TIER2_PLUS_SESSION_LIMIT == 10
