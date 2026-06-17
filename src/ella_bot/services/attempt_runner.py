@@ -16,6 +16,7 @@ from ella_bot.validation.feedback import (
     FeedbackResult,
     build_feedback,
     build_spoken_feedback_with_coaching,
+    overrides_for_level,
 )
 from ella_bot.validation.validators import (
     ValidationResult,
@@ -73,7 +74,10 @@ class AttemptRunner:
                 if self._is_paused():
                     return
                 announcement = self.app.session.build_start_announcement()
-                target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
+                level_overrides = overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                )
+                target_override = level_overrides.get(target_item.lower(), target_item)
                 if "phonemes:" in target_override:
                     pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
                     parts = pattern.split(announcement, maxsplit=1)
@@ -159,7 +163,9 @@ class AttemptRunner:
                     try:
                         spoken_lines = build_spoken_feedback_with_coaching(
                             feedback=feedback,
-                            overrides=self.app.pronunciation_overrides,
+                            overrides=overrides_for_level(
+                                level, self.app.pronunciation_overrides
+                            ),
                             expected_sentence=self.app.session.expected_sentence,
                             max_hints=2,
                         )
@@ -267,7 +273,9 @@ class AttemptRunner:
         try:
             lines = build_spoken_feedback_with_coaching(
                 feedback=feedback,
-                overrides=self.app.pronunciation_overrides,
+                overrides=overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                ),
                 expected_sentence=self.app.latest_attempt.expected_sentence,
                 max_hints=2,
             )

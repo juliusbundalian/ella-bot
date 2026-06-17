@@ -55,6 +55,53 @@ def test_completing_a_sublevel_posts_sublevel_completed(tmp_path, monkeypatch):
     assert (tmp_path / "s.jsonl").read_text().count('"type": "sublevel"') == 1
 
 
+def _make_app_with_tts(tmp_path, level_pools, start_level):
+    app = MagicMock()
+    app.audio_feedback = True
+    app.tts = MagicMock()
+    app.pronunciation_overrides = {"go": "phonemes:ɡˈɔ."}
+    app.event_queue = queue.Queue()
+    app.session = SessionManager(level_pools=level_pools, start_level=start_level)
+    app.session.build_start_announcement = lambda: "Please read, go."
+    app.evaluation = EvaluationService(log_path=tmp_path / "s.jsonl", pass_bar=0.70)
+    app.asr = MagicMock()
+    app.asr.transcribe.return_value = _FakeASRResult()
+    return app
+
+
+def _spoken(app):
+    return [c.args[0] for c in app.tts.speak.call_args_list if c.args]
+
+
+def test_phonics_override_applies_on_tier1_item(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda t: ["go"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda toks, confs: {})
+
+    app = _make_app_with_tts(tmp_path, {"1c": ["go"]}, "1c")
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    # On a tier-1 phonics level the IPA blend pronunciation must be used.
+    assert "phonemes:ɡˈɔ." in _spoken(app)
+
+
+def test_phonics_override_skipped_on_tier2_word(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda t: ["go"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda toks, confs: {})
+
+    app = _make_app_with_tts(tmp_path, {"2a": ["go"]}, "2a")
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    # On tier 2+ the real word "go" must be spoken naturally, never as the
+    # tier-1 phonics phoneme.
+    assert not any("phonemes:" in line for line in _spoken(app))
+
+
 class _FakeWrongValidation:
     accuracy = 0.0
     wer = 1.0
