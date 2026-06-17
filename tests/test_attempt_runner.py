@@ -275,3 +275,14 @@ def test_silent_turn_emits_no_attempt_ready(tmp_path):
     AttemptRunner(app, is_paused=lambda: False).run()
 
     assert not any(isinstance(e, AttemptReady) for e in _drain(app))
+
+
+def test_silent_turn_completing_sublevel_posts_sublevel_completed(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"1a": ["only item"]}, "1a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert any(
+        isinstance(e, SubLevelCompleted) and e.kind == "sublevel" for e in _drain(app)
+    )
