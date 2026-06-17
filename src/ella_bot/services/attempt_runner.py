@@ -36,6 +36,19 @@ _EXHAUSTION_PHRASES = [
     "That one was tough! You're still doing amazing.",
 ]
 
+_NO_INPUT_PHRASES = [
+    "I didn't quite hear you. Let's try again!",
+    "Hmm, I didn't hear anything. Give it a try!",
+    "Let's try that again — I'm listening!",
+    "Oops, I didn't catch that. Have another go!",
+]
+
+_NO_INPUT_MOVE_ON_PHRASES = [
+    "I didn't quite hear you that time. Let's try a new one!",
+    "That's okay! Let's move on to the next one.",
+    "No worries — let's try a different one!",
+]
+
 
 @dataclass
 class AttemptViewModel:
@@ -111,6 +124,11 @@ class AttemptRunner:
                 return
 
             self.app.prompt_active = False
+
+            if not asr_result.transcript.strip():
+                self._handle_no_input()
+                return
+
             self.app.event_queue.put(StateChanged("processing"))
             self.app.event_queue.put(MessageChanged("Validating your reading..."))
 
@@ -291,6 +309,49 @@ class AttemptRunner:
         if correct or exhausted:
             session.advance_to_next_sentence()
         return False
+
+    def _handle_no_input(self) -> None:
+        """Respond to a silent turn (empty transcript).
+
+        Counts as an attempt — same progression bookkeeping as a wrong answer —
+        but speaks a dedicated no-input phrase instead of pronunciation coaching,
+        and never emits an AttemptReady view model (nothing was spoken to show).
+        """
+        session = self.app.session
+        level = session.current_level
+
+        exhausted = self._register_attempt(level, session, correct=False)
+        advancing = exhausted  # silence is never correct, so the item only moves on when exhausted
+
+        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+            phrase = random.choice(
+                _NO_INPUT_MOVE_ON_PHRASES if advancing else _NO_INPUT_PHRASES
+            )
+            self.app.event_queue.put(StateChanged("speaking"))
+            self.app.tts.speak(phrase)
+            self.app.event_queue.put(StateChanged("idle"))
+
+        self.app.evaluation.record_attempt(
+            level=level,
+            item=session.current_item_number(),
+            expected=session.expected_sentence,
+            heard="",
+            accuracy=0.0,
+            wer=1.0,
+            correct=False,
+        )
+
+        if self._advance_after_attempt(level, session, correct=False, exhausted=exhausted):
+            return
+
+        if advancing:
+            self.app.event_queue.put(MessageChanged("Let's move on."))
+        else:
+            self.app.event_queue.put(MessageChanged("I didn't hear you — let's try again!"))
+
+        time.sleep(0.6)
+        self.app.event_queue.put(StateChanged("listening"))
+        self.app.event_queue.put(MessageChanged(""))
 
     def replay(self) -> None:
         if (

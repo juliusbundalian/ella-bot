@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from ella_bot.services.attempt_runner import AttemptRunner
 from ella_bot.services.session_manager import SessionManager
 from ella_bot.services.evaluation import EvaluationService
-from ella_bot.core.events import SubLevelCompleted
+from ella_bot.core.events import SubLevelCompleted, AttemptReady
 import ella_bot.services.attempt_runner as runner_mod
 
 
@@ -19,8 +19,9 @@ class _FakeFeedback:
 
 
 class _FakeASRResult:
-    transcript = "a"
-    words = []
+    def __init__(self, transcript: str = "a"):
+        self.transcript = transcript
+        self.words = []
 
 
 def _make_app(tmp_path):
@@ -207,3 +208,70 @@ def test_tier2_attempt_counter_resets_on_new_item(tmp_path, monkeypatch):
     runner.run()  # first wrong attempt on item two — should NOT advance yet
     assert app.session.expected_sentence == "item two"
     assert app.session.completed_in_level == 1  # only item one counted so far
+
+
+def _drain(app):
+    events = []
+    while not app.event_queue.empty():
+        events.append(app.event_queue.get_nowait())
+    return events
+
+
+def test_silent_turn_tier1_advances_with_move_on_phrase(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"1a": ["a", "b"]}, "1a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    assert app.session.expected_sentence == "a"
+    runner.run()
+
+    assert app.session.expected_sentence == "b"
+    assert app.session.completed_in_level == 1
+    assert any(line in runner_mod._NO_INPUT_MOVE_ON_PHRASES for line in _spoken(app))
+    assert app.evaluation._attempts["1a"][0].heard == ""
+
+
+def test_silent_turn_tier2_with_tries_left_stays_with_reprompt(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"2a": ["item one", "item two"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    runner.run()
+
+    assert app.session.expected_sentence == "item one"
+    assert app.session.completed_in_level == 0
+    assert any(line in runner_mod._NO_INPUT_PHRASES for line in _spoken(app))
+
+
+def test_silent_turn_tier2_final_attempt_advances(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"2a": ["item one", "item two"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    runner.run()  # attempt 1 — re-prompt
+    runner.run()  # attempt 2 — re-prompt
+    runner.run()  # attempt 3 — exhausted, advance
+
+    assert app.session.expected_sentence == "item two"
+    assert app.session.completed_in_level == 1
+    assert any(line in runner_mod._NO_INPUT_MOVE_ON_PHRASES for line in _spoken(app))
+
+
+def test_silent_turn_speaks_no_coaching(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"2a": ["item one", "item two"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    spoken = _spoken(app)
+    assert not any("Now you try!" in line for line in spoken)
+    assert not any("let me read" in line.lower() for line in spoken)
+
+
+def test_silent_turn_emits_no_attempt_ready(tmp_path):
+    app = _make_app_with_tts(tmp_path, {"2a": ["item one", "item two"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert not any(isinstance(e, AttemptReady) for e in _drain(app))
