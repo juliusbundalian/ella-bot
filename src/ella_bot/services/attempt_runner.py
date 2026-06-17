@@ -144,14 +144,7 @@ class AttemptRunner:
             level = session.current_level
             correct = validation.accuracy >= 0.95
 
-            # Per-item attempt tracking — reset counter when the item position changes
-            item_key = (level, session.current_item_number())
-            if item_key != self._current_item_key:
-                self._current_item_key = item_key
-                self._item_attempt_count = 0
-            self._item_attempt_count += 1
-            max_attempts = max_attempts_for_level(level)
-            exhausted = not correct and self._item_attempt_count >= max_attempts
+            exhausted = self._register_attempt(level, session, correct)
 
             if self.app.audio_feedback and self.app.tts is not None:
                 if exhausted:
@@ -192,52 +185,12 @@ class AttemptRunner:
                 correct=correct,
             )
 
-            if correct or exhausted:
-                session.completed_in_level = min(
-                    session.completed_in_level + 1, session.level_goal
-                )
-                self._item_attempt_count = 0
-
-            if correct:
-                self.app.event_queue.put(StateChanged("success"))
-            else:
-                self.app.event_queue.put(StateChanged("retry"))
-
-            if session.current_sublevel_complete():
-                tier = session.tier_of(level)
-                sub_result = evaluation.finish_sublevel(level)
-                if session.is_last_sublevel_of_tier(level):
-                    tier_result = evaluation.finish_tier(tier)
-                    if session.is_last_tier(tier):
-                        cumulative = evaluation.finish_session()
-                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                            self.app.event_queue.put(StateChanged("speaking"))
-                            self.app.tts.speak(
-                                "Incredible! You finished every level. Let's see how you did!"
-                            )
-                            self.app.event_queue.put(StateChanged("idle"))
-                        self.app.event_queue.put(SessionCompleted(cumulative))
-                    else:
-                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                            self.app.event_queue.put(StateChanged("speaking"))
-                            self.app.tts.speak(
-                                f"Wow, you finished Level {tier}! You're doing amazing!"
-                            )
-                            self.app.event_queue.put(StateChanged("idle"))
-                        self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
-                else:
-                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                        self.app.event_queue.put(StateChanged("speaking"))
-                        self.app.tts.speak("Great job! Let's see how you did!")
-                        self.app.event_queue.put(StateChanged("idle"))
-                    self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
+            if self._advance_after_attempt(level, session, correct, exhausted):
                 return
 
             if correct:
-                session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             elif exhausted:
-                session.advance_to_next_sentence()
                 self.app.event_queue.put(MessageChanged("Let's move on."))
             else:
                 self.app.event_queue.put(MessageChanged("Give it another try!"))
@@ -259,6 +212,74 @@ class AttemptRunner:
             self.app.event_queue.put(ErrorOccurred(error_msg))
         finally:
             self.app.prompt_active = False
+
+    def _register_attempt(self, level: str, session, correct: bool) -> bool:
+        """Increment the per-item attempt counter and report whether the item is exhausted.
+
+        The counter resets whenever the item position changes. Returns True when a
+        non-correct attempt has reached the level's attempt limit.
+        """
+        item_key = (level, session.current_item_number())
+        if item_key != self._current_item_key:
+            self._current_item_key = item_key
+            self._item_attempt_count = 0
+        self._item_attempt_count += 1
+        max_attempts = max_attempts_for_level(level)
+        return not correct and self._item_attempt_count >= max_attempts
+
+    def _advance_after_attempt(
+        self, level: str, session, correct: bool, exhausted: bool
+    ) -> bool:
+        """Apply post-attempt progression shared by scored and silent turns.
+
+        Bumps level progress when the item is finished, emits the success/retry
+        state, and runs the sublevel/tier/session completion cascade. Returns True
+        when a scene/session transition was emitted and the caller should return.
+        """
+        if correct or exhausted:
+            session.completed_in_level = min(
+                session.completed_in_level + 1, session.level_goal
+            )
+            self._item_attempt_count = 0
+
+        if correct:
+            self.app.event_queue.put(StateChanged("success"))
+        else:
+            self.app.event_queue.put(StateChanged("retry"))
+
+        if session.current_sublevel_complete():
+            tier = session.tier_of(level)
+            sub_result = self.app.evaluation.finish_sublevel(level)
+            if session.is_last_sublevel_of_tier(level):
+                tier_result = self.app.evaluation.finish_tier(tier)
+                if session.is_last_tier(tier):
+                    cumulative = self.app.evaluation.finish_session()
+                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(
+                            "Incredible! You finished every level. Let's see how you did!"
+                        )
+                        self.app.event_queue.put(StateChanged("idle"))
+                    self.app.event_queue.put(SessionCompleted(cumulative))
+                else:
+                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(
+                            f"Wow, you finished Level {tier}! You're doing amazing!"
+                        )
+                        self.app.event_queue.put(StateChanged("idle"))
+                    self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
+            else:
+                if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                    self.app.event_queue.put(StateChanged("speaking"))
+                    self.app.tts.speak("Great job! Let's see how you did!")
+                    self.app.event_queue.put(StateChanged("idle"))
+                self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
+            return True
+
+        if correct or exhausted:
+            session.advance_to_next_sentence()
+        return False
 
     def replay(self) -> None:
         if (
