@@ -140,7 +140,6 @@ class AttemptRunner:
             self.app.event_queue.put(AttemptReady(view_model))
 
             session = self.app.session
-            evaluation = self.app.evaluation
             level = session.current_level
             correct = validation.accuracy >= 0.95
 
@@ -175,7 +174,7 @@ class AttemptRunner:
                         self.app.event_queue.put(StateChanged("idle"))
                     logger.debug("Audio feedback finished")
 
-            evaluation.record_attempt(
+            self.app.evaluation.record_attempt(
                 level=level,
                 item=session.current_item_number(),
                 expected=session.expected_sentence,
@@ -232,9 +231,21 @@ class AttemptRunner:
     ) -> bool:
         """Apply post-attempt progression shared by scored and silent turns.
 
-        Bumps level progress when the item is finished, emits the success/retry
-        state, and runs the sublevel/tier/session completion cascade. Returns True
-        when a scene/session transition was emitted and the caller should return.
+        Side effects a direct caller must know about:
+        - Bumps ``session.completed_in_level`` (capped at ``session.level_goal``)
+          when the item is finished (correct or exhausted).
+        - Resets ``self._item_attempt_count`` to 0 when the item is finished.
+        - Emits ``StateChanged("success")`` on a correct attempt, otherwise
+          ``StateChanged("retry")``.
+        - Runs the sublevel/tier/session completion cascade when
+          ``session.current_sublevel_complete()`` is True: calls
+          ``evaluation.finish_sublevel``, ``evaluation.finish_tier``, and/or
+          ``evaluation.finish_session`` as appropriate, emits TTS and the
+          relevant ``SubLevelCompleted`` / ``SessionCompleted`` event, then
+          returns True so the caller exits immediately (scene transition).
+        - Otherwise, when the item is finished (correct or exhausted) without a
+          scene transition, calls ``session.advance_to_next_sentence()`` and
+          returns False.
         """
         if correct or exhausted:
             session.completed_in_level = min(
