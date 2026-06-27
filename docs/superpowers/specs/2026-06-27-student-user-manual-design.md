@@ -247,10 +247,10 @@ Observed on 2026-06-27:
 - The four repository screenshots were last modified on 2026-05-27; student-facing code changed afterward.
 - `config/level_pools.json` has an uncommitted change that replaces most Level 1A vowels with an empty second item.
 - `config/settings.ini` has uncommitted changes to listening time and fullscreen behavior.
-- `pytest -q` cannot collect `tests/test_tts_piper.py` because NumPy is missing from the active Python environment.
-- `pytest -q --ignore=tests/test_tts_piper.py` reports 97 passing and 2 failing tests. The failures concern modeled feedback and a single-letter homophone match, both of which can affect the learner experience.
+- The system `pytest -q` command cannot collect `tests/test_tts_piper.py` because NumPy is missing from the system Python environment. This is not the correct project test command.
+- The project environment command `.venv/bin/python -m pytest -q` reports 104 passing and 5 failing tests. Two failures concern modeled feedback and a single-letter homophone match. Three concern Piper speech configuration, explicit voice-model selection, and audio-stop behavior. All five can affect the learner experience or the accuracy of manual instructions.
 
-Before screenshots or final copy are produced, the project owner must identify the approved release revision, confirm the Level 1A content and default settings, install the test dependencies, and resolve or explicitly accept the two student-facing test failures.
+Before screenshots or final copy are produced, the project owner must identify the approved release revision, confirm the Level 1A content and default settings, use the project virtual environment for verification, and resolve or explicitly accept the five failing tests.
 
 ## Screenshot Capture Matrix
 
