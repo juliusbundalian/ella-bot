@@ -13,6 +13,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.worktrees/
 
 # Python tooling caches
 .pytest_cache/
