@@ -30,6 +30,8 @@ TIER_SUBLEVELS: Dict[int, List[str]] = {
     4: ["4"],
 }
 
+TIER2_PLUS_SESSION_LIMIT: int = 10
+
 
 def tier_of(level: str) -> int:
     """Return the tier number (1-4) a sub-level belongs to, or 0 if unknown."""
@@ -37,3 +39,8 @@ def tier_of(level: str) -> int:
         if level in subs:
             return tier
     return 0
+
+
+def max_attempts_for_level(level: str) -> int:
+    """Return the maximum attempts allowed per item for the given level."""
+    return 1 if tier_of(level) == 1 else 3

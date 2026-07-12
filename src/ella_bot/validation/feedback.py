@@ -239,6 +239,22 @@ def _sanitize_for_tts(text: str) -> str:
     return output
 
 
+def overrides_for_level(level: str, overrides: Mapping[str, str]) -> Dict[str, str]:
+    """Return the pronunciation overrides that apply on the given level.
+
+    The override table is entirely tier-1 phonics content (single letters and
+    consonant-vowel blends like "go", "do", "no"). Those spellings reappear as
+    real sight words on tier 2+, where they must be spoken naturally rather than
+    sounded out with the tier-1 phoneme. Scope the overrides to tier 1 so a level-1
+    blend pronunciation never leaks into a higher level's word.
+    """
+    from ella_bot.core.constants import tier_of
+
+    if tier_of(level) == 1:
+        return dict(overrides)
+    return {}
+
+
 def apply_pronunciation_overrides(text: str, overrides: Mapping[str, str]) -> str:
     """Replace specific words with TTS-friendly pronunciations (for spoken output only)."""
     output = _sanitize_for_tts(text)

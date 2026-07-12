@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import random
 import re
 import time
 from dataclasses import dataclass
 from typing import Callable
 
+from ella_bot.core.constants import max_attempts_for_level
 from ella_bot.core.events import (
     StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
     SubLevelCompleted, SessionCompleted,
@@ -14,6 +16,7 @@ from ella_bot.validation.feedback import (
     FeedbackResult,
     build_feedback,
     build_spoken_feedback_with_coaching,
+    overrides_for_level,
 )
 from ella_bot.validation.validators import (
     ValidationResult,
@@ -24,6 +27,27 @@ from ella_bot.validation.validators import (
 )
 
 logger = get_logger(__name__)
+
+_EXHAUSTION_PHRASES = [
+    "That's okay! Keep going, you're doing great!",
+    "Nice try! Let's move to the next one.",
+    "Don't worry, we'll come back to tricky ones. Keep it up!",
+    "Good effort! Moving on.",
+    "That one was tough! You're still doing amazing.",
+]
+
+_NO_INPUT_PHRASES = [
+    "I didn't quite hear you. Let's try again!",
+    "Hmm, I didn't hear anything. Give it a try!",
+    "Let's try that again — I'm listening!",
+    "Oops, I didn't catch that. Have another go!",
+]
+
+_NO_INPUT_MOVE_ON_PHRASES = [
+    "I didn't quite hear you that time. Let's try a new one!",
+    "That's okay! Let's move on to the next one.",
+    "No worries — let's try a different one!",
+]
 
 
 @dataclass
@@ -43,6 +67,8 @@ class AttemptRunner:
         self._is_paused = is_paused
         self.error_log: list[str] = []
         self.max_errors = 5
+        self._item_attempt_count: int = 0
+        self._current_item_key: tuple = ("", 0)
 
     def run(self) -> None:
         self.app.event_queue.put(StateChanged("speaking"))
@@ -61,7 +87,10 @@ class AttemptRunner:
                 if self._is_paused():
                     return
                 announcement = self.app.session.build_start_announcement()
-                target_override = self.app.pronunciation_overrides.get(target_item.lower(), target_item)
+                level_overrides = overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                )
+                target_override = level_overrides.get(target_item.lower(), target_item)
                 if "phonemes:" in target_override:
                     pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
                     parts = pattern.split(announcement, maxsplit=1)
@@ -95,6 +124,11 @@ class AttemptRunner:
                 return
 
             self.app.prompt_active = False
+
+            if not asr_result.transcript.strip():
+                self._handle_no_input()
+                return
+
             self.app.event_queue.put(StateChanged("processing"))
             self.app.event_queue.put(MessageChanged("Validating your reading..."))
 
@@ -123,35 +157,42 @@ class AttemptRunner:
             )
             self.app.event_queue.put(AttemptReady(view_model))
 
-            if self.app.audio_feedback and self.app.tts is not None:
-                try:
-                    spoken_lines = build_spoken_feedback_with_coaching(
-                        feedback=feedback,
-                        overrides=self.app.pronunciation_overrides,
-                        expected_sentence=self.app.session.expected_sentence,
-                        max_hints=2,
-                    )
-                except Exception:
-                    spoken_lines = [feedback.level_message]
-
-                for line in spoken_lines:
-                    if self._is_paused():
-                        break
-                    self.app.event_queue.put(StateChanged("speaking"))
-                    self.app.event_queue.put(MessageChanged("Speaking feedback..."))
-                    logger.debug("Speaking: %s", line)
-                    self.app.tts.speak(line)
-                    self.app.event_queue.put(StateChanged("idle"))
-                logger.debug("Audio feedback finished")
-
             session = self.app.session
-            evaluation = self.app.evaluation
             level = session.current_level
-            correct = feedback.level_message.startswith(
-                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
-            )
+            correct = validation.accuracy >= 0.95
 
-            evaluation.record_attempt(
+            exhausted = self._register_attempt(level, session, correct)
+
+            if self.app.audio_feedback and self.app.tts is not None:
+                if exhausted:
+                    if not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(random.choice(_EXHAUSTION_PHRASES))
+                        self.app.event_queue.put(StateChanged("idle"))
+                else:
+                    try:
+                        spoken_lines = build_spoken_feedback_with_coaching(
+                            feedback=feedback,
+                            overrides=overrides_for_level(
+                                level, self.app.pronunciation_overrides
+                            ),
+                            expected_sentence=self.app.session.expected_sentence,
+                            max_hints=2,
+                        )
+                    except Exception:
+                        spoken_lines = [feedback.level_message]
+
+                    for line in spoken_lines:
+                        if self._is_paused():
+                            break
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.event_queue.put(MessageChanged("Speaking feedback..."))
+                        logger.debug("Speaking: %s", line)
+                        self.app.tts.speak(line)
+                        self.app.event_queue.put(StateChanged("idle"))
+                    logger.debug("Audio feedback finished")
+
+            self.app.evaluation.record_attempt(
                 level=level,
                 item=session.current_item_number(),
                 expected=session.expected_sentence,
@@ -161,49 +202,13 @@ class AttemptRunner:
                 correct=correct,
             )
 
-            if correct:
-                session.completed_in_level = min(
-                    session.completed_in_level + 1, session.level_goal
-                )
-                self.app.event_queue.put(StateChanged("success"))
-            else:
-                self.app.event_queue.put(StateChanged("retry"))
-
-            if session.current_sublevel_complete():
-                tier = session.tier_of(level)
-                sub_result = evaluation.finish_sublevel(level)
-                if session.is_last_sublevel_of_tier(level):
-                    tier_result = evaluation.finish_tier(tier)
-                    if session.is_last_tier(tier):
-                        cumulative = evaluation.finish_session()
-                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                            self.app.event_queue.put(StateChanged("speaking"))
-                            self.app.tts.speak(
-                                "Incredible! You finished every level. Let's see how you did!"
-                            )
-                            self.app.event_queue.put(StateChanged("idle"))
-                        self.app.event_queue.put(SessionCompleted(cumulative))
-                    else:
-                        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                            self.app.event_queue.put(StateChanged("speaking"))
-                            self.app.tts.speak(
-                                f"Wow, you finished Level {tier}! You're doing amazing!"
-                            )
-                            self.app.event_queue.put(StateChanged("idle"))
-                        self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
-                else:
-                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
-                        self.app.event_queue.put(StateChanged("speaking"))
-                        self.app.tts.speak("Great job! Let's see how you did!")
-                        self.app.event_queue.put(StateChanged("idle"))
-                    self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
+            if self._advance_after_attempt(level, session, correct, exhausted):
                 return
 
-            if feedback.level_message.startswith(
-                ("Excellent", "Great", "Wonderful", "That's right", "Perfect")
-            ):
-                session.advance_to_next_sentence()
+            if correct:
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
+            elif exhausted:
+                self.app.event_queue.put(MessageChanged("Let's move on."))
             else:
                 self.app.event_queue.put(MessageChanged("Give it another try!"))
 
@@ -225,6 +230,129 @@ class AttemptRunner:
         finally:
             self.app.prompt_active = False
 
+    def _register_attempt(self, level: str, session, correct: bool) -> bool:
+        """Increment the per-item attempt counter and report whether the item is exhausted.
+
+        The counter resets whenever the item position changes. Returns True when a
+        non-correct attempt has reached the level's attempt limit.
+        """
+        item_key = (level, session.current_item_number())
+        if item_key != self._current_item_key:
+            self._current_item_key = item_key
+            self._item_attempt_count = 0
+        self._item_attempt_count += 1
+        max_attempts = max_attempts_for_level(level)
+        return not correct and self._item_attempt_count >= max_attempts
+
+    def _advance_after_attempt(
+        self, level: str, session, correct: bool, exhausted: bool
+    ) -> bool:
+        """Apply post-attempt progression shared by scored and silent turns.
+
+        Side effects a direct caller must know about:
+        - Bumps ``session.completed_in_level`` (capped at ``session.level_goal``)
+          when the item is finished (correct or exhausted).
+        - Resets ``self._item_attempt_count`` to 0 when the item is finished.
+        - Emits ``StateChanged("success")`` on a correct attempt, otherwise
+          ``StateChanged("retry")``.
+        - Runs the sublevel/tier/session completion cascade when
+          ``session.current_sublevel_complete()`` is True: calls
+          ``evaluation.finish_sublevel``, ``evaluation.finish_tier``, and/or
+          ``evaluation.finish_session`` as appropriate, emits TTS and the
+          relevant ``SubLevelCompleted`` / ``SessionCompleted`` event, then
+          returns True so the caller exits immediately (scene transition).
+        - Otherwise, when the item is finished (correct or exhausted) without a
+          scene transition, calls ``session.advance_to_next_sentence()`` and
+          returns False.
+        """
+        if correct or exhausted:
+            session.completed_in_level = min(
+                session.completed_in_level + 1, session.level_goal
+            )
+            self._item_attempt_count = 0
+
+        if correct:
+            self.app.event_queue.put(StateChanged("success"))
+        else:
+            self.app.event_queue.put(StateChanged("retry"))
+
+        if session.current_sublevel_complete():
+            tier = session.tier_of(level)
+            sub_result = self.app.evaluation.finish_sublevel(level)
+            if session.is_last_sublevel_of_tier(level):
+                tier_result = self.app.evaluation.finish_tier(tier)
+                if session.is_last_tier(tier):
+                    cumulative = self.app.evaluation.finish_session()
+                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(
+                            "Incredible! You finished every level. Let's see how you did!"
+                        )
+                        self.app.event_queue.put(StateChanged("idle"))
+                    self.app.event_queue.put(SessionCompleted(cumulative))
+                else:
+                    if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                        self.app.event_queue.put(StateChanged("speaking"))
+                        self.app.tts.speak(
+                            f"Wow, you finished Level {tier}! You're doing amazing!"
+                        )
+                        self.app.event_queue.put(StateChanged("idle"))
+                    self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
+            else:
+                if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+                    self.app.event_queue.put(StateChanged("speaking"))
+                    self.app.tts.speak("Great job! Let's see how you did!")
+                    self.app.event_queue.put(StateChanged("idle"))
+                self.app.event_queue.put(SubLevelCompleted(sub_result, "sublevel"))
+            return True
+
+        if correct or exhausted:
+            session.advance_to_next_sentence()
+        return False
+
+    def _handle_no_input(self) -> None:
+        """Respond to a silent turn (empty transcript).
+
+        Counts as an attempt — same progression bookkeeping as a wrong answer —
+        but speaks a dedicated no-input phrase instead of pronunciation coaching,
+        and never emits an AttemptReady view model (nothing was spoken to show).
+        """
+        session = self.app.session
+        level = session.current_level
+
+        exhausted = self._register_attempt(level, session, correct=False)
+        advancing = exhausted  # silence is never correct, so the item only moves on when exhausted
+
+        if self.app.audio_feedback and self.app.tts is not None and not self._is_paused():
+            phrase = random.choice(
+                _NO_INPUT_MOVE_ON_PHRASES if advancing else _NO_INPUT_PHRASES
+            )
+            self.app.event_queue.put(StateChanged("speaking"))
+            self.app.tts.speak(phrase)
+            self.app.event_queue.put(StateChanged("idle"))
+
+        self.app.evaluation.record_attempt(
+            level=level,
+            item=session.current_item_number(),
+            expected=session.expected_sentence,
+            heard="",
+            accuracy=0.0,
+            wer=1.0,
+            correct=False,
+        )
+
+        if self._advance_after_attempt(level, session, correct=False, exhausted=exhausted):
+            return
+
+        if advancing:
+            self.app.event_queue.put(MessageChanged("Let's move on."))
+        else:
+            self.app.event_queue.put(MessageChanged("I didn't hear you — let's try again!"))
+
+        time.sleep(0.6)
+        self.app.event_queue.put(StateChanged("listening"))
+        self.app.event_queue.put(MessageChanged(""))
+
     def replay(self) -> None:
         if (
             self._is_paused()
@@ -238,7 +366,9 @@ class AttemptRunner:
         try:
             lines = build_spoken_feedback_with_coaching(
                 feedback=feedback,
-                overrides=self.app.pronunciation_overrides,
+                overrides=overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                ),
                 expected_sentence=self.app.latest_attempt.expected_sentence,
                 max_hints=2,
             )

@@ -13,7 +13,7 @@ from ella_bot.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _apply_warmth(pcm_int16: np.ndarray) -> np.ndarray:
+def _apply_warmth(pcm_int16: np.ndarray, volume: float = 1.0) -> np.ndarray:
     """Gentle FIR low-pass to soften harsh high frequencies, making the voice warmer."""
     audio = pcm_int16.astype(np.float32) / 32768.0
     b = np.array([0.25, 0.50, 0.25], dtype=np.float32)
@@ -21,8 +21,7 @@ def _apply_warmth(pcm_int16: np.ndarray) -> np.ndarray:
     output = 0.70 * audio + 0.30 * smoothed
     peak = np.max(np.abs(output)) if output.size else 0.0
     if peak > 0.0:
-        # Peak normalization to exactly 0.95 ensures consistent loud and clear volume
-        output = output / peak * 0.95
+        output = output / peak * 0.95 * max(0.0, min(1.0, volume))
     return (output * 32767).astype(np.int16)
 
 
@@ -97,7 +96,7 @@ class PiperTTS(BaseTTS):
                 if audio_sample.dtype == np.float32:
                     audio_sample = (audio_sample * 32767).astype(np.int16)
                 
-                pcm_warm = _apply_warmth(audio_sample)
+                pcm_warm = _apply_warmth(audio_sample, volume=syn_config.volume)
                 sample_rate = getattr(self._voice.config, "sample_rate", 22050)
                 
                 stream = sd.RawOutputStream(
@@ -130,7 +129,7 @@ class PiperTTS(BaseTTS):
                     if stop_event.is_set():
                         break
                     pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
-                    pcm_warm = _apply_warmth(pcm)
+                    pcm_warm = _apply_warmth(pcm, volume=syn_config.volume)
                     if stream is None:
                         stream = sd.RawOutputStream(
                             samplerate=chunk.sample_rate,

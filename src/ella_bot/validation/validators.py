@@ -29,8 +29,8 @@ def normalize(text: str) -> List[str]:
     return [token.lower() for token in _WORD_RE.findall(text)]
 
 ASR_HOMOPHONES: Dict[str, set[str]] = {
-    "a": {"uh", "ah", "a", "up"},
-    "b": {"buh", "but", "ba", "b"},
+    "a": {"uh", "ah", "a", "up", "ha"},
+    "b": {"buh", "but", "ba", "b", "bah"},
     "c": {"car", "cuh", "cat", "cow", "huh", "her", "cur", "cup", "cut", "come", "co", "can", "with into"},
     "d": {"duh", "the", "do", "done", "du", "d"},
     "e": {"a", "eh", "ed", "head", "hey", "he", "egg", "it", "the", "in", "eight", "is", "under"},
