@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -14,8 +16,23 @@ from scripts.audition_level import (
     ("letter", "expected"),
     [
         ("b", "stop"),
+        ("c", "stop"),
+        ("d", "stop"),
+        ("g", "stop"),
         ("j", "stop"),
+        ("k", "stop"),
+        ("p", "stop"),
+        ("t", "stop"),
         ("f", "continuous"),
+        ("h", "continuous"),
+        ("l", "continuous"),
+        ("m", "continuous"),
+        ("n", "continuous"),
+        ("r", "continuous"),
+        ("s", "continuous"),
+        ("v", "continuous"),
+        ("w", "continuous"),
+        ("y", "continuous"),
         ("z", "continuous"),
         ("q", "sequence"),
         ("x", "sequence"),
@@ -66,7 +83,7 @@ def test_compare_dry_run_does_not_load_piper_or_open_audio(monkeypatch, capsys, 
     def fail_live_dependency(*args, **kwargs):
         raise AssertionError("Piper/audio playback must not initialize during a dry run")
 
-    model_path = tmp_path / "voice.onnx"
+    model_path = tmp_path / "en_US-hfc_female-medium.onnx"
     model_path.touch()
     monkeypatch.setattr(audition_level, "load_piper_voice", fail_load)
     monkeypatch.setattr(audition_level, "_create_synthesis_config", fail_live_dependency)
@@ -101,7 +118,7 @@ def test_compare_reports_missing_model(capsys, tmp_path):
             "--only",
             "b",
             "--piper-model",
-            str(tmp_path / "missing.onnx"),
+            str(tmp_path / "en_US-hfc_female-medium.onnx"),
         ]
     )
 
@@ -109,8 +126,146 @@ def test_compare_reports_missing_model(capsys, tmp_path):
     assert "Piper model not found" in capsys.readouterr().err
 
 
+def test_compare_rejects_wrong_piper_model_identity_before_loading(monkeypatch, capsys, tmp_path):
+    model_path = tmp_path / "another-voice.onnx"
+    model_path.touch()
+    monkeypatch.setattr(
+        audition_level,
+        "load_piper_voice",
+        lambda path: (_ for _ in ()).throw(AssertionError("wrong model must not load")),
+    )
+
+    result = audition_level.main(
+        [
+            "1b",
+            "--compare-piper",
+            "--only",
+            "b",
+            "--piper-model",
+            str(model_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "another-voice.onnx" in captured.err
+    assert "en_US-hfc_female-medium.onnx" in captured.err
+    assert "Level 1b Piper comparison" not in captured.out
+
+
+def test_compare_accepts_expected_model_name_from_another_path(capsys, tmp_path):
+    model_path = tmp_path / "other-model-directory" / "en_US-hfc_female-medium.onnx"
+    model_path.parent.mkdir()
+    model_path.touch()
+
+    result = audition_level.main(
+        [
+            "1b",
+            "--compare-piper",
+            "--only",
+            "b",
+            "--piper-model",
+            str(model_path),
+            "--dry-run",
+        ]
+    )
+
+    assert result == 0
+    assert "b [current]" in capsys.readouterr().out
+
+
+def test_compare_reports_invalid_model_load_before_banner_or_playback(monkeypatch, capsys, tmp_path):
+    model_path = tmp_path / "en_US-hfc_female-medium.onnx"
+    model_path.touch()
+    monkeypatch.setattr(
+        audition_level,
+        "load_piper_voice",
+        lambda path: (_ for _ in ()).throw(RuntimeError("invalid ONNX graph")),
+    )
+    monkeypatch.setattr(
+        audition_level,
+        "play_piper_variant",
+        lambda *args: (_ for _ in ()).throw(AssertionError("playback must not start")),
+    )
+
+    result = audition_level.main(
+        [
+            "1b",
+            "--compare-piper",
+            "--only",
+            "b",
+            "--piper-model",
+            str(model_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "Piper model could not be loaded: invalid ONNX graph" in captured.err
+    assert "Level 1b Piper comparison" not in captured.out
+
+
+@pytest.mark.parametrize(
+    ("items", "overrides", "target", "message"),
+    [
+        (["a"], {"a": "phonemes:a."}, "a", "unsupported"),
+        ([None], {}, "None", "unsupported"),
+        (["b", "c"], {"b": "phonemes:b."}, "c", "missing pronunciation override"),
+        (["b"], {"b": "bee"}, "b", "not a phoneme override"),
+        (["b"], {"b": None}, "b", "not a phoneme override"),
+        (["b"], {"b": "phonemes:   "}, "b", "empty phoneme payload"),
+    ],
+)
+@pytest.mark.parametrize(
+    "extra_args",
+    [pytest.param(["--dry-run"], id="dry-run"), pytest.param([], id="live")],
+)
+def test_compare_preflights_every_target_before_output(
+    monkeypatch,
+    capsys,
+    tmp_path,
+    items,
+    overrides,
+    target,
+    message,
+    extra_args,
+):
+    pools_path = tmp_path / "level_pools.json"
+    overrides_path = tmp_path / "pronunciation_overrides.json"
+    model_path = tmp_path / "en_US-hfc_female-medium.onnx"
+    pools_path.write_text(json.dumps({"1b": items}), encoding="utf-8")
+    overrides_path.write_text(json.dumps(overrides), encoding="utf-8")
+    model_path.touch()
+
+    def fail_live_dependency(*args, **kwargs):
+        raise AssertionError("model loading and playback must not start")
+
+    monkeypatch.setattr(audition_level, "load_piper_voice", fail_live_dependency)
+    monkeypatch.setattr(audition_level, "play_piper_variant", fail_live_dependency)
+
+    result = audition_level.main(
+        [
+            "1b",
+            "--compare-piper",
+            "--pools",
+            str(pools_path),
+            "--overrides",
+            str(overrides_path),
+            "--piper-model",
+            str(model_path),
+            *extra_args,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert target in captured.err
+    assert message in captured.err.lower()
+    assert "Level 1b Piper comparison" not in captured.out
+
+
 def test_compare_reports_target_and_variant_when_playback_fails(monkeypatch, capsys, tmp_path):
-    model_path = tmp_path / "voice.onnx"
+    model_path = tmp_path / "en_US-hfc_female-medium.onnx"
     model_path.touch()
     monkeypatch.setattr(audition_level, "load_piper_voice", lambda path: object())
     monkeypatch.setattr(

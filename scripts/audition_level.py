@@ -35,6 +35,7 @@ from ella_bot.validation.feedback import overrides_for_level  # noqa: E402
 STOP_CONSONANTS = frozenset("bcdgjkpt")
 CONTINUOUS_CONSONANTS = frozenset("fhlmnrsvwyz")
 SEQUENCE_CONSONANTS = frozenset("qx")
+PIPER_COMPARISON_MODEL = "en_US-hfc_female-medium.onnx"
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,32 @@ def validate_compare_request(level: str, engine: str, items: list[str]) -> str |
     if not items:
         return "--only did not match any level 1b target"
     return None
+
+
+def validate_compare_targets(
+    items: list[object], level_overrides: dict[str, object]
+) -> tuple[list[tuple[str, str]], str | None]:
+    targets = []
+    for item in items:
+        if not isinstance(item, str):
+            return [], f"Unsupported level 1B consonant: {item!r}"
+        try:
+            consonant_class(item)
+        except ValueError as exc:
+            return [], str(exc)
+
+        key = item.lower()
+        if key not in level_overrides:
+            return [], f"Comparison target {item!r} is missing pronunciation override"
+
+        spoken = level_overrides[key]
+        if not isinstance(spoken, str) or not spoken.startswith(("phonemes:", "phonemes,")):
+            return [], f"Comparison target {item!r} is not a phoneme override: {spoken!r}"
+        if not spoken[9:].strip():
+            return [], f"Comparison target {item!r} has an empty phoneme payload"
+        targets.append((item, spoken))
+
+    return targets, None
 
 
 def load_piper_voice(model_path: Path):
@@ -196,17 +223,34 @@ def main(argv: list[str] | None = None) -> int:
             print(error, file=sys.stderr)
             return 2
 
+        targets, error = validate_compare_targets(items, level_overrides)
+        if error:
+            print(error, file=sys.stderr)
+            return 2
+
         model_path = Path(args.piper_model)
         if not model_path.is_absolute():
             model_path = ROOT / model_path
+        if model_path.name != PIPER_COMPARISON_MODEL:
+            print(
+                f"Piper comparison requires {PIPER_COMPARISON_MODEL}; got: {model_path}",
+                file=sys.stderr,
+            )
+            return 2
         if not model_path.is_file():
             print(f"Piper model not found: {model_path}", file=sys.stderr)
             return 2
 
-        voice = None if args.dry_run else load_piper_voice(model_path)
-        print(f"Level 1b Piper comparison: {len(items)} item(s).\n")
-        for item in items:
-            spoken = level_overrides.get(item.lower(), item)
+        voice = None
+        if not args.dry_run:
+            try:
+                voice = load_piper_voice(model_path)
+            except Exception as exc:
+                print(f"Piper model could not be loaded: {exc}", file=sys.stderr)
+                return 2
+
+        print(f"Level 1b Piper comparison: {len(targets)} item(s).\n")
+        for item, spoken in targets:
             for variant in comparison_variants(item):
                 print(
                     f"  {item} [{variant.name}] rate={variant.rate} "
