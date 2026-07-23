@@ -21,6 +21,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 # Make src/ importable when run from the repo root.
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -67,7 +69,71 @@ def comparison_variants(letter: str) -> tuple[PiperVariant, ...]:
     )
 
 
-def parse_args() -> argparse.Namespace:
+def validate_compare_request(level: str, engine: str, items: list[str]) -> str | None:
+    if level.lower() != "1b":
+        return "--compare-piper is only available for level 1b"
+    if engine.lower() != "piper":
+        return "--compare-piper requires --engine piper"
+    if not items:
+        return "--only did not match any level 1b target"
+    return None
+
+
+def load_piper_voice(model_path: Path):
+    from piper import PiperVoice
+
+    return PiperVoice.load(str(model_path))
+
+
+def _create_synthesis_config(**kwargs):
+    from piper import SynthesisConfig
+
+    return SynthesisConfig(**kwargs)
+
+
+def _apply_warmth(pcm: np.ndarray) -> np.ndarray:
+    from ella_bot.speech.tts.engines.piper import _apply_warmth as apply_warmth
+
+    return apply_warmth(pcm)
+
+
+def _play_audio(pcm: np.ndarray, sample_rate: int) -> None:
+    import sounddevice as sd
+
+    sd.play(pcm, samplerate=sample_rate)
+    sd.wait()
+
+
+def _as_int16(audio: np.ndarray) -> np.ndarray:
+    if audio.dtype == np.float32 or audio.dtype == np.float64:
+        return (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+    return audio.astype(np.int16, copy=False)
+
+
+def play_piper_variant(voice, spoken: str, variant: PiperVariant) -> int:
+    if not spoken.startswith(("phonemes:", "phonemes,")):
+        raise ValueError(f"Comparison target is not a phoneme override: {spoken!r}")
+
+    raw_phonemes = spoken[9:].strip()
+    phoneme_ids = voice.phonemes_to_ids(list(raw_phonemes))
+    syn_config = _create_synthesis_config(
+        length_scale=200 / variant.rate,
+        noise_scale=variant.noise_scale,
+        noise_w_scale=variant.noise_w_scale,
+        volume=1.0,
+    )
+    pcm = _as_int16(voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config))
+    if variant.warmth:
+        pcm = _apply_warmth(pcm)
+    if variant.padding_ms:
+        pad_samples = round(voice.config.sample_rate * variant.padding_ms / 1000)
+        pcm = np.pad(pcm, (pad_samples, pad_samples))
+
+    _play_audio(pcm, voice.config.sample_rate)
+    return len(pcm)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("level", help="Level/sub-level to audition, e.g. 1c, 2a, 3")
     p.add_argument("--only", default=None, help="Only speak items containing this substring")
@@ -76,13 +142,13 @@ def parse_args() -> argparse.Namespace:
         "--rate",
         type=int,
         default=190,
-        help="Speech rate / words-per-minute. Lower is slower (default: 150; the app uses 340)",
+        help="Speech rate / words-per-minute. Lower is slower (default: 190)",
     )
     p.add_argument(
         "--gap",
         type=float,
         default=1.0,
-        help="Seconds of silence to pause between items (default: 1.0)",
+        help="Seconds of silence to pause between items or comparison variants (default: 1.0)",
     )
     p.add_argument(
         "--piper-model",
@@ -99,12 +165,17 @@ def parse_args() -> argparse.Namespace:
         default="./config/pronunciation_overrides.json",
         help="Path to pronunciation_overrides.json",
     )
+    p.add_argument(
+        "--compare-piper",
+        action="store_true",
+        help="Compare Piper tuning variants for isolated level 1b consonants",
+    )
     p.add_argument("--dry-run", action="store_true", help="Print what would be spoken without playing audio")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     pools = json.loads((ROOT / args.pools).read_text(encoding="utf-8")) if not Path(args.pools).is_absolute() else json.loads(Path(args.pools).read_text(encoding="utf-8"))
     if args.level not in pools:
@@ -118,6 +189,39 @@ def main() -> int:
     items = pools[args.level]
     if args.only:
         items = [w for w in items if args.only.lower() in w.lower()]
+
+    if args.compare_piper:
+        error = validate_compare_request(args.level, args.engine, items)
+        if error:
+            print(error, file=sys.stderr)
+            return 2
+
+        model_path = Path(args.piper_model)
+        if not model_path.is_absolute():
+            model_path = ROOT / model_path
+        if not model_path.is_file():
+            print(f"Piper model not found: {model_path}", file=sys.stderr)
+            return 2
+
+        voice = None if args.dry_run else load_piper_voice(model_path)
+        print(f"Level 1b Piper comparison: {len(items)} item(s).\n")
+        for item in items:
+            spoken = level_overrides.get(item.lower(), item)
+            for variant in comparison_variants(item):
+                print(
+                    f"  {item} [{variant.name}] rate={variant.rate} "
+                    f"noise={variant.noise_scale}/{variant.noise_w_scale} "
+                    f"warmth={'on' if variant.warmth else 'off'} "
+                    f"padding={variant.padding_ms}ms"
+                )
+                if voice is not None:
+                    try:
+                        play_piper_variant(voice, spoken, variant)
+                    except Exception as exc:
+                        print(f"Comparison failed for {item} [{variant.name}]: {exc}", file=sys.stderr)
+                        return 1
+                    time.sleep(args.gap)
+        return 0
 
     tts = None
     if not args.dry_run:
