@@ -4,7 +4,7 @@ import re
 import random
 from difflib import SequenceMatcher
 from dataclasses import dataclass
-from typing import Dict, List, Mapping
+from typing import Dict, List, Mapping, Optional
 
 from ella_bot.validation.validators import ValidationResult
 
@@ -80,13 +80,13 @@ def get_target_type(expected_sentence: str) -> str:
     text = expected_sentence.strip().lower()
     if not text:
         return "sentence"
-        
+
     words = text.split()
-    
+
     # 1. Single character is always a sound (Level 1a, 1b)
     if len(text) == 1:
         return "sound"
-        
+
     # 2. Syllable blends in Level 1c (excluding standard sight words to classify them correctly as words)
     level_1c_blends = {
         "ba", "be", "bi", "bo", "bu",
@@ -113,15 +113,15 @@ def get_target_type(expected_sentence: str) -> str:
     }
     if len(words) == 1 and text in level_1c_blends:
         return "sound"
-        
+
     # 3. Single word is a word
     if len(words) == 1:
         return "word"
-        
+
     # 4. Multi-word but doesn't end with a sentence punctuation (like ".", "!", "?") or under 4 words is a phrase
     if len(words) <= 3 or not text.endswith((".", "!", "?")):
         return "phrase"
-        
+
     return "sentence"
 
 
@@ -233,8 +233,8 @@ def _sanitize_for_tts(text: str) -> str:
     # Remove quote wrapping around words to prevent odd phoneme output.
     output = re.sub(r"'([A-Za-z]+)'", r"\1", text)
     output = output.replace("->", " to ")
-    # Replace colons with commas unless preceded by "phonemes"
-    output = re.sub(r'(?<!\bphonemes):', ',', output)
+    # Replace colons with commas unless preceded by "phonemes" or "SLOW"
+    output = re.sub(r'(?<!\bphonemes)(?<!\bSLOW):', ',', output)
     output = re.sub(r"\s+", " ", output).strip()
     return output
 
@@ -279,10 +279,10 @@ def build_spoken_feedback_with_overrides(
 def build_targeted_overrides(expected_sentence: str, overrides: Mapping[str, str]) -> Dict[str, str]:
     if not expected_sentence:
         return {}
-    
+
     clean_target = expected_sentence.strip().lower()
     targeted: Dict[str, str] = {}
-    
+
     # Check if the entire target sentence is a single word or single phoneme (no spaces)
     if " " not in clean_target:
         # Single word/letter lesson: apply the override if it exists
@@ -304,7 +304,7 @@ def build_targeted_overrides(expected_sentence: str, overrides: Mapping[str, str
             continue
         if w in overrides:
             targeted[w] = overrides[w]
-            
+
     return targeted
 
 
@@ -319,19 +319,20 @@ def build_spoken_feedback_with_coaching(
     overrides: Mapping[str, str],
     expected_sentence: str = "",
     max_hints: int = 2,
+    validation: Optional[ValidationResult] = None,
 ) -> List[str]:
     """Build child-facing spoken lines for an attempt, with target model demonstrations and natural word coaching."""
     t_type = get_target_type(expected_sentence)
 
     # Check if the attempt was successful
     is_correct = (
-        "excellent" in feedback.level_message.lower() or 
-        "wonderful" in feedback.level_message.lower() or 
-        "that's right" in feedback.level_message.lower() or 
-        "perfect" in feedback.level_message.lower() or 
-        "good" in feedback.level_message.lower() or 
-        "correct" in feedback.level_message.lower() or 
-        "great" in feedback.level_message.lower() or 
+        "excellent" in feedback.level_message.lower() or
+        "wonderful" in feedback.level_message.lower() or
+        "that's right" in feedback.level_message.lower() or
+        "perfect" in feedback.level_message.lower() or
+        "good" in feedback.level_message.lower() or
+        "correct" in feedback.level_message.lower() or
+        "great" in feedback.level_message.lower() or
         not feedback.pronunciation_hints
     )
 
@@ -347,24 +348,7 @@ def build_spoken_feedback_with_coaching(
             lines.append("Alright, let me make the sound for you.")
         else:
             lines.append("Alright, let me read the word for you.")
-            
-        sentence_line = _sanitize_for_tts(expected_sentence)
-        targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
-        overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
-        if overridden_sentence.endswith((".", "!", "?")):
-            lines.append(overridden_sentence)
-        else:
-            lines.append(overridden_sentence + ".")
-        lines.append("Now you try!")
-        
-    else:
-        # For multi-word phrases and sentences:
-        # Read the entire phrase/sentence clearly so they hear the full context, instead of repeating a single word!
-        if t_type == "phrase":
-            lines.append("Alright, let me read the phrase for you.")
-        else:
-            lines.append("Alright, let me read the sentence for you.")
-            
+
         sentence_line = _sanitize_for_tts(expected_sentence)
         targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
         overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
@@ -374,6 +358,37 @@ def build_spoken_feedback_with_coaching(
             lines.append(overridden_sentence + ".")
         lines.append("Now you try!")
 
+    else:
+        # For multi-word phrases and sentences:
+        target_word = None
+        if validation:
+            if validation.incorrect_words:
+                target_word = validation.incorrect_words[0][0]
+            elif validation.missing_words:
+                target_word = validation.missing_words[0]
+
+        sentence_line = _sanitize_for_tts(expected_sentence)
+        targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
+        overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
+        if not overridden_sentence.endswith((".", "!", "?")):
+            overridden_sentence += "."
+
+        if target_word:
+            spoken_target = overrides.get(target_word.lower(), target_word)
+            lines.append(f"I noticed you had trouble with the word, {spoken_target}.")
+            lines.append(f"Listen closely.")
+            lines.append(f"SLOW: {spoken_target}.")
+            lines.append(f"Now, let's read the whole {'phrase' if t_type == 'phrase' else 'sentence'} together.")
+            lines.append(f"SLOW: {overridden_sentence}")
+        else:
+            if t_type == "phrase":
+                lines.append("Alright, let me read the phrase for you.")
+            else:
+                lines.append("Alright, let me read the sentence for you.")
+            lines.append(f"SLOW: {overridden_sentence}")
+
+        lines.append("Now you try!")
+
     # Clean and sanitize lines for final playback
     sanitized_lines: List[str] = []
     for line in lines:
@@ -381,7 +396,7 @@ def build_spoken_feedback_with_coaching(
             sanitized_lines.append(line)
         else:
             sanitized_lines.append(_sanitize_for_tts(line))
-            
+
     return sanitized_lines
 
 

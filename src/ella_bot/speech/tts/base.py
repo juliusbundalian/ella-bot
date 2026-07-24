@@ -35,6 +35,14 @@ class BaseTTS:
         """Stop any active playback if supported."""
         return None
 
+    def pause(self) -> None:
+        """Pause playback, keeping the current state."""
+        return None
+
+    def resume(self) -> None:
+        """Resume playback from the paused state."""
+        return None
+
     def set_volume(self, fraction: float) -> None:
         return None
 
@@ -93,7 +101,7 @@ class Pyttsx3TTS(BaseTTS):
         print(f"[ELLA] Speaking: {text}")
         import pyttsx3
         import platform
-        
+
         # On Windows, ensure COM is initialized for the current thread
         if platform.system() == "Windows":
             try:
@@ -171,7 +179,7 @@ class MacSayTTS(BaseTTS):
 
 class ReSpeakerTTS(BaseTTS):
     """Offline TTS for ReSpeaker hardware on Raspberry Pi.
-    
+
     Routes audio through ReSpeaker's speaker output.
     Install: sudo apt install alsa-utils
     """

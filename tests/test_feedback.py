@@ -31,11 +31,13 @@ def test_auto_pronunciation_coaching_returns_function_words_verbatim():
     assert fb.auto_pronunciation_coaching("the") == "the"
 
 
-def test_build_spoken_feedback_with_coaching_starts_with_level_message():
-    validation = validate_spoken_text("the cat sat", "the cat sat")
+def test_build_spoken_feedback_with_coaching_error_isolation():
+    validation = validate_spoken_text("the cat sat.", "the dog sat.")
     result = fb.build_feedback(validation=validation, spoken_confidence_by_word={})
     lines = fb.build_spoken_feedback_with_coaching(
-        feedback=result, overrides={}, expected_sentence="the cat sat", max_hints=2
+        feedback=result, overrides={}, expected_sentence="the cat sat.", max_hints=2, validation=validation
     )
     assert lines[0] == result.level_message
-    assert any("let me read the sentence" in line.lower() for line in lines)
+    joined = " ".join(lines).lower()
+    assert "trouble with the word, cat" in joined
+    assert "let's read the whole phrase together" in joined

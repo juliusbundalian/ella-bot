@@ -23,6 +23,7 @@ class ValidationResult:
 
 
 _WORD_RE = re.compile(r"[a-zA-Z']+")
+STRICT_FLUENCY_CONFIDENCE = 0.35
 
 
 def normalize(text: str) -> List[str]:
@@ -31,7 +32,7 @@ def normalize(text: str) -> List[str]:
 ASR_HOMOPHONES: Dict[str, set[str]] = {
     "a": {"uh", "ah", "a", "up", "ha"},
     "b": {"buh", "but", "ba", "b", "bah"},
-    "c": {"car", "cuh", "cat", "cow", "huh", "her", "cur", "cup", "cut", "come", "co", "can", "with into"},
+    "c": {"car", "cuh", "cat", "cow", "huh", "her", "cur", "cup", "cut", "come", "co", "can", "with into", "see", "sea"},
     "d": {"duh", "the", "do", "done", "du", "d"},
     "e": {"a", "eh", "ed", "head", "hey", "he", "egg", "it", "the", "in", "eight", "is", "under"},
     "f": {"fah", "fuck", "fe", "fa", "fu", "for", "far", "four", "ha"},
@@ -55,116 +56,116 @@ ASR_HOMOPHONES: Dict[str, set[str]] = {
     "x": {"ks", "box", "fox", "six", "mix", "axe", "taxi"},
     "y": {"yuh", "ya", "ye", "yi", "yo", "yu", "yes", "you", "yellow", "yesterday"},
     "z": {"zuh", "za", "ze", "zi", "zo", "zu", "zoo", "zebra", "zero"},
-    
+
     # Two-letter consonant-vowel blends
     "ba": {"ba", "bah", "bay", "bar", "but"},
     "be": {"be", "bee", "beh", "bed", "bet", "bell", "bay", "bear", "bare", "but"},
     "bi": {"bi", "bee", "bee", "bih", "big", "bit", "by", "buy"},
     "bo": {"bo", "boh", "boy", "box", "boat", "bow"},
     "bu": {"bu", "buh", "but", "bus", "bug"},
-    
+
     "ca": {"ca", "cah", "cat", "car", "can"},
     "ce": {"ce", "seh", "say", "set", "sell", "send", "sad", "she", "keh", "kay", "care"},
     "ci": {"ci", "kee", "see", "sea", "key", "sit", "six"},
     "co": {"co", "coh", "cop", "cot", "cow", "cold"},
     "cu": {"cu", "cuh", "cut", "cup", "cub"},
-    
+
     "da": {"da", "dah", "day", "dad", "dark"},
     "de": {"de", "dee", "deh", "dead", "debt", "dell", "dare", "they", "then", "day"},
     "di": {"di", "dee", "dih", "dig", "did", "dip", "die", "day"},
     "do": {"do", "doh", "dog", "dot", "doll", "done"},
     "du": {"du", "duh", "duck", "dust", "dull"},
-    
+
     "fa": {"fa", "fah", "fat", "far", "fan"},
     "fe": {"fe", "feh", "fed", "fell", "fair", "for", "fay"},
     "fi": {"fi", "fee", "fih", "fit", "fig", "five", "fly"},
     "fo": {"fo", "foh", "fox", "for", "fog"},
     "fu": {"fu", "fuh", "fun", "full", "fur"},
-    
+
     "ga": {"ga", "gah", "gap", "gas"},
     "ge": {"ge", "geh", "get", "gem", "gear", "go", "gay"},
     "gi": {"gi", "gee", "gih", "gig", "give", "guy"},
     "go": {"go", "goh", "got", "god"},
     "gu": {"gu", "guh", "gum", "gun", "gut"},
-    
+
     "ha": {"ha", "hah", "hat", "has", "had"},
     "he": {"he", "heh", "hay", "hey", "head", "hen", "hair", "her", "him"},
     "hi": {"hi", "hee", "hih", "hit", "him", "his", "high"},
     "ho": {"ho", "hoh", "hot", "hop", "how"},
     "hu": {"hu", "huh", "hug", "hut", "hum"},
-    
+
     "ja": {"ja", "jah", "jam", "jar"},
     "je": {"je", "jeh", "jet", "gem", "jail", "jay"},
     "ji": {"ji", "jee", "jih", "jig", "jim"},
     "jo": {"jo", "joh", "job", "jog", "joy"},
     "ju": {"ju", "juh", "jug", "jump", "just"},
-    
+
     "ka": {"ka", "kah", "cat", "car"},
     "ke": {"ke", "keh", "keg", "key", "care", "can", "kay"},
     "ki": {"ki", "kee", "kih", "kid", "kit", "kin"},
     "ko": {"ko", "koh", "cop", "cot"},
     "ku": {"ku", "kuh", "cup", "cub"},
-    
+
     "la": {"la", "lah", "lap", "lad"},
     "le": {"le", "leh", "lay", "let", "led", "leg", "less", "lair", "late"},
     "li": {"li", "lee", "lih", "lip", "lit", "lid", "like"},
     "lo": {"lo", "loh", "lot", "log", "low"},
     "lu": {"lu", "luh", "luck", "lug"},
-    
+
     "ma": {"ma", "mah", "map", "man", "mad"},
     "me": {"me", "meh", "may", "met", "men", "mail", "my"},
     "mi": {"mi", "mee", "mih", "mix", "mid", "my"},
     "mo": {"mo", "moh", "mop", "mom", "more"},
     "mu": {"mu", "muh", "mud", "mug"},
-    
+
     "na": {"na", "nah", "nap", "not"},
     "ne": {"ne", "neh", "nay", "net", "nest", "near", "no", "any"},
     "ni": {"ni", "nee", "nih", "nit", "nil", "night"},
     "no": {"no", "noh", "not", "now"},
     "nu": {"nu", "nuh", "nut", "nun"},
-    
+
     "pa": {"pa", "pah", "pat", "pan", "pad"},
     "pe": {"pe", "peh", "pay", "pet", "pen", "peg", "pair", "page"},
     "pi": {"pi", "pee", "pih", "pin", "pig", "pit", "pie"},
     "po": {"po", "poh", "pot", "pop", "pod"},
     "pu": {"pu", "puh", "pup", "pub", "push"},
-    
+
     "ra": {"ra", "rah", "rat", "ran", "rag"},
     "re": {"re", "reh", "ray", "red", "read", "rent", "rare", "are"},
     "ri": {"ri", "ree", "rih", "rib", "rid", "ring", "right"},
     "ro": {"ro", "roh", "rot", "rob", "rod", "row"},
     "ru": {"ru", "ruh", "run", "rug", "rub"},
-    
+
     "sa": {"sa", "sah", "sad", "sat", "sam"},
     "se": {"se", "seh", "say", "set", "sell", "send", "sad", "she"},
     "si": {"si", "see", "sea", "sih", "sit", "six", "sing", "say"},
     "so": {"so", "soh", "sob", "sod", "son", "saw"},
     "su": {"su", "suh", "sun", "sub", "such"},
-    
+
     "ta": {"ta", "tah", "tap", "tan", "tag"},
     "te": {"te", "teh", "tay", "ten", "tell", "ted", "tent", "tear", "take", "to"},
     "ti": {"ti", "tee", "tih", "tin", "tip", "ticket", "tie"},
     "to": {"to", "toh", "top", "toy", "two", "to"},
     "tu": {"tu", "tuh", "tub", "tug", "turn"},
-    
+
     "va": {"va", "vah", "van", "vast"},
     "ve": {"ve", "veh", "very", "veil", "vet", "vow"},
     "vi": {"vi", "vee", "vih", "win", "view"},
     "vo": {"vo", "voh", "vote", "voice"},
     "vu": {"vu", "vuh", "vulcan"},
-    
+
     "wa": {"wa", "wah", "wet", "one", "was", "war"},
     "we": {"we", "weh", "way", "wet", "well", "web", "wear"},
     "wi": {"wi", "wee", "wih", "win", "wig", "wit", "with", "why"},
     "wo": {"wo", "woh", "won", "one", "would"},
     "wu": {"wu", "wuh", "wood", "wool"},
-    
+
     "ya": {"ya", "yah", "yak", "yard"},
     "ye": {"ye", "yeh", "yay", "yes", "yet", "yell", "year"},
     "yi": {"yi", "yee", "yih", "year", "yield"},
     "yo": {"yo", "yoh", "you", "your", "yolk"},
     "yu": {"yu", "yuh", "yum", "yuck"},
-    
+
     "za": {"za", "zah", "zap", "zar"},
     "ze": {"ze", "zeh", "zee", "zen", "zest"},
     "zi": {"zi", "zee", "zih", "zip", "zinc"},
@@ -172,7 +173,59 @@ ASR_HOMOPHONES: Dict[str, set[str]] = {
     "zu": {"zu", "zuh", "zoo"}
 }
 
-def align_words(expected: List[str], spoken: List[str]) -> List[AlignmentToken]:
+STRICT_HOMOPHONES: Dict[str, set[str]] = {
+    "be": {"bee"},
+    "to": {"too", "two"},
+    "too": {"to", "two"},
+    "two": {"to", "too"},
+    "their": {"there", "they're"},
+    "there": {"their", "they're"},
+    "they're": {"their", "there"},
+    "your": {"you're"},
+    "you're": {"your"},
+    "its": {"it's"},
+    "it's": {"its"},
+    "here": {"hear"},
+    "hear": {"here"},
+    "right": {"write"},
+    "write": {"right"},
+    "one": {"won"},
+    "won": {"one"},
+    "know": {"no"},
+    "no": {"know"},
+    "see": {"sea"},
+    "sea": {"see"},
+    "read": {"red"},
+    "red": {"read"},
+    "wise": {"weiss"},
+    "weiss": {"wise"},
+    "ana": {"anna"},
+    "anna": {"ana"},
+    "teacher's": {"teachers"},
+    "teachers": {"teacher's"},
+    "store's": {"stores"},
+    "stores": {"store's"},
+    "consumer's": {"consumers"},
+    "consumers": {"consumer's"},
+    "jose's": {"joses"},
+    "joses": {"jose's"},
+    "god's": {"gods"},
+    "gods": {"god's"},
+    "mother's": {"mothers"},
+    "mothers": {"mother's"},
+    "other's": {"others"},
+    "others": {"other's"},
+    "ana's": {"anas", "annas"},
+    "anas": {"ana's"},
+    "annas": {"ana's"},
+}
+
+def align_words(
+    expected: List[str],
+    spoken: List[str],
+    spoken_confidences: List[float] | None = None,
+    strict_fluency: bool = False
+) -> List[AlignmentToken]:
     n, m = len(expected), len(spoken)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
     bt: List[List[Tuple[int, int, str] | None]] = [[None] * (m + 1) for _ in range(n + 1)]
@@ -186,7 +239,31 @@ def align_words(expected: List[str], spoken: List[str]) -> List[AlignmentToken]:
 
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            is_match = expected[i - 1] == spoken[j - 1] or spoken[j - 1] in ASR_HOMOPHONES.get(expected[i - 1], set())
+            expected_word = expected[i - 1]
+            spoken_word = spoken[j - 1]
+
+            is_match = expected_word == spoken_word or spoken_word in STRICT_HOMOPHONES.get(expected_word, set())
+
+            # Dynamic Coarticulation Forgiveness:
+            # Vosk often drops subtle suffixes like 'ed' or 's' when spoken fluently before consonants.
+            if not is_match:
+                # 1. Past Tense Verbs (e.g., liked -> like, walked -> walk)
+                if expected_word.endswith("ed"):
+                    if spoken_word in (expected_word[:-1], expected_word[:-2]):
+                        is_match = True
+
+                # 2. Possessives (e.g., teacher's -> teachers, ana's -> ana)
+                elif expected_word.endswith("'s"):
+                    base = expected_word[:-2]
+                    plural = base + "s"
+                    if spoken_word in (base, plural):
+                        is_match = True
+
+            # Enforce 35% acoustic fluency requirement for higher levels.
+            if is_match and strict_fluency and spoken_confidences and j - 1 < len(spoken_confidences):
+                if spoken_confidences[j - 1] < STRICT_FLUENCY_CONFIDENCE:
+                    is_match = False
+
             cost_sub = 0 if is_match else 1
             choices = [
                 (dp[i - 1][j] + 1, (i - 1, j, "del")),
@@ -216,9 +293,50 @@ def align_words(expected: List[str], spoken: List[str]) -> List[AlignmentToken]:
     return out
 
 
-def validate_spoken_text(expected_sentence: str, spoken_sentence: str) -> ValidationResult:
-    expected = normalize(expected_sentence)
-    spoken = normalize(spoken_sentence)
+def validate_spoken_text(
+    expected_sentence: str,
+    spoken_sentence: str,
+    spoken_confidences: List[float] | None = None,
+    strict_fluency: bool = False
+) -> ValidationResult:
+    """Compare spoken text to expected text and return detailed validation results."""
+    expected_lower = expected_sentence.lower()
+    spoken_lower = spoken_sentence.lower()
+
+    # --- ASR Error Correction Pipeline ---
+    # Vosk's offline N-gram model frequently forces uncommon curriculum words into
+    # common multi-word English phrases (e.g., "ana" -> "and i").
+    # If the target curriculum word is in the expected sentence, we safely reverse the known hallucination.
+    ASR_CORRECTIONS = {
+        "ana": ["and i", "and know", "anna"],
+        "agony": ["have any"],
+        "respectfully": ["respect will", "respectful"],
+        "stated": ["stay that", "state and"],
+        "consumer's": ["consumers", "that the human", "the human"],
+        "store's": ["stores", "stars", "story"],
+        "told": ["default"],
+        "creative": ["predate of"],
+        "clear format": ["they are former"],
+        "choose a": ["she a"],
+        "compose a": ["composer"],
+        "fine": ["find"],
+        "into": ["enter"],
+        "relatable": ["related"],
+        "youtube": ["you tube"],
+        "oral": ["or a"],
+        "carry": ["harry"],
+        "face": ["these"],
+        "effortless act": ["effortless sack"],
+        "meaningful work": ["meaningful were"],
+    }
+
+    for target_word, hallucinations in ASR_CORRECTIONS.items():
+        if target_word in expected_lower:
+            for bad_phrase in hallucinations:
+                spoken_lower = spoken_lower.replace(bad_phrase, target_word)
+
+    expected = normalize(expected_lower)
+    spoken = normalize(spoken_lower)
 
     # Special extremely child-friendly rule for single-word / single-sound lessons (Level 1 & 2):
     # If the lesson is a single item, and that item (or any of its homophones) is detected
@@ -234,7 +352,7 @@ def validate_spoken_text(expected_sentence: str, spoken_sentence: str) -> Valida
                 has_matching_spoken_word = True
                 matching_word = sp
                 break
-        
+
         if has_matching_spoken_word:
             alignment = [AlignmentToken(expected=target, spoken=matching_word, op="equal")]
             return ValidationResult(
@@ -246,7 +364,7 @@ def validate_spoken_text(expected_sentence: str, spoken_sentence: str) -> Valida
                 alignment=alignment,
             )
 
-    alignment = align_words(expected, spoken)
+    alignment = align_words(expected, spoken, spoken_confidences, strict_fluency)
     missing_words = [a.expected for a in alignment if a.op == "del"]
     incorrect_words = [(a.expected, a.spoken) for a in alignment if a.op == "sub"]
     extra_words = [a.spoken for a in alignment if a.op == "ins"]

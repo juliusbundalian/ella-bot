@@ -38,14 +38,16 @@ class PiperTTS(BaseTTS):
         self._voice = PiperVoice.load(piper_model)
         self._syn_config = self._get_syn_config()
         self._stop = threading.Event()
+        self._pause_event = threading.Event()
         self._active_stream = None
         self._lock = threading.Lock()
+        self._speak_lock = threading.Lock()
 
     def _get_syn_config(self, volume: Optional[float] = None, rate: Optional[int] = None) -> SynthesisConfig:
         base_rate = 200.0
         target_rate = rate if (rate is not None and rate > 0) else (self.config.rate if (self.config.rate and self.config.rate > 0) else 200)
         speed_ratio = base_rate / target_rate
-        
+
         return SynthesisConfig(
             length_scale=self.config.length_scale * speed_ratio,
             noise_scale=self.config.noise_scale,
@@ -64,12 +66,19 @@ class PiperTTS(BaseTTS):
 
     def stop(self) -> None:
         self._stop.set()
+        self._pause_event.clear()
         with self._lock:
             if self._active_stream is not None:
                 try:
                     self._active_stream.abort()
                 except Exception:
                     pass
+
+    def pause(self) -> None:
+        self._pause_event.set()
+
+    def resume(self) -> None:
+        self._pause_event.clear()
 
     def set_volume(self, fraction: float) -> None:
         self.config.volume = fraction
@@ -79,93 +88,119 @@ class PiperTTS(BaseTTS):
         if not text.strip():
             return
 
-        syn_config = self._get_syn_config(rate=rate)
+        with self._speak_lock:
+            syn_config = self._get_syn_config(rate=rate)
 
-        stream = None
-        try:
-            if stop_event.is_set():
-                return
+            stream = None
+            try:
+                if stop_event.is_set():
+                    return
 
-            if text.startswith(("phonemes:", "phonemes,")):
-                raw_phonemes_str = text[9:].strip()
-                phonemes_list = list(raw_phonemes_str)
-                phoneme_ids = self._voice.phonemes_to_ids(phonemes_list)
-                
-                audio_sample = self._voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config)
-                
-                if audio_sample.dtype == np.float32:
-                    audio_sample = (audio_sample * 32767).astype(np.int16)
-                
-                pcm_warm = _apply_warmth(audio_sample, volume=syn_config.volume)
-                sample_rate = getattr(self._voice.config, "sample_rate", 22050)
-                
-                stream = sd.RawOutputStream(
-                    samplerate=sample_rate,
-                    channels=1,
-                    dtype="int16",
-                )
-                with self._lock:
-                    if stop_event.is_set():
-                        return
-                    self._active_stream = stream
-                    stream.start()
-                
-                stream.write(pcm_warm.tobytes())
-                
-                # Wait for the phoneme audio to finish playing before closing
-                import time
-                duration = len(pcm_warm) / sample_rate
-                # Sleep in small responsive chunks to remain highly responsive to stop events
-                chunk_time = 0.05
-                elapsed = 0.0
-                while elapsed < duration and not stop_event.is_set():
-                    time.sleep(chunk_time)
-                    elapsed += chunk_time
-            else:
-                total_samples = 0
-                sample_rate = 22050
-                start_time = None
-                for chunk in self._voice.synthesize(text, syn_config=syn_config):
-                    if stop_event.is_set():
-                        break
-                    pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
-                    pcm_warm = _apply_warmth(pcm, volume=syn_config.volume)
-                    if stream is None:
-                        stream = sd.RawOutputStream(
-                            samplerate=chunk.sample_rate,
-                            channels=chunk.sample_channels,
-                            dtype="int16",
-                        )
-                        with self._lock:
-                            if stop_event.is_set():
-                                break
-                            self._active_stream = stream
-                            stream.start()
-                            import time
-                            start_time = time.monotonic()
-                    stream.write(pcm_warm.tobytes())
-                    total_samples += len(pcm_warm)
-                    sample_rate = chunk.sample_rate
-                
-                # Wait for the entire speech to finish playing naturally before closing the stream
-                if total_samples > 0 and stream is not None and start_time is not None:
+                if text.startswith(("phonemes:", "phonemes,")):
+                    raw_phonemes_str = text[9:].strip()
+                    phonemes_list = list(raw_phonemes_str)
+                    phoneme_ids = self._voice.phonemes_to_ids(phonemes_list)
+
+                    audio_sample = self._voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config)
+
+                    if audio_sample.dtype == np.float32:
+                        audio_sample = (audio_sample * 32767).astype(np.int16)
+
+                    pcm_warm = _apply_warmth(audio_sample, volume=syn_config.volume)
+                    sample_rate = getattr(self._voice.config, "sample_rate", 22050)
+
+                    stream = sd.RawOutputStream(
+                        samplerate=sample_rate,
+                        channels=1,
+                        dtype="int16",
+                    )
+                    with self._lock:
+                        if stop_event.is_set():
+                            return
+                        self._active_stream = stream
+                        stream.start()
+
                     import time
-                    duration = total_samples / sample_rate
+                    chunk_samples = int(sample_rate * 0.1)
+                    for i in range(0, len(pcm_warm), chunk_samples):
+                        while self._pause_event.is_set() and not stop_event.is_set():
+                            time.sleep(0.1)
+                        if stop_event.is_set():
+                            break
+                        stream.write(pcm_warm[i:i+chunk_samples].tobytes())
+
+                    # Wait for the phoneme audio to finish playing before closing
+                    duration = len(pcm_warm) / sample_rate
+                    # Sleep in small responsive chunks to remain highly responsive to stop events
                     chunk_time = 0.05
-                    while not stop_event.is_set():
-                        elapsed = time.monotonic() - start_time
-                        if elapsed >= duration:
+                    elapsed = 0.0
+                    while elapsed < duration and not stop_event.is_set():
+                        while self._pause_event.is_set() and not stop_event.is_set():
+                            time.sleep(0.1)
+                        if stop_event.is_set():
                             break
                         time.sleep(chunk_time)
-                
-        except Exception as exc:
-            logger.error("PiperTTS error: %s", exc)
-        finally:
-            with self._lock:
-                self._active_stream = None
-            if stream is not None:
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
+                        elapsed += chunk_time
+                else:
+                    total_samples = 0
+                    sample_rate = 22050
+                    start_time = None
+                    import time
+                    for chunk in self._voice.synthesize(text, syn_config=syn_config):
+                        if stop_event.is_set():
+                            break
+                        pcm = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).copy()
+                        pcm_warm = _apply_warmth(pcm, volume=syn_config.volume)
+                        if stream is None:
+                            stream = sd.RawOutputStream(
+                                samplerate=chunk.sample_rate,
+                                channels=chunk.sample_channels,
+                                dtype="int16",
+                            )
+                            with self._lock:
+                                if stop_event.is_set():
+                                    break
+                                self._active_stream = stream
+                                stream.start()
+                                start_time = time.monotonic()
+
+                        chunk_samples = int(chunk.sample_rate * 0.1)
+                        for i in range(0, len(pcm_warm), chunk_samples):
+                            while self._pause_event.is_set() and not stop_event.is_set():
+                                time.sleep(0.1)
+                                if start_time is not None:
+                                    start_time += 0.1
+                            if stop_event.is_set():
+                                break
+                            stream.write(pcm_warm[i:i+chunk_samples].tobytes())
+
+                        total_samples += len(pcm_warm)
+                        sample_rate = chunk.sample_rate
+
+                    # Wait for the entire speech to finish playing naturally before closing the stream
+                    if total_samples > 0 and stream is not None and start_time is not None:
+                        duration = total_samples / sample_rate
+                        chunk_time = 0.05
+                        while not stop_event.is_set():
+                            while self._pause_event.is_set() and not stop_event.is_set():
+                                time.sleep(0.1)
+                                start_time += 0.1
+                            if stop_event.is_set():
+                                break
+                            elapsed = time.monotonic() - start_time
+                            if elapsed >= duration:
+                                break
+                            time.sleep(chunk_time)
+
+            except Exception as exc:
+                logger.error("PiperTTS error: %s", exc)
+            finally:
+                with self._lock:
+                    self._active_stream = None
+                    if stream is not None:
+                        try:
+                            if not stop_event.is_set():
+                                stream.stop()
+                            stream.close()
+                        except Exception:
+                            pass
