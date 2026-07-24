@@ -222,3 +222,53 @@ def test_retry_sublevel_rebuilds_tier2_session_pool():
     s.retry_sublevel("2a")
     assert s.level_goal == 10
     assert s.completed_in_level == 0
+
+
+def test_checkpoint_round_trip_restores_exact_item_and_progress():
+    pools = {"1a": ["a", "e", "i"], "1b": ["b"]}
+    original = SessionManager(level_pools=pools, start_level="1a")
+    original.advance_to_next_sentence()
+    original.completed_in_level = 1
+    original.last_announced_sentence = "e"
+
+    restored = SessionManager.from_checkpoint(pools, original.to_checkpoint())
+
+    assert restored.current_level == "1a"
+    assert restored.current_item_number() == 2
+    assert restored.expected_sentence == "e"
+    assert restored.completed_in_level == 1
+    assert restored.level_goal == 3
+    assert restored.last_announced_sentence == "e"
+
+
+def test_checkpoint_round_trip_preserves_randomized_pool_order():
+    pools = _tier2_pools(40)
+    original = SessionManager(level_pools=pools, start_level="2a")
+    original.advance_to_next_sentence()
+    original.advance_to_next_sentence()
+    saved_order = list(original._session_pools["2a"])
+
+    restored = SessionManager.from_checkpoint(pools, original.to_checkpoint())
+
+    assert restored._session_pools["2a"] == saved_order
+    assert restored.current_item_number() == 3
+    assert restored.expected_sentence == saved_order[2]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update(current_level="missing"),
+        lambda payload: payload["level_indices"].update({"1a": -1}),
+        lambda payload: payload.update(completed_in_level=-1),
+        lambda payload: payload.update(expected_sentence="not the current item"),
+        lambda payload: payload.update(level_goal=1),
+    ],
+)
+def test_checkpoint_restore_rejects_invalid_session_state(mutate):
+    pools = {"1a": ["a", "e"]}
+    payload = SessionManager(level_pools=pools, start_level="1a").to_checkpoint()
+    mutate(payload)
+
+    with pytest.raises(ValueError):
+        SessionManager.from_checkpoint(pools, payload)

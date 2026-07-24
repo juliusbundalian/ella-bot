@@ -46,6 +46,105 @@ class SessionManager:
             level_pools["hard"] = [seed_sentence]
         return cls(level_pools=level_pools, start_level=start_level)
 
+    def to_checkpoint(self) -> dict:
+        """Return all mutable reading-session state needed for an exact resume."""
+        return {
+            "current_level": self.current_level,
+            "level_indices": dict(self.level_indices),
+            "session_pools": {
+                level: list(pool) for level, pool in self._session_pools.items()
+            },
+            "expected_sentence": self.expected_sentence,
+            "completed_in_level": self.completed_in_level,
+            "level_goal": self.level_goal,
+            "last_announced_sentence": self.last_announced_sentence,
+        }
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        level_pools: Dict[str, List[str]],
+        payload: object,
+    ) -> "SessionManager":
+        """Restore an exact reading session after validating persisted state."""
+        expected_fields = {
+            "current_level",
+            "level_indices",
+            "session_pools",
+            "expected_sentence",
+            "completed_in_level",
+            "level_goal",
+            "last_announced_sentence",
+        }
+        if not isinstance(payload, dict) or set(payload) != expected_fields:
+            raise ValueError("Invalid session checkpoint fields")
+
+        current_level = payload["current_level"]
+        if current_level not in LEVEL_ORDER or current_level not in level_pools:
+            raise ValueError("Invalid checkpoint level")
+
+        raw_indices = payload["level_indices"]
+        if not isinstance(raw_indices, dict) or any(
+            level not in LEVEL_ORDER
+            or isinstance(index, bool)
+            or not isinstance(index, int)
+            or index < 0
+            for level, index in raw_indices.items()
+        ):
+            raise ValueError("Invalid checkpoint level indices")
+        level_indices = {level: 0 for level in LEVEL_ORDER}
+        level_indices.update(raw_indices)
+
+        raw_session_pools = payload["session_pools"]
+        if not isinstance(raw_session_pools, dict):
+            raise ValueError("Invalid checkpoint session pools")
+        session_pools: Dict[str, List[str]] = {}
+        for level, pool in raw_session_pools.items():
+            configured_pool = level_pools.get(level)
+            if (
+                level not in LEVEL_ORDER
+                or configured_pool is None
+                or not isinstance(pool, list)
+                or any(not isinstance(item, str) or item not in configured_pool for item in pool)
+            ):
+                raise ValueError("Invalid checkpoint session pool")
+            session_pools[level] = list(pool)
+
+        current_pool = session_pools.get(current_level)
+        current_index = level_indices[current_level]
+        if not current_pool or current_index >= len(current_pool):
+            raise ValueError("Checkpoint item is outside the current pool")
+
+        expected_sentence = payload["expected_sentence"]
+        if not isinstance(expected_sentence, str) or expected_sentence != current_pool[current_index]:
+            raise ValueError("Checkpoint sentence does not match its item position")
+
+        completed = payload["completed_in_level"]
+        level_goal = payload["level_goal"]
+        if (
+            isinstance(completed, bool)
+            or not isinstance(completed, int)
+            or completed < 0
+            or isinstance(level_goal, bool)
+            or not isinstance(level_goal, int)
+            or level_goal != len(current_pool)
+            or completed > level_goal
+        ):
+            raise ValueError("Invalid checkpoint level progress")
+
+        last_announced = payload["last_announced_sentence"]
+        if not isinstance(last_announced, str):
+            raise ValueError("Invalid checkpoint announcement")
+
+        restored = cls(level_pools=level_pools, start_level=current_level)
+        restored.level_indices = level_indices
+        restored._session_pools = session_pools
+        restored.expected_sentence = expected_sentence
+        restored.completed_in_level = completed
+        restored.level_goal = level_goal
+        restored.last_announced_sentence = last_announced
+        return restored
+
     def _build_session_pool(self, level: str) -> List[str]:
         pool = self.level_pools.get(level, [])
         if tier_of(level) == 1:
