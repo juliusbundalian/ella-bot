@@ -106,10 +106,14 @@ class EvaluationService:
             if not atts:
                 continue
             first_by_item: Dict[int, bool] = {}
+            best_by_item: Dict[int, float] = {}
             for a in atts:
                 if a.item not in first_by_item:
                     first_by_item[a.item] = a.correct
-                accs.append(a.accuracy)
+                if a.item not in best_by_item or a.accuracy > best_by_item[a.item]:
+                    best_by_item[a.item] = a.accuracy
+
+            accs.extend(best_by_item.values())
             items_total += len(first_by_item)
             first_try += sum(1 for ok in first_by_item.values() if ok)
             attempts += len(atts)

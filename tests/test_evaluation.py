@@ -31,7 +31,7 @@ def test_finish_sublevel_computes_fluency_and_first_try(tmp_path):
     assert result.items_total == 2
     assert result.first_try_correct == 1            # only item 2 right on first try
     assert result.attempts == 3
-    assert result.fluency == pytest.approx((0.40 + 1.00 + 1.00) / 3)
+    assert result.fluency == pytest.approx((1.00 + 1.00) / 2)
     assert result.rating == rating_for(result.fluency)
 
 
