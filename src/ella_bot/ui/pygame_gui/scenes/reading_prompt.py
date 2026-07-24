@@ -96,35 +96,10 @@ class ReadingPromptScene(BaseScene):
                     return
                 if action == "confirm_yes":
                     if self.modal.confirm_action == "restart":
-                        self.modal.close()
-                        self.is_paused = False
-                        if self.app.tts is not None:
-                            try:
-                                self.app.tts.stop()
-                            except Exception:
-                                pass
-                        self._auto_start_at = None
-                        self.app.session.reset_current_level()
-                        self.app.evaluation.reset_sublevel(self.app.session.current_level)
-                        if self.runner:
-                            self.runner.abort()
-                        self.app.prompt_active = False
-                        self.worker_thread = None
-                        self._start_attempt()
+                        self._restart_level_from_pause()
                         return
                     if self.modal.confirm_action == "main_menu":
-                        self.modal.close()
-                        self.is_paused = False
-                        if self.app.tts is not None:
-                            try:
-                                self.app.tts.stop()
-                            except Exception:
-                                pass
-                        if self.runner:
-                            self.runner.abort()
-                        self.app.prompt_active = False
-                        self.worker_thread = None
-                        self.app.switch_scene("main_menu")
+                        self._return_to_menu_from_pause()
                     return
                 if action == "confirm_no":
                     self.modal.show_confirm = False
@@ -153,6 +128,40 @@ class ReadingPromptScene(BaseScene):
                 if self.app.asr is not None:
                     self.app.asr.bypass_transcription = self.app.expected_sentence
                 self._start_attempt()
+
+    def _abort_paused_attempt(self) -> None:
+        if self.runner:
+            self.runner.abort()
+        if self.app.tts is not None:
+            try:
+                self.app.tts.stop()
+            except Exception:
+                pass
+        self._auto_start_at = None
+        self.app.prompt_active = False
+        self.worker_thread = None
+
+    def _restart_level_from_pause(self) -> None:
+        self._abort_paused_attempt()
+        self.app.session.reset_current_level()
+        self.app.evaluation.reset_sublevel(self.app.session.current_level)
+        if not self.app.save_active_session("reading"):
+            self.app.continue_saved_session()
+            self.is_paused = True
+            return
+        self.modal.close()
+        self.is_paused = False
+        self._start_attempt()
+
+    def _return_to_menu_from_pause(self) -> None:
+        self._abort_paused_attempt()
+        if not self.app.save_active_session("reading"):
+            self.app.continue_saved_session()
+            self.is_paused = True
+            return
+        self.modal.close()
+        self.is_paused = False
+        self.app.switch_scene("main_menu")
 
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()

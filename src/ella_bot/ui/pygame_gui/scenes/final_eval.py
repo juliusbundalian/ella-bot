@@ -1,7 +1,6 @@
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
-from ella_bot.services.evaluation import EvaluationService
 from ella_bot.utils.file_utils import resolve_asset_path
 
 _CARD_BG = (0, 0, 0)
@@ -33,13 +32,9 @@ class FinalEvaluationScene(BaseScene):
     # --- actions (unit-tested) ---
 
     def _do_play_again(self) -> None:
-        self.app.session.reset_to_start()
-        self.app.evaluation = EvaluationService(
-            log_path=self.app.evaluation.log_path,
-            pass_bar=self.app.evaluation.pass_bar,
-        )
-        self.app.switch_scene("reading_prompt")
-        self.app.active_scene._start_attempt()
+        if self.app.start_new_session("1a"):
+            self.app.switch_scene("reading_prompt")
+            self.app.active_scene._start_attempt()
 
     def _do_main_menu(self) -> None:
         self.app.switch_scene("main_menu")

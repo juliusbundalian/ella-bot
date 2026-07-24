@@ -32,12 +32,12 @@ def _make_scene(tmp_path):
     return scene
 
 
-def test_play_again_resets_and_restarts(tmp_path):
+def test_play_again_starts_transactional_session_and_restarts(tmp_path):
     scene = _make_scene(tmp_path)
-    old_evaluation = scene.app.evaluation
+    scene.app.start_new_session.return_value = True
     scene._do_play_again()
-    scene.app.session.reset_to_start.assert_called_once()
-    assert scene.app.evaluation is not old_evaluation  # fresh EvaluationService created
+    scene.app.start_new_session.assert_called_once_with("1a")
+    scene.app.session.reset_to_start.assert_not_called()
     scene.app.switch_scene.assert_called_with("reading_prompt")
 
 

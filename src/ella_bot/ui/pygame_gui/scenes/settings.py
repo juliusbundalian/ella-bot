@@ -90,9 +90,7 @@ class SettingsScene(BaseScene):
         try:
             if self.show_reset_confirm:
                 if self.pressed_button == "confirm_yes" and self.btn_confirm_yes and self.btn_confirm_yes.collidepoint(pos):
-                    self.app.session.reset_to_start()
-                    self.app.evaluation.reset_all()
-                    self.app.switch_scene("main_menu")
+                    self._reset_progress()
                 elif self.pressed_button == "confirm_no" and self.btn_confirm_no and self.btn_confirm_no.collidepoint(pos):
                     self.show_reset_confirm = False
                 return
@@ -111,6 +109,12 @@ class SettingsScene(BaseScene):
                 self.app.switch_scene("main_menu")
         finally:
             self.pressed_button = None
+
+    def _reset_progress(self) -> None:
+        self.app.session.reset_to_start()
+        self.app.evaluation.reset_all()
+        self.app.clear_active_session()
+        self.app.switch_scene("main_menu")
 
     def _tap_volume(self, delta: int) -> None:
         self.volume_level = max(_VOLUME_MIN, min(_VOLUME_MAX, self.volume_level + delta))

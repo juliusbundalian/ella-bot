@@ -29,6 +29,7 @@ def _make_scene(state="idle", prompt_active=False, is_paused=False,
     scene.modal.visible = modal_visible
     scene.bot = MagicMock()
     scene.worker_thread = None
+    scene.runner = MagicMock()
     scene.last_activity_monotonic = time.monotonic()
     scene.idle_timeout_seconds = 10
     scene._drain_event_queue = MagicMock()
@@ -137,3 +138,43 @@ def test_long_prompt_returns_no_font_when_no_size_fits_safe_area():
 
     assert font is None
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
+
+
+def test_pause_restart_aborts_then_resets_saves_and_starts():
+    scene = _make_scene(is_paused=True, modal_visible=True)
+    scene.app.save_active_session.return_value = True
+    actions = []
+    scene.runner.abort.side_effect = lambda: actions.append("abort")
+    scene.app.session.reset_current_level.side_effect = lambda: actions.append("reset")
+    scene.app.save_active_session.side_effect = lambda phase: actions.append("save") or True
+
+    scene._restart_level_from_pause()
+
+    assert actions == ["abort", "reset", "save"]
+    scene.app.evaluation.reset_sublevel.assert_called_once()
+    scene._start_attempt.assert_called_once()
+
+
+def test_pause_restart_failed_save_restores_and_remains_paused():
+    scene = _make_scene(is_paused=True, modal_visible=True)
+    scene.app.save_active_session.return_value = False
+
+    scene._restart_level_from_pause()
+
+    scene.app.continue_saved_session.assert_called_once()
+    scene._start_attempt.assert_not_called()
+    assert scene.is_paused is True
+
+
+def test_pause_back_to_menu_aborts_saves_then_navigates():
+    scene = _make_scene(is_paused=True, modal_visible=True)
+    scene.app.save_active_session.return_value = True
+    actions = []
+    scene.runner.abort.side_effect = lambda: actions.append("abort")
+    scene.app.save_active_session.side_effect = lambda phase: actions.append("save") or True
+    scene.app.switch_scene.side_effect = lambda name: actions.append("navigate")
+
+    scene._return_to_menu_from_pause()
+
+    assert actions == ["abort", "save", "navigate"]
+    scene.app.switch_scene.assert_called_once_with("main_menu")

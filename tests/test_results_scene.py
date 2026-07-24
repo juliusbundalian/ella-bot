@@ -10,6 +10,8 @@ def _make_scene(kind="sublevel", passed=True, level="1c", tier=1):
     result.tier = tier
     app.latest_result = result
     app.latest_result_kind = kind
+    app.save_active_session.return_value = True
+    app.start_new_session.return_value = True
     scene = object.__new__(ResultsScene)
     scene.app = app
     scene.pressed_button = None
@@ -80,9 +82,40 @@ def test_confirm_continue_advances_stage_and_goes_to_menu():
     scene.app.switch_scene.assert_called_once_with("main_menu")
 
 
-def test_confirm_restart_resets_to_start_and_goes_to_menu():
+def test_confirm_restart_starts_transactional_session_and_goes_to_menu():
     scene = _make_scene(passed=True)
     scene._do_restart_to_menu()
-    scene.app.session.reset_to_start.assert_called_once()
-    scene.app.evaluation.reset_all.assert_called_once()
+    scene.app.start_new_session.assert_called_once_with("1a")
+    scene.app.evaluation.reset_all.assert_not_called()
     scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_next_saves_advanced_reading_state():
+    scene = _make_scene(passed=True)
+    scene._do_next()
+    scene.app.session.advance_to_higher_stage.assert_called_once()
+    scene.app.save_active_session.assert_called_once_with("reading")
+
+
+def test_retry_saves_reset_reading_state():
+    scene = _make_scene(kind="sublevel", passed=False, level="1c")
+    scene._do_retry()
+    scene.app.evaluation.reset_sublevel.assert_called_once_with("1c")
+    scene.app.save_active_session.assert_called_once_with("reading")
+
+
+def test_failure_menu_saves_reset_state_before_navigation():
+    scene = _make_scene(kind="sublevel", passed=False, level="1a")
+    scene._do_main_menu()
+    scene.app.save_active_session.assert_called_once_with("reading")
+    scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_failed_transition_save_restores_pending_results_state():
+    scene = _make_scene(passed=True)
+    scene.app.save_active_session.return_value = False
+
+    scene._do_next()
+
+    scene.app.continue_saved_session.assert_called_once()
+    scene.app.switch_scene.assert_not_called()

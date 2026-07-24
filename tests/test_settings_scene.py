@@ -85,3 +85,16 @@ def test_listen_tap_updates_asr():
     with patch("ella_bot.config.app_config.save_setting"):
         scene._tap_listen(1)
     assert scene.app.asr.listen_seconds == 8
+
+
+def test_reset_progress_clears_checkpoint_before_returning_to_menu():
+    scene = _make_scene()
+    actions = []
+    scene.app.session.reset_to_start.side_effect = lambda: actions.append("session")
+    scene.app.evaluation.reset_all.side_effect = lambda: actions.append("evaluation")
+    scene.app.clear_active_session.side_effect = lambda: actions.append("checkpoint")
+    scene.app.switch_scene.side_effect = lambda name: actions.append("menu")
+
+    scene._reset_progress()
+
+    assert actions == ["session", "evaluation", "checkpoint", "menu"]

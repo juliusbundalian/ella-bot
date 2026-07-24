@@ -62,11 +62,19 @@ class ResultsScene(BaseScene):
 
     # --- actions ---
 
+    def _save_reading_transition_or_restore(self) -> bool:
+        if self.app.save_active_session("reading"):
+            return True
+        self.app.continue_saved_session()
+        return False
+
     def _do_next(self) -> None:
         result = self.app.latest_result
         if not getattr(result, "passed", False):
             return
         self.app.session.advance_to_higher_stage()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("reading_prompt")
         self.app.active_scene._start_attempt()
 
@@ -81,6 +89,8 @@ class ResultsScene(BaseScene):
 
     def _do_retry(self) -> None:
         self._reset_for_retry()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("reading_prompt")
         self.app.active_scene._start_attempt()
 
@@ -88,18 +98,21 @@ class ResultsScene(BaseScene):
         result = self.app.latest_result
         if not getattr(result, "passed", True):
             self._reset_for_retry()
+            if not self._save_reading_transition_or_restore():
+                return
             self.app.switch_scene("main_menu")
         else:
             self._show_menu_confirm = True
 
     def _do_continue_to_menu(self) -> None:
         self.app.session.advance_to_higher_stage()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("main_menu")
 
     def _do_restart_to_menu(self) -> None:
-        self.app.session.reset_to_start()
-        self.app.evaluation.reset_all()
-        self.app.switch_scene("main_menu")
+        if self.app.start_new_session("1a"):
+            self.app.switch_scene("main_menu")
 
     # --- input ---
 
