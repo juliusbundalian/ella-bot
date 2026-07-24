@@ -1,5 +1,8 @@
 import io
+from datetime import datetime
+
 import pygame
+
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.utils.file_utils import resolve_asset_path
@@ -18,12 +21,17 @@ class MainMenuScene(BaseScene):
         super().__init__(app)
         self.pressed_button = None
         self.show_exit_confirm = False
+        self.show_resume_prompt = False
+        self.resume_summary = None
 
         self.menu_start_button = None
         self.menu_exit_button = None
         self.menu_gear_button = None
         self.menu_confirm_yes_button = None
         self.menu_confirm_no_button = None
+        self.resume_continue_button = None
+        self.resume_new_button = None
+        self.resume_cancel_button = None
 
         self.bot = BotSprite()
         self._title_img = None
@@ -31,9 +39,31 @@ class MainMenuScene(BaseScene):
 
     def on_enter(self) -> None:
         self.show_exit_confirm = False
+        self.show_resume_prompt = False
+        self.resume_summary = None
         self.pressed_button = None
-        if hasattr(self.app, "session") and self.app.session is not None:
-            self.app.session.reset_current_level()
+
+    def _do_start(self) -> None:
+        summary = self.app.saved_session_summary()
+        if summary is None:
+            self.app.switch_scene("level_selection")
+            return
+        self.resume_summary = summary
+        self.show_resume_prompt = True
+
+    def _do_continue(self) -> None:
+        phase = self.app.continue_saved_session()
+        if phase == "reading":
+            self.show_resume_prompt = False
+            self.app.switch_scene("reading_prompt")
+            self.app.active_scene._start_attempt()
+        elif phase == "results":
+            self.show_resume_prompt = False
+            self.app.switch_scene("results")
+
+    def _do_new_session(self) -> None:
+        self.show_resume_prompt = False
+        self.app.switch_scene("level_selection")
 
     def _load_assets(self) -> None:
         if self._title_img is None:
@@ -68,6 +98,15 @@ class MainMenuScene(BaseScene):
             self._handle_mouse_up(event.pos)
 
     def _handle_mouse_down(self, mouse_pos) -> None:
+        if self.show_resume_prompt:
+            if self.resume_continue_button and self.resume_continue_button.collidepoint(mouse_pos):
+                self.pressed_button = "resume_continue"
+            elif self.resume_new_button and self.resume_new_button.collidepoint(mouse_pos):
+                self.pressed_button = "resume_new"
+            elif self.resume_cancel_button and self.resume_cancel_button.collidepoint(mouse_pos):
+                self.pressed_button = "resume_cancel"
+            return
+
         if self.show_exit_confirm:
             if self.menu_confirm_yes_button and self.menu_confirm_yes_button.collidepoint(mouse_pos):
                 self.pressed_button = "confirm_yes"
@@ -84,9 +123,14 @@ class MainMenuScene(BaseScene):
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         try:
-            if self.pressed_button == "start" and self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
-                self.app.switch_scene("reading_prompt")
-                self.app.active_scene._start_attempt()
+            if self.pressed_button == "resume_continue" and self.resume_continue_button and self.resume_continue_button.collidepoint(mouse_pos):
+                self._do_continue()
+            elif self.pressed_button == "resume_new" and self.resume_new_button and self.resume_new_button.collidepoint(mouse_pos):
+                self._do_new_session()
+            elif self.pressed_button == "resume_cancel" and self.resume_cancel_button and self.resume_cancel_button.collidepoint(mouse_pos):
+                self.show_resume_prompt = False
+            elif self.pressed_button == "start" and self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
+                self._do_start()
             elif self.pressed_button == "exit" and self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
                 self.show_exit_confirm = True
             elif self.pressed_button == "gear" and self.menu_gear_button and self.menu_gear_button.collidepoint(mouse_pos):
@@ -179,6 +223,84 @@ class MainMenuScene(BaseScene):
 
         if self.show_exit_confirm:
             self._draw_exit_confirm(screen, width, height)
+        elif self.show_resume_prompt:
+            self._draw_resume_prompt(screen, width, height)
+
+    def _draw_resume_prompt(self, screen, width, height) -> None:
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        dlg_w = min(760, int(width * 0.68))
+        dlg_h = min(390, int(height * 0.58))
+        dlg_rect = pygame.Rect(
+            (width - dlg_w) // 2,
+            (height - dlg_h) // 2,
+            dlg_w,
+            dlg_h,
+        )
+        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=24)
+        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=24)
+
+        title = self.app.font_title.render("Saved Session", True, (50, 50, 50))
+        screen.blit(title, title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 30))
+
+        summary = self.resume_summary
+        if summary is not None:
+            details = f"Level {summary.level.upper()}  •  Item {summary.item_number}"
+            detail_surf = self.app.font_body.render(details, True, (50, 50, 50))
+            screen.blit(
+                detail_surf,
+                detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 120),
+            )
+            try:
+                saved = datetime.fromisoformat(summary.saved_at).astimezone()
+                saved_text = saved.strftime("Saved %b %d, %Y at %I:%M %p")
+            except (TypeError, ValueError):
+                saved_text = f"Saved {summary.saved_at}"
+            saved_surf = self.app.font_small.render(saved_text, True, (78, 78, 78))
+            screen.blit(
+                saved_surf,
+                saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 168),
+            )
+
+        btn_gap = 16
+        btn_w = min(190, (dlg_w - 80 - 2 * btn_gap) // 3)
+        btn_h = 66
+        total_w = 3 * btn_w + 2 * btn_gap
+        btn_x = dlg_rect.centerx - total_w // 2
+        btn_y = dlg_rect.bottom - btn_h - 34
+        self.resume_continue_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        self.resume_new_button = pygame.Rect(
+            btn_x + btn_w + btn_gap,
+            btn_y,
+            btn_w,
+            btn_h,
+        )
+        self.resume_cancel_button = pygame.Rect(
+            btn_x + 2 * (btn_w + btn_gap),
+            btn_y,
+            btn_w,
+            btn_h,
+        )
+        self._draw_button(
+            screen,
+            self.resume_continue_button,
+            "Continue",
+            "resume_continue",
+        )
+        self._draw_button(
+            screen,
+            self.resume_new_button,
+            "New Session",
+            "resume_new",
+        )
+        self._draw_button(
+            screen,
+            self.resume_cancel_button,
+            "Cancel",
+            "resume_cancel",
+        )
 
     def _draw_exit_confirm(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
