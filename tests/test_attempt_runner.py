@@ -347,3 +347,58 @@ def test_paused_attempt_runner_blocks_and_resumes(tmp_path, monkeypatch):
 
     assert app.session.completed_in_level == 1
     assert len(app.evaluation._attempts.get("1a", [])) == 1
+
+
+def test_scored_attempt_saves_reading_after_advancing_item(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"1a": ["a", "b"]}, "1a")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert app.session.expected_sentence == "b"
+    app.save_active_session.assert_called_once_with("reading")
+
+
+def test_silent_attempt_saves_reading_retry_state(tmp_path):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"2a": ["a", "b"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert app.session.expected_sentence == "a"
+    app.save_active_session.assert_called_once_with("reading")
+
+
+def test_sublevel_completion_saves_results_before_event(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+    app = _make_app(tmp_path)
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    phase, result = app.save_active_session.call_args.args
+    assert phase == "results"
+    assert result["kind"] == "sublevel"
+    assert result["payload"]["level"] == "1a"
+
+
+def test_full_completion_clears_checkpoint_instead_of_saving_results(tmp_path):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"4": ["done"]}, "4")
+    app.evaluation = EvaluationService(tmp_path / "s.jsonl", 0.70)
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    app.evaluation.record_attempt("4", 1, "done", "done", 1.0, 0.0, True)
+
+    runner._advance_after_attempt("4", app.session, True, False)
+
+    app.clear_active_session.assert_called_once()
+    app.save_active_session.assert_not_called()

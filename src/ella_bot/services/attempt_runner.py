@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable
 
 from ella_bot.core.constants import max_attempts_for_level
@@ -255,6 +255,8 @@ class AttemptRunner:
             if self._advance_after_attempt(level, session, correct, exhausted):
                 return
 
+            self.app.save_active_session("reading")
+
             if correct:
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             elif exhausted:
@@ -341,16 +343,19 @@ class AttemptRunner:
                 tier_result = self.app.evaluation.finish_tier(tier)
                 if session.is_last_tier(tier):
                     cumulative = self.app.evaluation.finish_session()
+                    self.app.clear_active_session()
                     if self.app.audio_feedback and self.app.tts is not None:
                         if self._speak("Incredible! You finished every level. Let's see how you did!"):
                             return True
                     self.app.event_queue.put(SessionCompleted(cumulative))
                 else:
+                    self._save_result_checkpoint("tier", tier_result)
                     if self.app.audio_feedback and self.app.tts is not None:
                         if self._speak(f"Wow, you finished Level {tier}! You're doing amazing!"):
                             return True
                     self.app.event_queue.put(SubLevelCompleted(tier_result, "tier"))
             else:
+                self._save_result_checkpoint("sublevel", sub_result)
                 if self.app.audio_feedback and self.app.tts is not None:
                     if self._speak("Great job! Let's see how you did!"):
                         return True
@@ -360,6 +365,12 @@ class AttemptRunner:
         if correct or exhausted:
             session.advance_to_next_sentence()
         return False
+
+    def _save_result_checkpoint(self, kind: str, result) -> None:
+        self.app.save_active_session(
+            "results",
+            {"kind": kind, "payload": asdict(result)},
+        )
 
     def _handle_no_input(self) -> None:
         """Respond to a silent turn (empty transcript).
@@ -399,6 +410,8 @@ class AttemptRunner:
 
         if self._advance_after_attempt(level, session, correct=False, exhausted=exhausted):
             return
+
+        self.app.save_active_session("reading")
 
         if advancing:
             self.app.event_queue.put(MessageChanged("Let's move on."))
