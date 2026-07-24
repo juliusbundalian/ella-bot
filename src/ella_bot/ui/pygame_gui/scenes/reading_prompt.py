@@ -143,6 +143,7 @@ class ReadingPromptScene(BaseScene):
                 self._start_attempt()
 
     def _abort_paused_attempt(self) -> None:
+        worker_thread = self.worker_thread
         if self.runner:
             self.runner.abort()
         if self.app.tts is not None:
@@ -150,6 +151,8 @@ class ReadingPromptScene(BaseScene):
                 self.app.tts.stop()
             except Exception:
                 pass
+        if worker_thread is not None and worker_thread.is_alive():
+            worker_thread.join(timeout=2.0)
         self._auto_start_at = None
         self.app.prompt_active = False
         self.worker_thread = None

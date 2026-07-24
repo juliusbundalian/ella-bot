@@ -155,6 +155,22 @@ def test_pause_restart_aborts_then_resets_saves_and_starts():
     scene._start_attempt.assert_called_once()
 
 
+def test_pause_restart_joins_worker_before_resetting_session():
+    scene = _make_scene(is_paused=True, modal_visible=True)
+    scene.app.save_active_session.return_value = True
+    worker_thread = MagicMock()
+    worker_thread.is_alive.return_value = True
+    scene.worker_thread = worker_thread
+    actions = []
+    worker_thread.join.side_effect = lambda timeout: actions.append("join")
+    scene.app.session.reset_current_level.side_effect = lambda: actions.append("reset")
+
+    scene._restart_level_from_pause()
+
+    assert actions == ["join", "reset"]
+    worker_thread.join.assert_called_once_with(timeout=2.0)
+
+
 def test_pause_restart_failed_save_restores_and_remains_paused():
     scene = _make_scene(is_paused=True, modal_visible=True)
     scene.app.save_active_session.return_value = False
