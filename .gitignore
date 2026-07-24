@@ -34,3 +34,8 @@ sounds/
 
 # MCP config (local dev only)
 .mcp.json
+
+# Runtime session checkpoints
+/data/active_session.json
+/data/active_session.json.invalid-*
+/data/.active_session.json.*.tmp
