@@ -301,7 +301,7 @@ class ReadingPromptScene(BaseScene):
             max(0, safe_bottom - text_top),
         )
         for font_size in range(82, 11, -2):
-            font = self.app._get_sys_font(font_size)
+            font = self.app._get_prompt_font(font_size)
             if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
                 return font, text_rect
         return None, text_rect

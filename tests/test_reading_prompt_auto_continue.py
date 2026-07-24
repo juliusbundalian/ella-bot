@@ -11,7 +11,7 @@ def _make_scene_for_layout(expected_sentence):
     scene.app.expected_sentence = expected_sentence
     scene.app.font_prompt_small = pygame.font.SysFont("Arial", 96)
     scene.app._prompt_font.side_effect = lambda pygame_module: scene.app.font_prompt_small
-    scene.app._get_sys_font.side_effect = lambda size: pygame.font.SysFont("Arial", size)
+    scene.app._get_prompt_font.side_effect = lambda size: pygame.font.SysFont("Arial", size)
     return scene, pygame
 
 
@@ -111,6 +111,8 @@ def test_long_prompt_uses_smaller_font_and_higher_text_area():
     assert scene._wrapped_height(
         scene.app.expected_sentence, font, text_rect.width
     ) <= text_rect.height
+    scene.app._get_prompt_font.assert_called()
+    scene.app._get_sys_font.assert_not_called()
 
 
 def test_long_prompt_stays_above_ella_rendered_top():
