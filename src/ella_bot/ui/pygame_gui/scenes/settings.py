@@ -9,7 +9,7 @@ from ella_bot.utils.file_utils import resolve_asset_path
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
 _LISTEN_MIN = 5
-_LISTEN_MAX = 10
+_LISTEN_MAX = 12
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)

@@ -74,10 +74,10 @@ def test_listen_clamps_at_min():
 
 
 def test_listen_clamps_at_max():
-    scene = _make_scene(listen_seconds=10)
+    scene = _make_scene(listen_seconds=12)
     with patch("ella_bot.config.app_config.save_setting"):
         scene._tap_listen(1)
-    assert scene.listen_seconds == 10
+    assert scene.listen_seconds == 12
 
 
 def test_listen_tap_updates_asr():
