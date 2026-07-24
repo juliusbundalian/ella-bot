@@ -171,21 +171,13 @@ def run_gui(args: argparse.Namespace) -> None:
     if not session_log.is_absolute():
         session_log = get_project_root() / args.session_log
 
-    start_level = args.start_level
-    if start_level == "1a":
-        from ella_bot.services.session_manager import get_resume_level
-        recovered_level = get_resume_level(session_log, default_level="1a")
-        if recovered_level != "1a":
-            print(f"[SESSION SYSTEM] Detected past progress in log. Automatically resuming from Level {recovered_level.upper()}.")
-            start_level = recovered_level
-
     gui = EllaGUIApp(
         expected_sentence="",
         asr=build_asr(args),
         tts=build_tts_if_enabled(args),
         audio_feedback=args.audio_feedback,
         pronunciation_overrides=load_pronunciation_overrides(args.pronunciation_overrides),
-        start_level=start_level,
+        start_level=args.start_level,
         config=GUIConfig(
             width=args.gui_width,
             height=args.gui_height,

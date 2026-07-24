@@ -178,3 +178,15 @@ def test_pause_back_to_menu_aborts_saves_then_navigates():
 
     assert actions == ["abort", "save", "navigate"]
     scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_prepare_shutdown_aborts_and_joins_attempt_worker():
+    scene = _make_scene()
+    scene.runner = MagicMock()
+    scene.worker_thread = MagicMock()
+    scene.worker_thread.is_alive.return_value = True
+
+    scene.prepare_shutdown()
+
+    scene.runner.abort.assert_called_once()
+    scene.worker_thread.join.assert_called_once_with(timeout=2.0)

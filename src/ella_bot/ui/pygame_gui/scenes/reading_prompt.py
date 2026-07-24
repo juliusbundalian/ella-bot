@@ -69,6 +69,19 @@ class ReadingPromptScene(BaseScene):
             except Exception:
                 pass
 
+    def prepare_shutdown(self) -> None:
+        self._auto_start_at = None
+        if self.runner is not None:
+            self.runner.abort()
+        if self.app.tts is not None:
+            try:
+                self.app.tts.stop()
+            except Exception:
+                pass
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            self.worker_thread.join(timeout=2.0)
+        self.app.prompt_active = False
+
     def _touch_activity(self) -> None:
         self.last_activity_monotonic = time.monotonic()
 

@@ -76,3 +76,27 @@ def test_continue_restores_pending_result(tmp_path):
     assert replacement.continue_saved_session() == "results"
     assert replacement.latest_result == result
     assert replacement.latest_result_kind == "sublevel"
+
+
+def test_app_shutdown_saves_started_active_session(tmp_path):
+    app = _make_app(tmp_path)
+    app.selected_start_level = "1a"
+    app.checkpoint_phase = "reading"
+    app.save_active_session = MagicMock(return_value=True)
+    app.active_scene = MagicMock()
+
+    app.shutdown()
+
+    app.active_scene.prepare_shutdown.assert_called_once()
+    app.save_active_session.assert_called_once_with("reading", None)
+
+
+def test_app_shutdown_does_not_save_unstarted_session(tmp_path):
+    app = _make_app(tmp_path)
+    app.save_active_session = MagicMock(return_value=True)
+    app.active_scene = MagicMock()
+
+    app.shutdown()
+
+    app.active_scene.prepare_shutdown.assert_called_once()
+    app.save_active_session.assert_not_called()

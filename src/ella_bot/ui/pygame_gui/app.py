@@ -258,6 +258,16 @@ class EllaGUIApp:
         self.checkpoint_phase = None
         self.checkpoint_latest_result = None
 
+    def shutdown(self) -> None:
+        prepare = getattr(self.active_scene, "prepare_shutdown", None)
+        if callable(prepare):
+            prepare()
+        if self.selected_start_level is not None and self.checkpoint_phase is not None:
+            self.save_active_session(
+                self.checkpoint_phase,
+                self.checkpoint_latest_result,
+            )
+
     def switch_scene(self, scene_name: str) -> None:
         if self.active_scene:
             self.active_scene.on_exit()
@@ -321,20 +331,24 @@ class EllaGUIApp:
         }
         self.switch_scene("intro")
 
-        self.running = True
-        while self.running:
-            now_ms = pygame.time.get_ticks()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                else:
-                    self.active_scene.handle_event(event)
+        try:
+            self.running = True
+            while self.running:
+                now_ms = pygame.time.get_ticks()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                    else:
+                        self.active_scene.handle_event(event)
 
-            self.animator.update(now_ms)
-            self.active_scene.update(now_ms)
-            self.active_scene.render()
-            
-            pygame.display.flip()
-            self.clock.tick(self.config.fps)
+                self.animator.update(now_ms)
+                self.active_scene.update(now_ms)
+                self.active_scene.render()
 
-        pygame.quit()
+                pygame.display.flip()
+                self.clock.tick(self.config.fps)
+        finally:
+            try:
+                self.shutdown()
+            finally:
+                pygame.quit()

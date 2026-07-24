@@ -11,6 +11,7 @@ from ella_bot.ui.pygame_gui.app import EllaGUIApp
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
+from ella_bot.ui.pygame_gui.scenes.level_selection import LevelSelectionScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
 from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
@@ -50,8 +51,9 @@ class AutoMainMenuScene(MainMenuScene):
         super().update(now_ms)
         # Automatically transition to the reading prompt scene without waiting for mouse clicks
         print("[TEST MANAGER] Main menu active, automatically transitioning to reading prompt scene...")
-        self.app.switch_scene("reading_prompt")
-        self.app.active_scene._start_attempt()
+        if self.app.start_new_session("1a"):
+            self.app.switch_scene("reading_prompt")
+            self.app.active_scene._start_attempt()
 
 
 class AutoReadingPromptScene(ReadingPromptScene):
@@ -143,6 +145,7 @@ class E2EInteractiveApp(EllaGUIApp):
         self.scenes = {
             "intro": IntroScene(self),
             "main_menu": AutoMainMenuScene(self),
+            "level_selection": LevelSelectionScene(self),
             "reading_prompt": AutoReadingPromptScene(self),
             "settings": SettingsScene(self),
             "results": AutoResultsScene(self),
