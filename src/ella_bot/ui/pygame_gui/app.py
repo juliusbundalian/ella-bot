@@ -1,17 +1,24 @@
 import queue
+from dataclasses import asdict
 from typing import Dict, List, Optional
 
+from ella_bot.core.constants import LEVEL_ORDER
+from ella_bot.services.attempt_runner import AttemptViewModel
+from ella_bot.services.evaluation import EvaluationService
+from ella_bot.services.session_checkpoint import SessionCheckpointStore
+from ella_bot.services.session_manager import SessionManager
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
 from ella_bot.ui.pygame_gui.config import GUIConfig
+from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
-from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
 from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
-from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
-from ella_bot.services.attempt_runner import AttemptViewModel
-from ella_bot.services.session_manager import SessionManager
-from ella_bot.services.evaluation import EvaluationService
+from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
+from ella_bot.utils.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 class EllaGUIApp:
     """Pygame GUI loop for E.L.L.A. serving as a SceneManager."""
@@ -32,6 +39,8 @@ class EllaGUIApp:
         self.audio_feedback = audio_feedback
         self.pronunciation_overrides = pronunciation_overrides
         self.config = config or GUIConfig()
+        self._hard_sentences = hard_sentences
+        self._seed_sentence = expected_sentence
 
         self.session = SessionManager.from_config_file(
             start_level=start_level,
@@ -45,6 +54,11 @@ class EllaGUIApp:
         )
         self.latest_result = None
         self.latest_result_kind = None
+        self.selected_start_level: str | None = None
+        self.checkpoint_phase: str | None = None
+        self.checkpoint_latest_result: dict | None = None
+        checkpoint_path = self.config.session_log_path.with_name("active_session.json")
+        self.checkpoint_store = SessionCheckpointStore(checkpoint_path)
 
         self.state = "idle"
         self.message = ""
@@ -139,6 +153,109 @@ class EllaGUIApp:
 
     def _try_level_up(self, accuracy: float) -> bool:
         return self.session.try_level_up(accuracy)
+
+    # --- Active-session checkpoint orchestration ---
+
+    def has_saved_session(self) -> bool:
+        return self.saved_session_summary() is not None
+
+    def saved_session_summary(self):
+        return self.checkpoint_store.summary(
+            self.session.level_pools,
+            self.evaluation.log_path,
+            self.evaluation.pass_bar,
+        )
+
+    def start_new_session(self, level: str) -> bool:
+        if level not in LEVEL_ORDER:
+            return False
+        candidate_session = SessionManager.from_config_file(
+            start_level=level,
+            hard_sentences=self._hard_sentences,
+            seed_sentence=self._seed_sentence,
+        )
+        candidate_evaluation = EvaluationService(
+            log_path=self.evaluation.log_path,
+            pass_bar=self.evaluation.pass_bar,
+        )
+        try:
+            self.checkpoint_store.save(
+                level,
+                "reading",
+                candidate_session,
+                candidate_evaluation,
+            )
+        except Exception as exc:
+            logger.error("Unable to create a new session checkpoint: %s", exc)
+            self.message = "Progress could not be saved."
+            return False
+        self.session = candidate_session
+        self.evaluation = candidate_evaluation
+        self.selected_start_level = level
+        self.checkpoint_phase = "reading"
+        self.checkpoint_latest_result = None
+        self.latest_result = None
+        self.latest_result_kind = None
+        return True
+
+    def save_active_session(
+        self,
+        phase: str,
+        latest_result: dict | None = None,
+    ) -> bool:
+        if self.selected_start_level is None:
+            return False
+        try:
+            self.checkpoint_store.save(
+                self.selected_start_level,
+                phase,
+                self.session,
+                self.evaluation,
+                latest_result,
+            )
+            self.checkpoint_phase = phase
+            self.checkpoint_latest_result = latest_result
+            return True
+        except Exception as exc:
+            logger.error("Unable to save active session: %s", exc)
+            self.message = "Progress could not be saved."
+            return False
+
+    def continue_saved_session(self) -> str | None:
+        try:
+            restored = self.checkpoint_store.restore(
+                self.session.level_pools,
+                self.evaluation.log_path,
+                self.evaluation.pass_bar,
+            )
+        except Exception as exc:
+            logger.error("Unable to restore active session: %s", exc)
+            self.message = "Saved progress could not be restored."
+            return None
+        if restored is None:
+            self.message = "Saved progress could not be restored."
+            return None
+        self.session = restored.session
+        self.evaluation = restored.evaluation
+        self.selected_start_level = restored.selected_start_level
+        self.latest_result_kind = restored.latest_result_kind
+        self.latest_result = restored.latest_result
+        self.checkpoint_phase = restored.phase
+        self.checkpoint_latest_result = (
+            None
+            if restored.latest_result is None
+            else {
+                "kind": restored.latest_result_kind,
+                "payload": asdict(restored.latest_result),
+            }
+        )
+        return restored.phase
+
+    def clear_active_session(self) -> None:
+        self.checkpoint_store.clear()
+        self.selected_start_level = None
+        self.checkpoint_phase = None
+        self.checkpoint_latest_result = None
 
     def switch_scene(self, scene_name: str) -> None:
         if self.active_scene:
