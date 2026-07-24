@@ -101,12 +101,24 @@ class PiperTTS(BaseTTS):
                     phonemes_list = list(raw_phonemes_str)
                     phoneme_ids = self._voice.phonemes_to_ids(phonemes_list)
 
-                    audio_sample = self._voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config)
+                    phoneme_syn_config = SynthesisConfig(
+                        length_scale=syn_config.length_scale,
+                        noise_scale=0.3,
+                        noise_w_scale=0.3,
+                        volume=syn_config.volume,
+                    )
+                    audio_sample = self._voice.phoneme_ids_to_audio(phoneme_ids, syn_config=phoneme_syn_config)
 
                     if audio_sample.dtype == np.float32:
                         audio_sample = (audio_sample * 32767).astype(np.int16)
 
-                    pcm_warm = _apply_warmth(audio_sample, volume=syn_config.volume)
+                    # Peak normalize isolated phonemes to 95% volume for crisp, clear playback
+                    audio_float = audio_sample.astype(np.float32)
+                    peak = np.max(np.abs(audio_float)) if audio_float.size else 0.0
+                    if peak > 0.0:
+                        target_gain = 32767.0 * 0.95 * max(0.0, min(1.0, syn_config.volume))
+                        audio_float = (audio_float / peak) * target_gain
+                    pcm_warm = audio_float.astype(np.int16)
                     sample_rate = getattr(self._voice.config, "sample_rate", 22050)
 
                     stream = sd.RawOutputStream(

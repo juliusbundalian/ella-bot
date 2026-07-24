@@ -333,9 +333,9 @@ def test_play_relaxed_variant_uses_exact_config_and_padding(monkeypatch):
         lambda pcm, sample_rate: played.update(pcm=pcm.copy(), samplerate=sample_rate),
     )
 
-    samples = audition_level.play_piper_variant(voice, "phonemes:b.", variant)
+    samples = audition_level.play_piper_variant(voice, "phonemes:b", variant)
 
-    assert voice.phonemes == list("b.")
+    assert voice.phonemes == list("b")
     assert voice.syn_config.length_scale == pytest.approx(200 / 145)
     assert voice.syn_config.noise_scale == 0.3
     assert voice.syn_config.noise_w_scale == 0.3
