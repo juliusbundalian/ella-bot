@@ -5,8 +5,8 @@ def test_processing_maps_to_thinking():
     assert bot_state_for_app("processing") == "thinking"
 
 
-def test_retry_maps_to_error():
-    assert bot_state_for_app("retry") == "error"
+def test_retry_maps_to_idle():
+    assert bot_state_for_app("retry") == "idle"
 
 
 def test_success_maps_to_idle():
