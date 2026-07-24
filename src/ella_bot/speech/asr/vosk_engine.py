@@ -23,6 +23,33 @@ class ASRResult:
 	words: List[WordScore]
 
 
+def format_attempt_diagnostics(
+	capture_seconds: float,
+	processed_bytes: int,
+	processed_blocks: int,
+	queued_bytes: int,
+	queued_blocks: int,
+	sample_rate: int,
+	decoder_seconds: float,
+	transcript: str,
+	words: List[WordScore],
+) -> str:
+	"""Format one debug summary for a microphone transcription attempt."""
+	bytes_per_second = sample_rate * 2  # 16-bit mono PCM
+	processed_seconds = processed_bytes / bytes_per_second
+	queued_seconds = queued_bytes / bytes_per_second
+	word_confidences = ", ".join(
+		f"{word.word}:{word.confidence:.2f}" for word in words
+	)
+	return (
+		f"capture={capture_seconds:.2f}s "
+		f"processed={processed_seconds:.2f}s/{processed_blocks} blocks "
+		f"backlog={queued_seconds:.2f}s/{queued_blocks} blocks "
+		f"decode={decoder_seconds:.2f}s "
+		f"transcript={transcript!r} words=[{word_confidences}]"
+	)
+
+
 class BaseASR:
 	"""Abstract ASR adapter."""
 
@@ -66,7 +93,7 @@ class VoskASR(BaseASR):
 		self._recognizer = None
 		self._audio_queue = queue.Queue()
 		self._stream = None
-		
+
 		# Force load model during initialization to avoid runtime lag
 		logger.info("Loading ASR Model from %s", self.model_path)
 		self._ensure_model_loaded()
@@ -78,7 +105,7 @@ class VoskASR(BaseASR):
 	def _ensure_model_loaded(self):
 		if self._model is not None:
 			return
-		
+
 		try:
 			vosk = importlib.import_module("vosk")
 			self._model = vosk.Model(str(self.model_path))
@@ -154,36 +181,45 @@ class VoskASR(BaseASR):
 		recognizer.SetWords(True)
 
 		logger.info("[ASR] Recording started instantly. Will listen for %d seconds", self.listen_seconds)
-		
+
 		import time
-		start_time = time.time()
+		start_time = time.monotonic()
 		last_log_time = start_time
-		
+		processed_bytes = 0
+		processed_blocks = 0
+		decoder_seconds = 0.0
+
 		while True:
 			if is_paused is not None and is_paused():
 				logger.info("[ASR] Transcription aborted due to pause/quit.")
 				return ASRResult(transcript="", words=[])
 
-			elapsed = time.time() - start_time
+			elapsed = time.monotonic() - start_time
 			if elapsed >= self.listen_seconds:
 				break
-				
+
 			# Log every second
-			if time.time() - last_log_time >= 1.0:
+			if time.monotonic() - last_log_time >= 1.0:
 				logger.debug("[ASR] Recording: %ds / %ds", int(elapsed), self.listen_seconds)
-				last_log_time = time.time()
+				last_log_time = time.monotonic()
 
 			try:
 				# 3. Read incoming bytes instantly from the queue (zero start lag!)
 				data = self._audio_queue.get(timeout=0.1)
+				decode_start = time.monotonic()
 				recognizer.AcceptWaveform(data)
+				decoder_seconds += time.monotonic() - decode_start
+				processed_bytes += len(data)
+				processed_blocks += 1
 			except queue.Empty:
 				continue
-		
+
 		logger.debug("[ASR] Recording loop finished")
 
 		logger.debug("[ASR] Finalizing recognition result")
+		decode_start = time.monotonic()
 		final_result_str = recognizer.FinalResult()
+		decoder_seconds += time.monotonic() - decode_start
 		final_json = json.loads(final_result_str)
 		transcript = final_json.get("text", "").strip()
 
@@ -193,5 +229,24 @@ class VoskASR(BaseASR):
 			conf = float(item.get("conf", 0.0))
 			if w:
 				words.append(WordScore(word=w, confidence=conf))
+
+		with self._audio_queue.mutex:
+			queued_chunks = tuple(self._audio_queue.queue)
+		queued_bytes = sum(len(chunk) for chunk in queued_chunks)
+		queued_blocks = len(queued_chunks)
+		logger.info(
+			"[ASR] %s",
+			format_attempt_diagnostics(
+				capture_seconds=time.monotonic() - start_time,
+				processed_bytes=processed_bytes,
+				processed_blocks=processed_blocks,
+				queued_bytes=queued_bytes,
+				queued_blocks=queued_blocks,
+				sample_rate=self.sample_rate,
+				decoder_seconds=decoder_seconds,
+				transcript=transcript,
+				words=words,
+			),
+		)
 
 		return ASRResult(transcript=transcript, words=words)
