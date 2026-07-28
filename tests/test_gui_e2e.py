@@ -11,6 +11,7 @@ from ella_bot.ui.pygame_gui.app import EllaGUIApp
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
+from ella_bot.ui.pygame_gui.scenes.profiles import ProfilesScene
 from ella_bot.ui.pygame_gui.scenes.level_selection import LevelSelectionScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
@@ -145,6 +146,7 @@ class E2EInteractiveApp(EllaGUIApp):
         self.scenes = {
             "intro": IntroScene(self),
             "main_menu": AutoMainMenuScene(self),
+            "profiles": ProfilesScene(self),
             "level_selection": LevelSelectionScene(self),
             "reading_prompt": AutoReadingPromptScene(self),
             "settings": SettingsScene(self),
@@ -227,6 +229,8 @@ def main():
         pronunciation_overrides=overrides,
         config=config,
     )
+    if app.active_profile() is None:
+        app.create_profile('E2E Reader')
     
     # Inject references and custom pools
     asr.app = app

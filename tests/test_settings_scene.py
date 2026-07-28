@@ -13,7 +13,6 @@ def _make_scene(volume_level=3, listen_seconds=7):
     scene.volume_level = volume_level
     scene.listen_seconds = listen_seconds
     scene.pressed_button = None
-    scene.show_reset_confirm = False
     return scene
 
 
@@ -87,14 +86,8 @@ def test_listen_tap_updates_asr():
     assert scene.app.asr.listen_seconds == 8
 
 
-def test_reset_progress_clears_checkpoint_before_returning_to_menu():
+def test_settings_has_no_profile_reset_state():
     scene = _make_scene()
-    actions = []
-    scene.app.session.reset_to_start.side_effect = lambda: actions.append("session")
-    scene.app.evaluation.reset_all.side_effect = lambda: actions.append("evaluation")
-    scene.app.clear_active_session.side_effect = lambda: actions.append("checkpoint")
-    scene.app.switch_scene.side_effect = lambda name: actions.append("menu")
-
-    scene._reset_progress()
-
-    assert actions == ["session", "evaluation", "checkpoint", "menu"]
+    assert not hasattr(scene, "show_reset_confirm")
+    assert not hasattr(scene, "btn_reset")
+    assert not hasattr(scene, "_reset_progress")
