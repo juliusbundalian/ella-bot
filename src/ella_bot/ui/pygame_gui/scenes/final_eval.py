@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_level_sound
+from ella_bot.ui.pygame_gui.components.confetti import ConfettiAnimation
+
+
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
@@ -25,9 +31,17 @@ class FinalEvaluationScene(BaseScene):
         self._font_complete = None
         self.play_button = None
         self.menu_button = None
+        self.confetti = ConfettiAnimation()
 
     def on_enter(self) -> None:
         self.pressed_button = None
+        result = getattr(self.app, "latest_result", None)
+        if result is not None:
+            rating = getattr(result, "overall_rating", "A")
+            passed = getattr(result, "passed", rating in ("A", "B", "C"))
+            play_level_sound(passed)
+            if passed:
+                self.confetti.trigger(duration=4.0)
 
     # --- actions (unit-tested) ---
 
@@ -161,3 +175,7 @@ class FinalEvaluationScene(BaseScene):
 
         pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
+
+        # --- Render celebratory confetti animation on pass ---
+        self.confetti.update_and_render(pygame, screen)
+

@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-level",
         default="1a",
-        choices=["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"],
+        choices=["1", "2", "1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"],
         help="Starting level for GUI progression mode.",
     )
     parser.add_argument(
@@ -171,13 +171,16 @@ def run_gui(args: argparse.Namespace) -> None:
     if not session_log.is_absolute():
         session_log = get_project_root() / args.session_log
 
+    level_alias = {"1": "1a", "2": "2a"}
+    start_level = level_alias.get(args.start_level, args.start_level)
+
     gui = EllaGUIApp(
         expected_sentence="",
         asr=build_asr(args),
         tts=build_tts_if_enabled(args),
         audio_feedback=args.audio_feedback,
         pronunciation_overrides=load_pronunciation_overrides(args.pronunciation_overrides),
-        start_level=args.start_level,
+        start_level=start_level,
         config=GUIConfig(
             width=args.gui_width,
             height=args.gui_height,
