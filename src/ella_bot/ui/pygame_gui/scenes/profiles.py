@@ -130,11 +130,23 @@ class ProfilesScene(BaseScene):
         except (ProfileStoreError, OSError) as exc:
             self.error_message = str(exc) or 'Profile could not be updated.'
             return
+        if deleting_active and not cleaned:
+            self.modal = 'cleanup_warning'
+            self.target_profile_id = None
+            self.target_profile_name = ''
+            self.error_message = 'Some old profile files could not be removed.'
+            self.pressed_button = None
+            self._modal_cancel_button = None
+            return
         self._close_modal()
         if not cleaned:
             self.error_message = 'Some old profile files could not be removed.'
         if deleting_active:
             self.app.switch_scene('main_menu')
+
+    def _acknowledge_cleanup_warning(self) -> None:
+        self._close_modal()
+        self.app.switch_scene('main_menu')
 
     def _select_profile(self, profile_id: str) -> None:
         try:
@@ -181,7 +193,11 @@ class ProfilesScene(BaseScene):
                 self.pressed_button = (
                     'modal_save'
                     if self.modal in ('create', 'rename')
-                    else 'modal_confirm'
+                    else (
+                        'modal_ack'
+                        if self.modal == 'cleanup_warning'
+                        else 'modal_confirm'
+                    )
                 )
             elif self._modal_cancel_button and self._modal_cancel_button.collidepoint(mouse_pos):
                 self.pressed_button = 'modal_cancel'
@@ -210,6 +226,12 @@ class ProfilesScene(BaseScene):
                 and self._modal_save_button.collidepoint(mouse_pos)
             ):
                 self._save_name()
+            elif (
+                pressed == 'modal_ack'
+                and self._modal_save_button
+                and self._modal_save_button.collidepoint(mouse_pos)
+            ):
+                self._acknowledge_cleanup_warning()
             elif (
                 pressed == 'modal_confirm'
                 and self._modal_save_button
@@ -375,6 +397,8 @@ class ProfilesScene(BaseScene):
             self._draw_name_modal(screen, width, height)
         elif self.modal in ('reset', 'delete'):
             self._draw_confirmation_modal(screen, width, height)
+        elif self.modal == 'cleanup_warning':
+            self._draw_cleanup_warning_modal(screen, width, height)
 
     def _draw_profile_card(self, screen, rect, profile, is_active: bool) -> None:
         key = f'profile:{profile.id}'
@@ -571,5 +595,34 @@ class ProfilesScene(BaseScene):
             self._modal_cancel_button,
             'Cancel',
             'modal_cancel',
+            font=self.app.font_body,
+        )
+
+    def _draw_cleanup_warning_modal(self, screen, width: int, height: int) -> None:
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        dialog = pygame.Rect(0, 0, min(760, width - 120), min(310, height - 120))
+        dialog.center = (width // 2, height // 2)
+        pygame.draw.rect(screen, _WHITE, dialog, border_radius=24)
+        pygame.draw.rect(screen, _BTN_OUTLINE, dialog, width=4, border_radius=24)
+
+        title = self.app.font_title.render('Profile Deleted', True, _TEXT)
+        screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 28))
+        warning = self.app.font_small.render(self.error_message, True, _ERROR)
+        screen.blit(
+            warning,
+            warning.get_rect(centerx=dialog.centerx, top=dialog.top + 120),
+        )
+
+        self._modal_save_button = pygame.Rect(0, 0, 180, 58)
+        self._modal_save_button.midbottom = (dialog.centerx, dialog.bottom - 28)
+        self._modal_cancel_button = None
+        self._draw_button(
+            screen,
+            self._modal_save_button,
+            'OK',
+            'modal_ack',
             font=self.app.font_body,
         )

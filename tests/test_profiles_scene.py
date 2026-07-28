@@ -193,6 +193,45 @@ def test_delete_active_profile_returns_to_generic_main_menu():
     scene.app.switch_scene.assert_called_once_with('main_menu')
 
 
+def test_active_delete_cleanup_failure_warns_before_returning_to_main_menu():
+    scene = _scene()
+    profile = Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00')
+    scene.app.active_profile.return_value = profile
+    scene.app.delete_profile.return_value = False
+    real_font = scene.app.font_small
+    scene.app.font_small = MagicMock()
+    scene.app.font_small.render.side_effect = real_font.render
+    scene._open_confirmation('delete', profile)
+
+    scene._confirm_management()
+
+    scene.app.switch_scene.assert_not_called()
+    scene.render()
+    rendered_labels = [
+        call.args[0] for call in scene.app.font_small.render.call_args_list
+    ]
+    assert 'Some old profile files could not be removed.' in rendered_labels
+    acknowledge_button = scene._modal_save_button
+    assert acknowledge_button is not None
+
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            button=1,
+            pos=acknowledge_button.center,
+        )
+    )
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONUP,
+            button=1,
+            pos=acknowledge_button.center,
+        )
+    )
+
+    scene.app.switch_scene.assert_called_once_with('main_menu')
+
+
 def test_rename_hitbox_intercepts_profile_selection():
     scene = _scene()
     profile = _profile(1)
