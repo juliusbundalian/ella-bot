@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,72 @@ from ella_bot.services.profile_store import (
     ProfileStore,
     ProfileValidationError,
 )
+
+
+def _write_progress(store, profile, checkpoint=b'checkpoint', history=b'history'):
+    checkpoint_path = store.checkpoint_path(profile.id)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(checkpoint)
+    store.history_path(profile.id).write_bytes(history)
+
+
+def test_reset_progress_keeps_profile_and_other_profile_data(tmp_path):
+    store = ProfileStore(tmp_path / 'profiles.json')
+    first = store.create('First')
+    second = store.create('Second')
+    _write_progress(store, first)
+    _write_progress(store, second, b'other-checkpoint', b'other-history')
+
+    assert store.reset_progress(first.id) is True
+
+    assert store.checkpoint_path(first.id).exists() is False
+    assert store.history_path(first.id).exists() is False
+    assert store.history_path(second.id).read_bytes() == b'other-history'
+    assert store.list_profiles() == (first, second)
+
+
+def test_delete_active_profile_clears_selection_only(tmp_path):
+    store = ProfileStore(tmp_path / 'profiles.json')
+    first = store.create('First')
+    second = store.create('Second')
+    _write_progress(store, second)
+
+    assert store.delete(second.id) is True
+
+    assert store.list_profiles() == (first,)
+    assert store.active_profile() is None
+    assert not (tmp_path / 'profiles' / second.id).exists()
+
+
+def test_reset_restores_original_directory_when_recreation_fails(tmp_path, monkeypatch):
+    store = ProfileStore(tmp_path / 'profiles.json')
+    profile = store.create('Reader')
+    _write_progress(store, profile)
+    original_mkdir = Path.mkdir
+
+    def fail_profile_recreation(path, *args, **kwargs):
+        if path == tmp_path / 'profiles' / profile.id:
+            raise OSError('mkdir failed')
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'mkdir', fail_profile_recreation)
+    with pytest.raises(OSError):
+        store.reset_progress(profile.id)
+    assert store.checkpoint_path(profile.id).read_bytes() == b'checkpoint'
+
+
+def test_delete_cleanup_failure_leaves_no_registered_profile(tmp_path, monkeypatch):
+    store = ProfileStore(tmp_path / 'profiles.json')
+    profile = store.create('Reader')
+    _write_progress(store, profile)
+    monkeypatch.setattr(
+        'ella_bot.services.profile_store.shutil.rmtree',
+        lambda *_: (_ for _ in ()).throw(OSError('busy')),
+    )
+
+    assert store.delete(profile.id) is False
+    assert store.list_profiles() == ()
+    assert store.active_profile() is None
 
 
 def test_missing_registry_starts_empty(tmp_path):

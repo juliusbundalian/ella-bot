@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from ella_bot.utils.logging import get_logger
+
 SCHEMA_VERSION = 1
 MAX_PROFILES = 5
 
 _PROFILE_FIELDS = {"id", "name", "created_at"}
 _REGISTRY_FIELDS = {"schema_version", "active_profile_id", "profiles"}
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = get_logger(__name__)
 
 
 class ProfileStoreError(Exception):
@@ -100,6 +102,49 @@ class ProfileStore:
     def history_path(self, profile_id: str) -> Path:
         self._require_profile(profile_id)
         return self.profiles_root / profile_id / "sessions.jsonl"
+
+    def reset_progress(self, profile_id: str) -> bool:
+        self._require_profile(profile_id)
+        profile_dir = self.profiles_root / profile_id
+        if not profile_dir.exists():
+            return True
+        staged = self.profiles_root / (
+            f'.{profile_id}.reset-' + datetime.now().strftime('%Y%m%dT%H%M%S%f')
+        )
+        profile_dir.replace(staged)
+        try:
+            profile_dir.mkdir(parents=True, exist_ok=False)
+        except Exception:
+            staged.replace(profile_dir)
+            raise
+        try:
+            shutil.rmtree(staged)
+            return True
+        except OSError as exc:
+            _LOGGER.warning('Unable to remove staged profile reset data: %s', exc)
+            return False
+
+    def delete(self, profile_id: str) -> bool:
+        self._require_profile(profile_id)
+        profiles = tuple(
+            profile for profile in self._profiles if profile.id != profile_id
+        )
+        active_profile_id = (
+            None if self._active_profile_id == profile_id else self._active_profile_id
+        )
+        self._write(profiles, active_profile_id)
+        self._profiles = profiles
+        self._active_profile_id = active_profile_id
+
+        profile_dir = self.profiles_root / profile_id
+        if not profile_dir.exists():
+            return True
+        try:
+            shutil.rmtree(profile_dir)
+            return True
+        except OSError as exc:
+            _LOGGER.warning('Unable to remove profile data: %s', exc)
+            return False
 
     def _require_profile(self, profile_id: str) -> Profile:
         profile = next(
