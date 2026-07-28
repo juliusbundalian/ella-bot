@@ -44,6 +44,16 @@ def test_profile_selection_persists_and_binds_paths(tmp_path):
     )
 
 
+def test_active_profile_greeting_data_persists_across_restart(tmp_path):
+    app = _make_app(tmp_path)
+    maria = app.create_profile('Maria')
+    app.select_profile(maria.id)
+
+    replacement = _make_app(tmp_path)
+
+    assert replacement.active_profile().name == 'Maria'
+
+
 def test_new_session_is_saved_before_live_state_is_replaced(tmp_path):
     app = _make_app(tmp_path, create_profile=True)
     old_session = app.session

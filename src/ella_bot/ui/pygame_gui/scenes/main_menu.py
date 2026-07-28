@@ -16,6 +16,7 @@ _INNER_BORDER = (255, 185, 207)
 _BTN_FILL = (255, 182, 193)
 _BTN_OUTLINE = (94, 42, 59)
 _BTN_PRESSED = (251, 165, 193)
+_TEXT = (50, 50, 50)
 
 
 class MainMenuScene(BaseScene):
@@ -24,9 +25,12 @@ class MainMenuScene(BaseScene):
         self.pressed_button = None
         self.show_exit_confirm = False
         self.show_resume_prompt = False
+        self.show_profile_required_prompt = False
+        self.profile_required_message = ''
         self.resume_summary = None
 
         self.menu_start_button = None
+        self.menu_profiles_button = None
         self.menu_exit_button = None
         self.menu_gear_button = None
         self.menu_confirm_yes_button = None
@@ -34,6 +38,8 @@ class MainMenuScene(BaseScene):
         self.resume_continue_button = None
         self.resume_new_button = None
         self.resume_cancel_button = None
+        self.profile_required_open_button = None
+        self.profile_required_cancel_button = None
 
         self.bot = BotSprite()
         self._title_img = None
@@ -42,10 +48,26 @@ class MainMenuScene(BaseScene):
     def on_enter(self) -> None:
         self.show_exit_confirm = False
         self.show_resume_prompt = False
+        self.show_profile_required_prompt = False
+        self.profile_required_message = ''
         self.resume_summary = None
         self.pressed_button = None
+        self.menu_profiles_button = None
+        self.profile_required_open_button = None
+        self.profile_required_cancel_button = None
+
+    def _do_profiles(self) -> None:
+        self.app.switch_scene('profiles')
 
     def _do_start(self) -> None:
+        if self.app.active_profile() is None:
+            self.profile_required_message = (
+                'Create a profile before starting.'
+                if not self.app.profiles()
+                else 'Choose a profile before starting.'
+            )
+            self.show_profile_required_prompt = True
+            return
         summary = self.app.saved_session_summary()
         if summary is None:
             self.app.switch_scene("level_selection")
@@ -100,6 +122,19 @@ class MainMenuScene(BaseScene):
             self._handle_mouse_up(event.pos)
 
     def _handle_mouse_down(self, mouse_pos) -> None:
+        if self.show_profile_required_prompt:
+            if (
+                self.profile_required_open_button
+                and self.profile_required_open_button.collidepoint(mouse_pos)
+            ):
+                self.pressed_button = 'profile_required_open'
+            elif (
+                self.profile_required_cancel_button
+                and self.profile_required_cancel_button.collidepoint(mouse_pos)
+            ):
+                self.pressed_button = 'profile_required_cancel'
+            return
+
         if self.show_resume_prompt:
             if self.resume_continue_button and self.resume_continue_button.collidepoint(mouse_pos):
                 self.pressed_button = "resume_continue"
@@ -116,6 +151,10 @@ class MainMenuScene(BaseScene):
                 self.pressed_button = "confirm_no"
             return
 
+        if self.menu_profiles_button and self.menu_profiles_button.collidepoint(mouse_pos):
+            self.pressed_button = 'profiles'
+            return
+
         if self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
             self.pressed_button = "start"
         elif self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
@@ -125,6 +164,28 @@ class MainMenuScene(BaseScene):
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         try:
+            if (
+                self.pressed_button == 'profile_required_open'
+                and self.profile_required_open_button
+                and self.profile_required_open_button.collidepoint(mouse_pos)
+            ):
+                self.show_profile_required_prompt = False
+                self._do_profiles()
+                return
+            if (
+                self.pressed_button == 'profile_required_cancel'
+                and self.profile_required_cancel_button
+                and self.profile_required_cancel_button.collidepoint(mouse_pos)
+            ):
+                self.show_profile_required_prompt = False
+                return
+            if (
+                self.pressed_button == 'profiles'
+                and self.menu_profiles_button
+                and self.menu_profiles_button.collidepoint(mouse_pos)
+            ):
+                self._do_profiles()
+                return
             if self.pressed_button == "resume_continue" and self.resume_continue_button and self.resume_continue_button.collidepoint(mouse_pos):
                 self._do_continue()
             elif self.pressed_button == "resume_new" and self.resume_new_button and self.resume_new_button.collidepoint(mouse_pos):
@@ -186,13 +247,39 @@ class MainMenuScene(BaseScene):
         else:
             content_top = inner_rect.top + 80
 
-        # --- Start and Exit buttons ---
-        btn_w, btn_h, btn_gap = 300, 85, 22
+        profile = self.app.active_profile()
+        greeting = 'Welcome!' if profile is None else f'Welcome, {profile.name}!'
+        greeting_surf = self.app.font_body.render(greeting, True, _TEXT)
+        greeting_rect = greeting_surf.get_rect(
+            centerx=inner_rect.centerx,
+            top=content_top,
+        )
+        screen.blit(greeting_surf, greeting_rect)
+
+        button_area_bottom = inner_rect.bottom - 36
+        available_height = max(3, button_area_bottom - greeting_rect.bottom)
+        btn_gap = min(16, available_height // 10)
+        btn_h = min(72, max(1, (available_height - 2 * btn_gap) // 3))
+        total_height = 3 * btn_h + 2 * btn_gap
+        btn_y = greeting_rect.bottom + (available_height - total_height) // 2
+        btn_w = min(300, max(1, inner_rect.width - 72))
         btn_x = inner_rect.centerx - btn_w // 2
-        self.menu_start_button = pygame.Rect(btn_x, content_top, btn_w, btn_h)
-        self.menu_exit_button = pygame.Rect(btn_x, content_top + btn_h + btn_gap, btn_w, btn_h)
-        self._draw_button(screen, self.menu_start_button, "Start", "start")
-        self._draw_button(screen, self.menu_exit_button, "Exit", "exit")
+        self.menu_start_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        self.menu_profiles_button = pygame.Rect(
+            btn_x,
+            btn_y + btn_h + btn_gap,
+            btn_w,
+            btn_h,
+        )
+        self.menu_exit_button = pygame.Rect(
+            btn_x,
+            btn_y + 2 * (btn_h + btn_gap),
+            btn_w,
+            btn_h,
+        )
+        self._draw_button(screen, self.menu_start_button, 'Start', 'start')
+        self._draw_button(screen, self.menu_profiles_button, 'Profiles', 'profiles')
+        self._draw_button(screen, self.menu_exit_button, 'Exit', 'exit')
 
         # --- Bot (bottom-right, same as reading prompt) ---
         self.bot.draw(screen, inner_rect)
@@ -223,10 +310,67 @@ class MainMenuScene(BaseScene):
             gear_surf = self.app.font_body.render("⚙", True, _WHITE)
             screen.blit(gear_surf, gear_surf.get_rect(center=self.menu_gear_button.center))
 
-        if self.show_exit_confirm:
+        if self.show_profile_required_prompt:
+            self._draw_profile_required_prompt(screen, width, height)
+        elif self.show_exit_confirm:
             self._draw_exit_confirm(screen, width, height)
         elif self.show_resume_prompt:
             self._draw_resume_prompt(screen, width, height)
+
+    def _draw_profile_required_prompt(self, screen, width, height) -> None:
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+
+        dlg_w = min(660, int(width * 0.58))
+        dlg_h = min(300, int(height * 0.44))
+        dlg_rect = pygame.Rect(
+            (width - dlg_w) // 2,
+            (height - dlg_h) // 2,
+            dlg_w,
+            dlg_h,
+        )
+        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
+        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
+
+        message = self.app.font_body.render(
+            self.profile_required_message,
+            True,
+            _TEXT,
+        )
+        screen.blit(
+            message,
+            message.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 68),
+        )
+
+        btn_w, btn_h, btn_gap = 210, 62, 20
+        total_w = 2 * btn_w + btn_gap
+        btn_x = dlg_rect.centerx - total_w // 2
+        btn_y = dlg_rect.bottom - btn_h - 32
+        self.profile_required_open_button = pygame.Rect(
+            btn_x,
+            btn_y,
+            btn_w,
+            btn_h,
+        )
+        self.profile_required_cancel_button = pygame.Rect(
+            btn_x + btn_w + btn_gap,
+            btn_y,
+            btn_w,
+            btn_h,
+        )
+        self._draw_button(
+            screen,
+            self.profile_required_open_button,
+            'Profiles',
+            'profile_required_open',
+        )
+        self._draw_button(
+            screen,
+            self.profile_required_cancel_button,
+            'Cancel',
+            'profile_required_cancel',
+        )
 
     def _draw_resume_prompt(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
