@@ -59,9 +59,12 @@ class ReadingPromptScene(BaseScene):
 
         self._auto_start_at = time.monotonic() + 1.5
 
-    def on_exit(self) -> None:
+    def on_exit(self) -> bool:
         self.is_paused = True
         self._auto_start_at = None
+        return self._stop_attempt_worker()
+
+    def _stop_attempt_worker(self) -> bool:
         if self.runner:
             self.runner.abort()
         if self.app.tts is not None:
@@ -70,22 +73,16 @@ class ReadingPromptScene(BaseScene):
             except Exception:
                 pass
         if self.worker_thread is not None and self.worker_thread.is_alive():
-            self.worker_thread.join()
+            self.worker_thread.join(timeout=2.0)
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            return False
         self.worker_thread = None
         self.app.prompt_active = False
+        return True
 
-    def prepare_shutdown(self) -> None:
+    def prepare_shutdown(self) -> bool:
         self._auto_start_at = None
-        if self.runner is not None:
-            self.runner.abort()
-        if self.app.tts is not None:
-            try:
-                self.app.tts.stop()
-            except Exception:
-                pass
-        if self.worker_thread is not None and self.worker_thread.is_alive():
-            self.worker_thread.join(timeout=2.0)
-        self.app.prompt_active = False
+        return self._stop_attempt_worker()
 
     def _touch_activity(self) -> None:
         self.last_activity_monotonic = time.monotonic()
@@ -147,23 +144,13 @@ class ReadingPromptScene(BaseScene):
                     self.app.asr.bypass_transcription = self.app.expected_sentence
                 self._start_attempt()
 
-    def _abort_paused_attempt(self) -> None:
-        worker_thread = self.worker_thread
-        if self.runner:
-            self.runner.abort()
-        if self.app.tts is not None:
-            try:
-                self.app.tts.stop()
-            except Exception:
-                pass
-        if worker_thread is not None and worker_thread.is_alive():
-            worker_thread.join(timeout=2.0)
+    def _abort_paused_attempt(self) -> bool:
         self._auto_start_at = None
-        self.app.prompt_active = False
-        self.worker_thread = None
+        return self._stop_attempt_worker()
 
     def _restart_level_from_pause(self) -> None:
-        self._abort_paused_attempt()
+        if not self._abort_paused_attempt():
+            return
         self.app.session.reset_current_level()
         self.app.evaluation.reset_sublevel(self.app.session.current_level)
         if not self.app.save_active_session("reading"):
@@ -175,7 +162,8 @@ class ReadingPromptScene(BaseScene):
         self._start_attempt()
 
     def _return_to_menu_from_pause(self) -> None:
-        self._abort_paused_attempt()
+        if not self._abort_paused_attempt():
+            return
         if not self.app.save_active_session("reading"):
             self.app.continue_saved_session()
             self.is_paused = True

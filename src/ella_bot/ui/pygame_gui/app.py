@@ -349,10 +349,10 @@ class EllaGUIApp:
         self.checkpoint_phase = None
         self.checkpoint_latest_result = None
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> bool:
         prepare = getattr(self.active_scene, "prepare_shutdown", None)
-        if callable(prepare):
-            prepare()
+        if callable(prepare) and prepare() is False:
+            return False
         if (
             self.active_profile() is not None
             and self.selected_start_level is not None
@@ -362,12 +362,14 @@ class EllaGUIApp:
                 self.checkpoint_phase,
                 self.checkpoint_latest_result,
             )
+        return True
 
-    def switch_scene(self, scene_name: str) -> None:
-        if self.active_scene:
-            self.active_scene.on_exit()
+    def switch_scene(self, scene_name: str) -> bool:
+        if self.active_scene and self.active_scene.on_exit() is False:
+            return False
         self.active_scene = self.scenes[scene_name]
         self.active_scene.on_enter()
+        return True
 
     def run(self) -> None:
         try:

@@ -202,3 +202,32 @@ def test_app_shutdown_does_not_save_unstarted_session(tmp_path):
 
     app.active_scene.prepare_shutdown.assert_called_once()
     app.save_active_session.assert_not_called()
+
+
+def test_app_shutdown_refuses_final_save_while_worker_is_alive(tmp_path):
+    app = _make_app(tmp_path, create_profile=True)
+    app.selected_start_level = '1a'
+    app.checkpoint_phase = 'reading'
+    app.save_active_session = MagicMock(return_value=True)
+    app.active_scene = MagicMock()
+    app.active_scene.prepare_shutdown.return_value = False
+
+    stopped = app.shutdown()
+
+    assert stopped is False
+    app.save_active_session.assert_not_called()
+
+
+def test_switch_scene_stays_put_when_current_scene_cannot_exit():
+    app = object.__new__(EllaGUIApp)
+    current = MagicMock()
+    current.on_exit.return_value = False
+    destination = MagicMock()
+    app.active_scene = current
+    app.scenes = {'main_menu': destination}
+
+    switched = app.switch_scene('main_menu')
+
+    assert switched is False
+    assert app.active_scene is current
+    destination.on_enter.assert_not_called()
