@@ -35,6 +35,9 @@ sounds/
 # MCP config (local dev only)
 .mcp.json
 
+# Local Git worktrees
+.worktrees/
+
 # Runtime session checkpoints
 /data/active_session.json
 /data/active_session.json.invalid-*
