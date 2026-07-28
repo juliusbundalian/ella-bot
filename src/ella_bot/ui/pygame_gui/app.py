@@ -16,6 +16,7 @@ from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.level_selection import LevelSelectionScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
+from ella_bot.ui.pygame_gui.scenes.profiles import ProfilesScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
 from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
@@ -399,6 +400,7 @@ class EllaGUIApp:
         self.animator.set_state("warmup", reset=True)
 
         self.scenes = {
+            'profiles': ProfilesScene(self),
             "intro": IntroScene(self),
             "main_menu": MainMenuScene(self),
             "level_selection": LevelSelectionScene(self),
