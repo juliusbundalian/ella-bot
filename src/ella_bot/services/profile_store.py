@@ -178,7 +178,7 @@ class ProfileStore:
         try:
             payload = json.loads(self.registry_path.read_text(encoding="utf-8"))
             profiles, active_profile_id = self._parse_registry(payload)
-        except (OSError, json.JSONDecodeError, ProfileValidationError, ValueError, TypeError):
+        except (json.JSONDecodeError, ProfileValidationError):
             self._archive_invalid_registry()
             return
 

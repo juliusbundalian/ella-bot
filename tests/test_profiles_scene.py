@@ -39,6 +39,53 @@ def test_empty_page_exposes_create_card():
     assert scene.create_button is not None
 
 
+def test_profiles_page_uses_exact_title_and_reset_progress_copy():
+    scene = _scene()
+    profile = _profile(1)
+    scene.app.profiles.return_value = (profile,)
+    real_title_font = scene.app.font_title
+    real_small_font = scene.app.font_small
+    scene.app.font_title = MagicMock()
+    scene.app.font_title.render.side_effect = real_title_font.render
+    scene.app.font_small = MagicMock()
+    scene.app.font_small.render.side_effect = real_small_font.render
+
+    scene.render()
+
+    title_labels = [
+        call.args[0] for call in scene.app.font_title.render.call_args_list
+    ]
+    small_labels = [
+        call.args[0] for call in scene.app.font_small.render.call_args_list
+    ]
+    reset_button = scene.manage_buttons[('reset', profile.id)]
+    assert 'Who\'s Learning?' in title_labels
+    assert 'Choose a Profile' not in title_labels
+    assert 'Reset Progress' in small_labels
+    assert real_small_font.size('Reset Progress')[0] <= reset_button.width - 8
+
+
+def test_close_modal_stops_text_input(monkeypatch):
+    scene = _scene()
+    stop_text_input = MagicMock()
+    monkeypatch.setattr(pygame.key, 'stop_text_input', stop_text_input)
+    scene.modal = 'create'
+
+    scene._close_modal()
+
+    stop_text_input.assert_called_once_with()
+
+
+def test_on_exit_stops_text_input(monkeypatch):
+    scene = _scene()
+    stop_text_input = MagicMock()
+    monkeypatch.setattr(pygame.key, 'stop_text_input', stop_text_input)
+
+    scene.on_exit()
+
+    stop_text_input.assert_called_once_with()
+
+
 def test_clicking_profile_selects_and_returns_to_menu():
     scene = _scene()
     profile = Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00')

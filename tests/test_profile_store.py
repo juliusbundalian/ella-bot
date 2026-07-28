@@ -150,6 +150,35 @@ def test_corrupt_registry_is_archived(tmp_path):
     assert len(list(tmp_path.glob("profiles.json.invalid-*"))) == 1
 
 
+def test_registry_read_oserror_is_raised_without_archiving(tmp_path, monkeypatch):
+    path = tmp_path / 'profiles.json'
+    path.write_text(
+        json.dumps(
+            {
+                'schema_version': 1,
+                'active_profile_id': None,
+                'profiles': [],
+            }
+        ),
+        encoding='utf-8',
+    )
+    original = path.read_bytes()
+    original_read_text = Path.read_text
+
+    def fail_registry_read(candidate, *args, **kwargs):
+        if candidate == path:
+            raise OSError('registry unavailable')
+        return original_read_text(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_text', fail_registry_read)
+
+    with pytest.raises(OSError, match='registry unavailable'):
+        ProfileStore(path)
+
+    assert path.read_bytes() == original
+    assert list(tmp_path.glob('profiles.json.invalid-*')) == []
+
+
 def test_failed_replace_preserves_registry_and_memory(tmp_path, monkeypatch):
     path = tmp_path / "profiles.json"
     store = ProfileStore(path)

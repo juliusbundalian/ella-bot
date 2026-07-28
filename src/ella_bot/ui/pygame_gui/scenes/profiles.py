@@ -303,7 +303,7 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, _WHITE, outer_rect.inflate(-24, -24), border_radius=56)
         pygame.draw.rect(screen, _WHITE, inner_rect, border_radius=36)
 
-        title = self.app.font_title.render('Choose a Profile', True, _TEXT)
+        title = self.app.font_title.render('Who\'s Learning?', True, _TEXT)
         screen.blit(title, title.get_rect(centerx=inner_rect.centerx, top=inner_rect.top + 18))
         subtitle = self.app.font_body.render(
             'Pick a learner or create a new profile.',
@@ -431,7 +431,11 @@ class ProfilesScene(BaseScene):
         button_left = rect.left + 18
         button_width = (rect.width - 36 - 2 * button_gap) // 3
         for index, (action, label) in enumerate(
-            (('rename', 'Rename'), ('reset', 'Reset'), ('delete', 'Delete'))
+            (
+                ('rename', 'Rename'),
+                ('reset', 'Reset Progress'),
+                ('delete', 'Delete'),
+            )
         ):
             button = pygame.Rect(
                 button_left + index * (button_width + button_gap),

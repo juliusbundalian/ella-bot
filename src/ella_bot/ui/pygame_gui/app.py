@@ -178,6 +178,22 @@ class EllaGUIApp:
         self.checkpoint_latest_result = None
         self.latest_result = None
         self.latest_result_kind = None
+        self._clear_attempt_transients()
+
+    def _clear_attempt_transients(self) -> None:
+        self.state = 'idle'
+        self.message = ''
+        self.latest_attempt = None
+        self.prompt_active = False
+        event_queue = getattr(self, 'event_queue', None)
+        if event_queue is None:
+            self.event_queue = queue.Queue()
+            return
+        while True:
+            try:
+                event_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def profiles(self) -> tuple[Profile, ...]:
         return self.profile_store.list_profiles()

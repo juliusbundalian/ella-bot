@@ -206,3 +206,19 @@ def test_prepare_shutdown_aborts_and_joins_attempt_worker():
 
     scene.runner.abort.assert_called_once()
     scene.worker_thread.join.assert_called_once_with(timeout=2.0)
+
+
+def test_on_exit_quiesces_attempt_worker_before_navigation():
+    scene = _make_scene()
+    worker_thread = MagicMock()
+    worker_thread.is_alive.return_value = True
+    scene.worker_thread = worker_thread
+    actions = []
+    scene.runner.abort.side_effect = lambda: actions.append('abort')
+    worker_thread.join.side_effect = lambda: actions.append('join')
+
+    scene.on_exit()
+
+    assert actions == ['abort', 'join']
+    worker_thread.join.assert_called_once_with()
+    assert scene.worker_thread is None

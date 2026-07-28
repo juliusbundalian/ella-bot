@@ -2,6 +2,9 @@ import sys
 import os
 import json
 import time
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
 
 # Ensure project src path is in Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -27,7 +30,11 @@ class E2ETestASR(BaseASR):
         self.app = None
         self.attempt_counts = {}
 
-    def transcribe(self, expected_sentence: str = None) -> ASRResult:
+    def transcribe(
+        self,
+        expected_sentence: str = None,
+        is_paused=None,
+    ) -> ASRResult:
         if not expected_sentence:
             expected_sentence = self.app.expected_sentence
             
@@ -45,6 +52,28 @@ class E2ETestASR(BaseASR):
             print(f"[ASR TEST MODEL] Simulating SUCCESSFUL reading attempt ('{expected_sentence}')")
             words = [WordScore(word=w, confidence=0.98) for w in expected_sentence.split()]
             return ASRResult(transcript=expected_sentence, words=words)
+
+
+def test_e2e_asr_accepts_attempt_runner_pause_keyword():
+    asr = E2ETestASR()
+    asr.app = MagicMock(current_level='1a', expected_sentence='cat')
+
+    result = asr.transcribe(expected_sentence='cat', is_paused=lambda: False)
+
+    assert result == ASRResult(transcript='', words=[])
+
+
+def test_e2e_harness_uses_only_an_isolated_profile_store(tmp_path):
+    asr = E2ETestASR()
+
+    app = _build_harness_app(tmp_path, asr=asr, tts=None, overrides={})
+
+    project_data_dir = (Path(__file__).resolve().parents[1] / 'data').resolve()
+    assert app.config.session_log_path == tmp_path / 'sessions.jsonl'
+    assert app.profile_store.registry_path == tmp_path / 'profiles.json'
+    assert app.config.session_log_path.parent.resolve() != project_data_dir
+    assert tuple(profile.name for profile in app.profiles()) == ('E2E Reader',)
+    assert app.active_profile().name == 'E2E Reader'
 
 
 class AutoMainMenuScene(MainMenuScene):
@@ -174,6 +203,32 @@ class E2EInteractiveApp(EllaGUIApp):
         pygame.quit()
 
 
+def _build_harness_config(data_dir: Path) -> GUIConfig:
+    return GUIConfig(
+        width=1280,
+        height=720,
+        fullscreen=False,
+        pass_bar=0.50,
+        session_log_path=Path(data_dir) / 'sessions.jsonl',
+    )
+
+
+def _build_harness_app(data_dir: Path, *, asr, tts, overrides):
+    config = _build_harness_config(data_dir)
+    app = E2EInteractiveApp(
+        expected_sentence='',
+        asr=asr,
+        tts=tts,
+        audio_feedback=True,
+        pronunciation_overrides=overrides,
+        config=config,
+    )
+    if app.profiles():
+        raise RuntimeError('E2E data directory must start without profiles')
+    app.create_profile('E2E Reader')
+    return app
+
+
 def main():
     settings = load_settings()
     # Explicitly configure audio feedback to True so ELLA speaks
@@ -192,13 +247,8 @@ def main():
         overrides = json.load(f)
         
     asr = E2ETestASR()
-    
-    config = GUIConfig(
-        width=1280,
-        height=720,
-        fullscreen=False,
-        pass_bar=0.50,
-    )
+    temporary_data = tempfile.TemporaryDirectory(prefix='ella-e2e-')
+    config = _build_harness_config(Path(temporary_data.name))
     
     # Build TTS Config
     tts_engine = settings.get("tts_engine", "auto")
@@ -244,7 +294,10 @@ def main():
     print("        All Items -> Level Up -> Next Level (1a to 4)")
     print("==================================================\n")
     
-    app.run()
+    try:
+        app.run()
+    finally:
+        temporary_data.cleanup()
 
 
 if __name__ == "__main__":

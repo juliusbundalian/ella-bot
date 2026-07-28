@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from unittest.mock import MagicMock
 
+from ella_bot.core.events import AttemptReady, MessageChanged
 from ella_bot.services.evaluation import SubLevelResult
 from ella_bot.ui.pygame_gui.app import EllaGUIApp
 from ella_bot.ui.pygame_gui.config import GUIConfig
@@ -119,22 +120,64 @@ def test_profiles_restore_distinct_exact_sessions(tmp_path):
     app = _make_app(tmp_path)
     first = app.create_profile('First')
     assert app.start_new_session('1a')
+    app.evaluation.record_attempt(
+        '1a', 1, app.expected_sentence, 'first learner', 0.25, 0.75, False
+    )
     app.session.advance_to_next_sentence()
-    app.save_active_session('reading')
+    first_result = SubLevelResult(1, '1a', 1, 1, 1, 0.98, 'A', True)
+    app.save_active_session(
+        'results',
+        {'kind': 'sublevel', 'payload': asdict(first_result)},
+    )
 
     second = app.create_profile('Second')
     assert app.start_new_session('2c')
-    app.save_active_session('reading')
+    app.evaluation.record_attempt(
+        '2c', 1, app.expected_sentence, 'second learner', 0.5, 0.5, False
+    )
+    second_result = SubLevelResult(2, '2c', 1, 0, 2, 0.5, 'E', False)
+    app.save_active_session(
+        'results',
+        {'kind': 'sublevel', 'payload': asdict(second_result)},
+    )
 
     app.select_profile(first.id)
-    assert app.continue_saved_session() == 'reading'
+    assert app.continue_saved_session() == 'results'
     assert app.current_level == '1a'
     assert app.session.current_item_number() == 2
+    assert app.evaluation._attempts['1a'][0].heard == 'first learner'
+    assert '2c' not in app.evaluation._attempts
+    assert app.latest_result == first_result
 
     app.select_profile(second.id)
-    assert app.continue_saved_session() == 'reading'
+    assert app.continue_saved_session() == 'results'
     assert app.current_level == '2c'
     assert app.session.current_item_number() == 1
+    assert app.evaluation._attempts['2c'][0].heard == 'second learner'
+    assert '1a' not in app.evaluation._attempts
+    assert app.latest_result == second_result
+
+
+def test_profile_binding_clears_attempt_transients_and_queued_events(tmp_path):
+    app = _make_app(tmp_path)
+    first = app.create_profile('First')
+    second = app.create_profile('Second')
+    app.select_profile(first.id)
+    stale_attempt = object()
+    app.latest_attempt = stale_attempt
+    app.state = 'retry'
+    app.message = 'First learner feedback'
+    app.prompt_active = True
+    app.event_queue.put(AttemptReady(stale_attempt))
+    app.event_queue.put(MessageChanged('Queued first learner feedback'))
+
+    app.select_profile(second.id)
+
+    assert app.latest_attempt is None
+    assert app.state == 'idle'
+    assert app.message == ''
+    assert app.prompt_active is False
+    assert app.event_queue.empty()
 
 
 def test_app_shutdown_saves_started_active_session(tmp_path):

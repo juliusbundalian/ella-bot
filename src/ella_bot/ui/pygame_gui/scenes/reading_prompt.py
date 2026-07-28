@@ -61,15 +61,18 @@ class ReadingPromptScene(BaseScene):
 
     def on_exit(self) -> None:
         self.is_paused = True
-        self.app.prompt_active = False
+        self._auto_start_at = None
         if self.runner:
             self.runner.abort()
-        self.worker_thread = None
         if self.app.tts is not None:
             try:
                 self.app.tts.stop()
             except Exception:
                 pass
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            self.worker_thread.join()
+        self.worker_thread = None
+        self.app.prompt_active = False
 
     def prepare_shutdown(self) -> None:
         self._auto_start_at = None
