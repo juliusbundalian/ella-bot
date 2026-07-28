@@ -72,6 +72,25 @@ def test_rendering_five_profiles_hides_create_button():
     assert len(scene.profile_cards) == 5
 
 
+def test_selection_error_is_rendered_at_five_profile_capacity():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(5))
+    scene.app.profiles.return_value = profiles
+    scene.app.select_profile.side_effect = OSError('Profile write failed')
+    real_font = scene.app.font_small
+    scene.app.font_small = MagicMock()
+    scene.app.font_small.render.side_effect = real_font.render
+
+    scene._select_profile(profiles[0].id)
+    scene.render()
+
+    rendered_labels = [
+        call.args[0] for call in scene.app.font_small.render.call_args_list
+    ]
+    assert 'Profile write failed' in rendered_labels
+    scene.app.switch_scene.assert_not_called()
+
+
 def test_create_modal_accepts_text_input_and_backspace():
     scene = _scene()
     scene._open_create()

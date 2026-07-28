@@ -278,17 +278,17 @@ class ProfilesScene(BaseScene):
             'back',
             font=self.app.font_body,
         )
-        if len(profiles) >= MAX_PROFILES:
-            capacity = self.app.font_small.render('5 of 5 profiles', True, _TEXT_MUTED)
-            screen.blit(
-                capacity,
-                capacity.get_rect(right=inner_rect.right - 40, centery=self.back_button.centery),
-            )
-        elif self.error_message and self.modal is None:
+        if self.error_message and self.modal is None:
             error = self.app.font_small.render(self.error_message, True, _ERROR)
             screen.blit(
                 error,
                 error.get_rect(centerx=inner_rect.centerx, centery=self.back_button.centery),
+            )
+        elif len(profiles) >= MAX_PROFILES:
+            capacity = self.app.font_small.render('5 of 5 profiles', True, _TEXT_MUTED)
+            screen.blit(
+                capacity,
+                capacity.get_rect(right=inner_rect.right - 40, centery=self.back_button.centery),
             )
 
         pygame.draw.rect(screen, _OUTER_BORDER, outer_rect, width=12, border_radius=68)
