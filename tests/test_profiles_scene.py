@@ -155,3 +155,121 @@ def test_profile_selection_hitbox_reserves_lower_management_strip():
 
     card = scene.profile_cards[profile.id]
     assert card.bottom <= scene._profile_card_rects[profile.id].bottom - 48
+
+
+def test_rename_prefills_and_saves_without_selecting():
+    scene = _scene()
+    profile = Profile('a' * 32, 'Old', '2026-07-28T12:00:00+08:00')
+    scene._open_rename(profile)
+    assert scene.name_input == 'Old'
+    scene.name_input = 'New'
+
+    scene._save_name()
+
+    scene.app.rename_profile.assert_called_once_with(profile.id, 'New')
+    scene.app.select_profile.assert_not_called()
+    scene.app.switch_scene.assert_not_called()
+
+
+def test_reset_targets_only_named_profile():
+    scene = _scene()
+    profile = Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00')
+    scene._open_confirmation('reset', profile)
+
+    scene._confirm_management()
+
+    scene.app.reset_profile_progress.assert_called_once_with(profile.id)
+
+
+def test_delete_active_profile_returns_to_generic_main_menu():
+    scene = _scene()
+    profile = Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00')
+    scene.app.active_profile.return_value = profile
+    scene._open_confirmation('delete', profile)
+
+    scene._confirm_management()
+
+    scene.app.delete_profile.assert_called_once_with(profile.id)
+    scene.app.switch_scene.assert_called_once_with('main_menu')
+
+
+def test_rename_hitbox_intercepts_profile_selection():
+    scene = _scene()
+    profile = _profile(1)
+    scene.app.profiles.return_value = (profile,)
+    scene.render()
+    rename_button = scene.manage_buttons[('rename', profile.id)]
+
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            button=1,
+            pos=rename_button.center,
+        )
+    )
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONUP,
+            button=1,
+            pos=rename_button.center,
+        )
+    )
+
+    assert scene.modal == 'rename'
+    scene.app.select_profile.assert_not_called()
+
+
+def test_rename_error_keeps_modal_open_with_message():
+    scene = _scene()
+    profile = _profile(1)
+    scene._open_rename(profile)
+    scene.name_input = 'New'
+    scene.app.rename_profile.side_effect = OSError('full')
+
+    scene._save_name()
+
+    assert scene.modal == 'rename'
+    assert scene.error_message == 'full'
+
+
+def test_reset_cleanup_failure_displays_warning():
+    scene = _scene()
+    profile = _profile(1)
+    scene.app.reset_profile_progress.return_value = False
+    scene._open_confirmation('reset', profile)
+
+    scene._confirm_management()
+
+    assert scene.error_message == 'Some old profile files could not be removed.'
+
+
+def test_delete_inactive_profile_stays_on_profiles_page():
+    scene = _scene()
+    active = _profile(1)
+    target = _profile(2)
+    scene.app.active_profile.return_value = active
+    scene._open_confirmation('delete', target)
+
+    scene._confirm_management()
+
+    scene.app.delete_profile.assert_called_once_with(target.id)
+    scene.app.switch_scene.assert_not_called()
+
+
+def test_confirmation_modals_render_exact_targeted_warning():
+    scene = _scene()
+    profile = Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00')
+    real_font = scene.app.font_small
+    scene.app.font_small = MagicMock()
+    scene.app.font_small.render.side_effect = real_font.render
+
+    scene._open_confirmation('reset', profile)
+    scene.render()
+    scene._open_confirmation('delete', profile)
+    scene.render()
+
+    rendered_labels = [
+        call.args[0] for call in scene.app.font_small.render.call_args_list
+    ]
+    assert 'Erase all learning progress for Maria? The profile will remain.' in rendered_labels
+    assert 'Delete Maria and all saved progress? This cannot be undone.' in rendered_labels
