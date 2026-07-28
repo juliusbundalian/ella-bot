@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from ella_bot.core.constants import LEVEL_ORDER
 from ella_bot.services.attempt_runner import AttemptViewModel
 from ella_bot.services.evaluation import EvaluationService
+from ella_bot.services.profile_store import Profile, ProfileStore
 from ella_bot.services.session_checkpoint import SessionCheckpointStore
 from ella_bot.services.session_manager import SessionManager
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
@@ -44,24 +45,12 @@ class EllaGUIApp:
         self.config = config or GUIConfig()
         self._hard_sentences = hard_sentences
         self._seed_sentence = expected_sentence
-
-        self.session = SessionManager.from_config_file(
-            start_level=start_level,
-            hard_sentences=hard_sentences,
-            seed_sentence=expected_sentence,
+        self._default_start_level = start_level
+        self.profile_store = ProfileStore(
+            self.config.session_log_path.parent / 'profiles.json'
         )
 
-        self.evaluation = EvaluationService(
-            log_path=self.config.session_log_path,
-            pass_bar=self.config.pass_bar,
-        )
-        self.latest_result = None
-        self.latest_result_kind = None
-        self.selected_start_level: str | None = None
-        self.checkpoint_phase: str | None = None
-        self.checkpoint_latest_result: dict | None = None
-        checkpoint_path = self.config.session_log_path.with_name("active_session.json")
-        self.checkpoint_store = SessionCheckpointStore(checkpoint_path)
+        self._bind_profile(self.profile_store.active_profile())
 
         self.state = "idle"
         self.message = ""
@@ -166,12 +155,80 @@ class EllaGUIApp:
     def _try_level_up(self, accuracy: float) -> bool:
         return self.session.try_level_up(accuracy)
 
+    # --- Learner profile orchestration ---
+
+    def _bind_profile(self, profile: Profile | None) -> None:
+        self.session = SessionManager.from_config_file(
+            start_level=self._default_start_level,
+            hard_sentences=self._hard_sentences,
+            seed_sentence=self._seed_sentence,
+        )
+        if profile is None:
+            base = self.profile_store.profiles_root / '_unowned'
+            history_path = base / 'sessions.jsonl'
+            checkpoint_path = base / 'active_session.json'
+        else:
+            history_path = self.profile_store.history_path(profile.id)
+            checkpoint_path = self.profile_store.checkpoint_path(profile.id)
+        self.evaluation = EvaluationService(history_path, self.config.pass_bar)
+        self.checkpoint_store = SessionCheckpointStore(checkpoint_path)
+        self.selected_start_level = None
+        self.checkpoint_phase = None
+        self.checkpoint_latest_result = None
+        self.latest_result = None
+        self.latest_result_kind = None
+
+    def profiles(self) -> tuple[Profile, ...]:
+        return self.profile_store.list_profiles()
+
+    def active_profile(self) -> Profile | None:
+        return self.profile_store.active_profile()
+
+    def create_profile(self, name: str) -> Profile:
+        profile = self.profile_store.create(name)
+        self._bind_profile(profile)
+        return profile
+
+    def rename_profile(self, profile_id: str, name: str) -> Profile:
+        return self.profile_store.rename(profile_id, name)
+
+    def select_profile(self, profile_id: str) -> Profile:
+        profile = self.profile_store.select(profile_id)
+        self._bind_profile(profile)
+        return profile
+
+    def reset_profile_progress(self, profile_id: str) -> bool:
+        cleaned = self.profile_store.reset_progress(profile_id)
+        active = self.active_profile()
+        if active is not None and active.id == profile_id:
+            self._bind_profile(active)
+        return cleaned
+
+    def delete_profile(self, profile_id: str) -> bool:
+        was_active = self.active_profile()
+        cleaned = self.profile_store.delete(profile_id)
+        if was_active is not None and was_active.id == profile_id:
+            self._bind_profile(None)
+        return cleaned
+
+    def profile_session_summary(self, profile_id: str):
+        checkpoint_store = SessionCheckpointStore(
+            self.profile_store.checkpoint_path(profile_id)
+        )
+        return checkpoint_store.summary(
+            self.session.level_pools,
+            self.profile_store.history_path(profile_id),
+            self.config.pass_bar,
+        )
+
     # --- Active-session checkpoint orchestration ---
 
     def has_saved_session(self) -> bool:
         return self.saved_session_summary() is not None
 
     def saved_session_summary(self):
+        if self.active_profile() is None:
+            return None
         return self.checkpoint_store.summary(
             self.session.level_pools,
             self.evaluation.log_path,
@@ -179,6 +236,8 @@ class EllaGUIApp:
         )
 
     def start_new_session(self, level: str) -> bool:
+        if self.active_profile() is None:
+            return False
         if level not in LEVEL_ORDER:
             return False
         candidate_session = SessionManager.from_config_file(
@@ -215,6 +274,8 @@ class EllaGUIApp:
         phase: str,
         latest_result: dict | None = None,
     ) -> bool:
+        if self.active_profile() is None:
+            return False
         if self.selected_start_level is None:
             return False
         try:
@@ -234,6 +295,8 @@ class EllaGUIApp:
             return False
 
     def continue_saved_session(self) -> str | None:
+        if self.active_profile() is None:
+            return None
         try:
             restored = self.checkpoint_store.restore(
                 self.session.level_pools,
@@ -273,7 +336,11 @@ class EllaGUIApp:
         prepare = getattr(self.active_scene, "prepare_shutdown", None)
         if callable(prepare):
             prepare()
-        if self.selected_start_level is not None and self.checkpoint_phase is not None:
+        if (
+            self.active_profile() is not None
+            and self.selected_start_level is not None
+            and self.checkpoint_phase is not None
+        ):
             self.save_active_session(
                 self.checkpoint_phase,
                 self.checkpoint_latest_result,
