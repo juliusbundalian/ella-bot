@@ -49,3 +49,25 @@ def test_highlight_brackets_non_matching_expected_words():
 
 def test_confidence_map_pairs_tokens_to_scores():
     assert spoken_word_confidence_map(["a", "b"], [0.1, 0.9]) == {"a": 0.1, "b": 0.9}
+
+
+def test_strict_fluency_accepts_matching_word_at_35_percent_confidence():
+    result = validate_spoken_text(
+        "we waited",
+        "we waited",
+        spoken_confidences=[0.35, 0.9],
+        strict_fluency=True,
+    )
+
+    assert result.accuracy == 1.0
+
+
+def test_strict_fluency_rejects_matching_word_below_35_percent_confidence():
+    result = validate_spoken_text(
+        "we waited",
+        "we waited",
+        spoken_confidences=[0.34, 0.9],
+        strict_fluency=True,
+    )
+
+    assert result.incorrect_words == [("we", "we")]

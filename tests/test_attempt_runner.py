@@ -1,4 +1,5 @@
 import queue
+import time
 from unittest.mock import MagicMock
 
 from ella_bot.services.attempt_runner import AttemptRunner
@@ -38,7 +39,7 @@ def _make_app(tmp_path):
 
 
 def test_completing_a_sublevel_posts_sublevel_completed(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: ["a"])
@@ -75,7 +76,7 @@ def _spoken(app):
 
 
 def test_phonics_override_applies_on_tier1_item(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: ["go"])
@@ -89,7 +90,7 @@ def test_phonics_override_applies_on_tier1_item(tmp_path, monkeypatch):
 
 
 def test_phonics_override_skipped_on_tier2_word(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: ["go"])
@@ -110,7 +111,7 @@ class _FakeWrongValidation:
 
 
 def test_tier1_wrong_answer_advances_to_next_item(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeWrongValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeWrongValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: [])
@@ -129,7 +130,7 @@ def test_tier1_wrong_answer_advances_to_next_item(tmp_path, monkeypatch):
 
 
 def test_tier1_sublevel_completes_on_single_wrong_answer(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeWrongValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeWrongValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: [])
@@ -147,7 +148,7 @@ def test_tier1_sublevel_completes_on_single_wrong_answer(tmp_path, monkeypatch):
 
 
 def test_tier2_wrong_answers_retry_within_limit(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeWrongValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeWrongValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: [])
@@ -169,7 +170,7 @@ def test_tier2_wrong_answers_retry_within_limit(tmp_path, monkeypatch):
 
 
 def test_tier2_exhausted_after_third_wrong_advances_item(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeWrongValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeWrongValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: [])
@@ -190,7 +191,7 @@ def test_tier2_exhausted_after_third_wrong_advances_item(tmp_path, monkeypatch):
 
 
 def test_tier2_attempt_counter_resets_on_new_item(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got: _FakeWrongValidation())
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeWrongValidation())
     monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
     monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
     monkeypatch.setattr(runner_mod, "normalize", lambda t: [])
@@ -286,3 +287,118 @@ def test_silent_turn_completing_sublevel_posts_sublevel_completed(tmp_path):
     assert any(
         isinstance(e, SubLevelCompleted) and e.kind == "sublevel" for e in _drain(app)
     )
+
+
+def test_paused_attempt_runner_aborts(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda t: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda toks, confs: {})
+
+    app = _make_app(tmp_path)
+    app.session = SessionManager(
+        level_pools={"1a": ["sentence one", "sentence two"]}, start_level="1a"
+    )
+
+    paused = True
+    runner = AttemptRunner(app, is_paused=lambda: paused)
+
+    import threading
+    t = threading.Thread(target=runner.run)
+    t.start()
+
+    time.sleep(0.2)
+    assert t.is_alive()
+
+    runner.abort()
+    t.join(timeout=2.0)
+    assert not t.is_alive()
+
+    assert app.session.completed_in_level == 0
+    assert len(app.evaluation._attempts.get("1a", [])) == 0
+
+
+def test_paused_attempt_runner_blocks_and_resumes(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **k: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda t: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda toks, confs: {})
+
+    app = _make_app(tmp_path)
+    app.session = SessionManager(
+        level_pools={"1a": ["sentence one", "sentence two"]}, start_level="1a"
+    )
+
+    paused = True
+    runner = AttemptRunner(app, is_paused=lambda: paused)
+
+    import threading
+    t = threading.Thread(target=runner.run)
+    t.start()
+
+    time.sleep(0.2)
+    assert t.is_alive()
+
+    paused = False
+    t.join(timeout=2.0)
+    assert not t.is_alive()
+
+    assert app.session.completed_in_level == 1
+    assert len(app.evaluation._attempts.get("1a", [])) == 1
+
+
+def test_scored_attempt_saves_reading_after_advancing_item(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"1a": ["a", "b"]}, "1a")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert app.session.expected_sentence == "b"
+    app.save_active_session.assert_called_once_with("reading")
+
+
+def test_silent_attempt_saves_reading_retry_state(tmp_path):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"2a": ["a", "b"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult("")
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert app.session.expected_sentence == "a"
+    app.save_active_session.assert_called_once_with("reading")
+
+
+def test_sublevel_completion_saves_results_before_event(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: ["a"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+    app = _make_app(tmp_path)
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    phase, result = app.save_active_session.call_args.args
+    assert phase == "results"
+    assert result["kind"] == "sublevel"
+    assert result["payload"]["level"] == "1a"
+
+
+def test_full_completion_clears_checkpoint_instead_of_saving_results(tmp_path):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"4": ["done"]}, "4")
+    app.evaluation = EvaluationService(tmp_path / "s.jsonl", 0.70)
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    app.evaluation.record_attempt("4", 1, "done", "done", 1.0, 0.0, True)
+
+    runner._advance_after_attempt("4", app.session, True, False)
+
+    app.clear_active_session.assert_called_once()
+    app.save_active_session.assert_not_called()

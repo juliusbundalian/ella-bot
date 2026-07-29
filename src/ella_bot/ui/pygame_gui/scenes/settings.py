@@ -9,7 +9,7 @@ from ella_bot.utils.file_utils import resolve_asset_path
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
 _LISTEN_MIN = 5
-_LISTEN_MAX = 10
+_LISTEN_MAX = 12
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
@@ -18,9 +18,6 @@ _INNER_BORDER = (255, 185, 207)
 _BTN_FILL = (255, 182, 193)
 _BTN_OUTLINE = (94, 42, 59)
 _BTN_PRESSED = (251, 165, 193)
-_DANGER = (255, 99, 122)
-_DANGER_PRESSED = (200, 50, 70)
-_DANGER_BORDER = (94, 42, 59)
 _TITLE_COLOR = (230, 127, 159)
 _SEG_ACTIVE_FILL = (255, 185, 210)
 _SEG_INACTIVE_BORDER = (56, 56, 56)
@@ -32,22 +29,17 @@ class SettingsScene(BaseScene):
         self.volume_level: int = _VOLUME_MAX
         self.listen_seconds: int = _LISTEN_MIN
         self.pressed_button: str | None = None
-        self.show_reset_confirm: bool = False
 
         self.btn_vol_minus: pygame.Rect | None = None
         self.btn_vol_plus: pygame.Rect | None = None
         self.btn_listen_minus: pygame.Rect | None = None
         self.btn_listen_plus: pygame.Rect | None = None
-        self.btn_reset: pygame.Rect | None = None
         self.btn_back: pygame.Rect | None = None
-        self.btn_confirm_yes: pygame.Rect | None = None
-        self.btn_confirm_no: pygame.Rect | None = None
 
         self._icon_add = None
         self._icon_remove = None
 
     def on_enter(self) -> None:
-        self.show_reset_confirm = False
         self.pressed_button = None
         try:
             from ella_bot.config.app_config import load_settings
@@ -68,18 +60,11 @@ class SettingsScene(BaseScene):
             self._on_mouse_up(event.pos)
 
     def _on_mouse_down(self, pos) -> None:
-        if self.show_reset_confirm:
-            if self.btn_confirm_yes and self.btn_confirm_yes.collidepoint(pos):
-                self.pressed_button = "confirm_yes"
-            elif self.btn_confirm_no and self.btn_confirm_no.collidepoint(pos):
-                self.pressed_button = "confirm_no"
-            return
         for name, rect in [
             ("vol_minus", self.btn_vol_minus),
             ("vol_plus", self.btn_vol_plus),
             ("listen_minus", self.btn_listen_minus),
             ("listen_plus", self.btn_listen_plus),
-            ("reset", self.btn_reset),
             ("back", self.btn_back),
         ]:
             if rect and rect.collidepoint(pos):
@@ -88,14 +73,6 @@ class SettingsScene(BaseScene):
 
     def _on_mouse_up(self, pos) -> None:
         try:
-            if self.show_reset_confirm:
-                if self.pressed_button == "confirm_yes" and self.btn_confirm_yes and self.btn_confirm_yes.collidepoint(pos):
-                    self.app.session.reset_to_start()
-                    self.app.evaluation.reset_all()
-                    self.app.switch_scene("main_menu")
-                elif self.pressed_button == "confirm_no" and self.btn_confirm_no and self.btn_confirm_no.collidepoint(pos):
-                    self.show_reset_confirm = False
-                return
             btn = self.pressed_button
             if btn == "vol_minus" and self.btn_vol_minus and self.btn_vol_minus.collidepoint(pos):
                 self._tap_volume(-1)
@@ -105,8 +82,6 @@ class SettingsScene(BaseScene):
                 self._tap_listen(-1)
             elif btn == "listen_plus" and self.btn_listen_plus and self.btn_listen_plus.collidepoint(pos):
                 self._tap_listen(1)
-            elif btn == "reset" and self.btn_reset and self.btn_reset.collidepoint(pos):
-                self.show_reset_confirm = True
             elif btn == "back" and self.btn_back and self.btn_back.collidepoint(pos):
                 self.app.switch_scene("main_menu")
         finally:
@@ -188,8 +163,15 @@ class SettingsScene(BaseScene):
         seg_w, seg_h, seg_gap = 56, 32, 16
 
         # --- Volume section ---
-        vol_label_y = inner_rect.centery - 130
         vol_lbl = self.app.font_body.render("Volume", True, (50, 50, 50))
+        listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
+        sections_h = (
+            vol_lbl.get_height()
+            + listen_lbl.get_height()
+            + 2 * (24 + btn_sz)
+            + 28
+        )
+        vol_label_y = inner_rect.centery - sections_h // 2
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=inner_rect.centerx, top=vol_label_y))
 
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
@@ -217,7 +199,6 @@ class SettingsScene(BaseScene):
 
         # --- Listening Time section ---
         listen_label_y = vol_row_cy + btn_sz // 2 + 28
-        listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=inner_rect.centerx, top=listen_label_y))
 
         val_surf = self.app.font_body.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
@@ -230,47 +211,6 @@ class SettingsScene(BaseScene):
         self._draw_button(screen, self.btn_listen_minus, "-", "listen_minus", radius=14, icon=self._icon_remove or None)
         self._draw_button(screen, self.btn_listen_plus, "+", "listen_plus", radius=14, icon=self._icon_add or None)
 
-        # --- Reset Progress button ---
-        reset_w, reset_h = 380, 70
-        reset_x = inner_rect.centerx - reset_w // 2
-        reset_y = inner_rect.bottom - 60 - reset_h
-        self.btn_reset = pygame.Rect(reset_x, reset_y, reset_w, reset_h)
-        is_reset_pressed = self.pressed_button == "reset"
-        reset_bg = _DANGER_PRESSED if is_reset_pressed else _DANGER
-        if not is_reset_pressed:
-            pygame.draw.rect(screen, _DANGER_BORDER,
-                             pygame.Rect(self.btn_reset.left + 6, self.btn_reset.top + 6,
-                                         self.btn_reset.width, self.btn_reset.height),
-                             border_radius=15)
-        pygame.draw.rect(screen, reset_bg, self.btn_reset, border_radius=15)
-        pygame.draw.rect(screen, _DANGER_BORDER, self.btn_reset, width=2, border_radius=15)
-        rs = self.app.font_body.render("Reset Progress", True, _WHITE)
-        screen.blit(rs, rs.get_rect(center=self.btn_reset.center))
-
         # --- Outer/inner pink borders (on top) ---
         pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
-
-        # --- Confirmation overlay ---
-        if self.show_reset_confirm:
-            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
-            screen.blit(overlay, (0, 0))
-
-            dlg_w = int(width * 0.55)
-            dlg_h = int(height * 0.32)
-            dlg_x = (width - dlg_w) // 2
-            dlg_y = (height - dlg_h) // 2
-            dlg = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
-            pygame.draw.rect(screen, _WHITE, dlg, border_radius=20)
-            pygame.draw.rect(screen, _BTN_OUTLINE, dlg, width=4, border_radius=20)
-
-            msg = self.app.font_body.render("Reset all progress to Level 1?", True, (50, 50, 50))
-            screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.35))))
-
-            bw, bh = 150, 62
-            by = dlg_y + dlg_h - bh - 22
-            self.btn_confirm_yes = pygame.Rect(width // 2 - bw - 14, by, bw, bh)
-            self.btn_confirm_no = pygame.Rect(width // 2 + 14, by, bw, bh)
-            self._draw_button(screen, self.btn_confirm_yes, "Yes", "confirm_yes", font=self.app.font_body)
-            self._draw_button(screen, self.btn_confirm_no, "No", "confirm_no", font=self.app.font_body)

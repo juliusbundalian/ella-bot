@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+import math
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from ella_bot.core.constants import TIER_SUBLEVELS, tier_of
+from ella_bot.core.constants import LEVEL_ORDER, TIER_SUBLEVELS, tier_of
 
 
 @dataclass
@@ -69,6 +70,53 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _restore_dataclass(cls, payload: object):
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid {cls.__name__} checkpoint")
+    expected = {field.name for field in fields(cls)}
+    if set(payload) != expected:
+        raise ValueError(f"invalid {cls.__name__} fields")
+    try:
+        return cls(**payload)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid {cls.__name__} values") from exc
+
+
+def _validate_attempt(level: str, attempt: ItemAttempt) -> None:
+    if level not in LEVEL_ORDER:
+        raise ValueError("invalid attempt level")
+    if isinstance(attempt.item, bool) or not isinstance(attempt.item, int) or attempt.item < 1:
+        raise ValueError("invalid attempt item")
+    if not all(
+        isinstance(value, str)
+        for value in (attempt.expected, attempt.heard, attempt.ts)
+    ):
+        raise ValueError("invalid attempt text")
+    if not isinstance(attempt.correct, bool):
+        raise ValueError("invalid attempt correctness")
+    for value in (attempt.accuracy, attempt.wer):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError("invalid attempt score")
+        if not math.isfinite(float(value)):
+            raise ValueError("attempt score must be finite")
+
+
+def _validate_tier_result(tier: int, result: TierResult) -> None:
+    if tier not in TIER_SUBLEVELS or result.tier != tier:
+        raise ValueError("invalid tier result")
+    if not isinstance(result.fluency, (int, float)) or isinstance(result.fluency, bool):
+        raise ValueError("invalid tier fluency")
+    if not math.isfinite(float(result.fluency)):
+        raise ValueError("tier fluency must be finite")
+    if not isinstance(result.rating, str) or not isinstance(result.passed, bool):
+        raise ValueError("invalid tier rating")
+    for count in (result.items_total, result.first_try_correct):
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("invalid tier item count")
+    if result.first_try_correct > result.items_total:
+        raise ValueError("invalid tier first-try count")
+
+
 class EvaluationService:
     """Accumulates reading attempts, scores them, and appends JSONL records.
 
@@ -84,6 +132,71 @@ class EvaluationService:
         self._started = datetime.now()
         self._attempts: Dict[str, List[ItemAttempt]] = {}
         self._tier_results: Dict[int, TierResult] = {}
+
+    def to_checkpoint(self) -> dict:
+        """Return active scoring state needed to resume without losing history."""
+        return {
+            "session_id": self.session_id,
+            "started_at": self._started.isoformat(),
+            "attempts": {
+                level: [asdict(attempt) for attempt in attempts]
+                for level, attempts in self._attempts.items()
+            },
+            "tier_results": {
+                str(tier): asdict(result)
+                for tier, result in self._tier_results.items()
+            },
+        }
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        log_path: Path,
+        pass_bar: float,
+        payload: object,
+    ) -> "EvaluationService":
+        """Restore and validate active scoring state from a checkpoint."""
+        expected_fields = {"session_id", "started_at", "attempts", "tier_results"}
+        if not isinstance(payload, dict):
+            raise ValueError("evaluation checkpoint must be an object")
+        if set(payload) != expected_fields:
+            raise ValueError("invalid evaluation checkpoint fields")
+        if not isinstance(payload["session_id"], str):
+            raise ValueError("invalid session id")
+        try:
+            started = datetime.fromisoformat(payload["started_at"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid evaluation start time") from exc
+        if not isinstance(payload["attempts"], dict) or not isinstance(
+            payload["tier_results"], dict
+        ):
+            raise ValueError("invalid evaluation collections")
+
+        restored = cls(log_path=log_path, pass_bar=pass_bar)
+        restored.session_id = payload["session_id"]
+        restored._started = started
+        restored._attempts = {}
+        for level, attempts in payload["attempts"].items():
+            if not isinstance(level, str) or not isinstance(attempts, list):
+                raise ValueError("invalid attempt group")
+            restored._attempts[level] = []
+            for attempt_payload in attempts:
+                attempt = _restore_dataclass(ItemAttempt, attempt_payload)
+                _validate_attempt(level, attempt)
+                restored._attempts[level].append(attempt)
+
+        restored._tier_results = {}
+        for tier_text, result_payload in payload["tier_results"].items():
+            try:
+                tier = int(tier_text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("invalid tier key") from exc
+            if str(tier) != tier_text:
+                raise ValueError("invalid tier key")
+            tier_result = _restore_dataclass(TierResult, result_payload)
+            _validate_tier_result(tier, tier_result)
+            restored._tier_results[tier] = tier_result
+        return restored
 
     def record_attempt(self, level, item, expected, heard, accuracy, wer, correct) -> None:
         self._attempts.setdefault(level, []).append(
@@ -106,10 +219,14 @@ class EvaluationService:
             if not atts:
                 continue
             first_by_item: Dict[int, bool] = {}
+            best_by_item: Dict[int, float] = {}
             for a in atts:
                 if a.item not in first_by_item:
                     first_by_item[a.item] = a.correct
-                accs.append(a.accuracy)
+                if a.item not in best_by_item or a.accuracy > best_by_item[a.item]:
+                    best_by_item[a.item] = a.accuracy
+
+            accs.extend(best_by_item.values())
             items_total += len(first_by_item)
             first_try += sum(1 for ok in first_by_item.values() if ok)
             attempts += len(atts)

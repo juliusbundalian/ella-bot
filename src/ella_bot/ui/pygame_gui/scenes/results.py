@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import time
 import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_level_sound
+from ella_bot.ui.pygame_gui.components.confetti import ConfettiAnimation
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
@@ -38,12 +42,21 @@ class ResultsScene(BaseScene):
         self._show_menu_confirm = False
         self._confirm_continue_button = None
         self._confirm_restart_button = None
+        self.confetti = ConfettiAnimation()
 
     def on_enter(self) -> None:
         self.pressed_button = None
         self._show_menu_confirm = False
         start = getattr(self.app, "sublevel_start_time", None)
         self._elapsed = (time.monotonic() - start) if start is not None else None
+
+        result = getattr(self.app, "latest_result", None)
+        if result is not None:
+            passed = getattr(result, "passed", True)
+            play_level_sound(passed)
+            if passed:
+                self.confetti.trigger(duration=4.0)
+
 
     def _load_assets(self) -> None:
         if self._ribbon_img is None:
@@ -62,11 +75,19 @@ class ResultsScene(BaseScene):
 
     # --- actions ---
 
+    def _save_reading_transition_or_restore(self) -> bool:
+        if self.app.save_active_session("reading"):
+            return True
+        self.app.continue_saved_session()
+        return False
+
     def _do_next(self) -> None:
         result = self.app.latest_result
         if not getattr(result, "passed", False):
             return
         self.app.session.advance_to_higher_stage()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("reading_prompt")
         self.app.active_scene._start_attempt()
 
@@ -81,6 +102,8 @@ class ResultsScene(BaseScene):
 
     def _do_retry(self) -> None:
         self._reset_for_retry()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("reading_prompt")
         self.app.active_scene._start_attempt()
 
@@ -88,18 +111,21 @@ class ResultsScene(BaseScene):
         result = self.app.latest_result
         if not getattr(result, "passed", True):
             self._reset_for_retry()
+            if not self._save_reading_transition_or_restore():
+                return
             self.app.switch_scene("main_menu")
         else:
             self._show_menu_confirm = True
 
     def _do_continue_to_menu(self) -> None:
         self.app.session.advance_to_higher_stage()
+        if not self._save_reading_transition_or_restore():
+            return
         self.app.switch_scene("main_menu")
 
     def _do_restart_to_menu(self) -> None:
-        self.app.session.reset_to_start()
-        self.app.evaluation.reset_all()
-        self.app.switch_scene("main_menu")
+        if self.app.start_new_session("1a"):
+            self.app.switch_scene("main_menu")
 
     # --- input ---
 
@@ -307,5 +333,9 @@ class ResultsScene(BaseScene):
         pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
         pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
 
+        # --- Render celebratory confetti animation on pass ---
+        self.confetti.update_and_render(pygame, screen)
+
         if self._show_menu_confirm:
             self._draw_confirm_overlay(screen)
+

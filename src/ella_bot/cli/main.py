@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-level",
         default="1a",
-        choices=["1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"],
+        choices=["1", "2", "1a", "1b", "1c", "1d", "1e", "1f", "1g", "2a", "2b", "2c", "2d", "3", "4"],
         help="Starting level for GUI progression mode.",
     )
     parser.add_argument(
@@ -171,13 +171,8 @@ def run_gui(args: argparse.Namespace) -> None:
     if not session_log.is_absolute():
         session_log = get_project_root() / args.session_log
 
-    start_level = args.start_level
-    if start_level == "1a":
-        from ella_bot.services.session_manager import get_resume_level
-        recovered_level = get_resume_level(session_log, default_level="1a")
-        if recovered_level != "1a":
-            print(f"[SESSION SYSTEM] Detected past progress in log. Automatically resuming from Level {recovered_level.upper()}.")
-            start_level = recovered_level
+    level_alias = {"1": "1a", "2": "2a"}
+    start_level = level_alias.get(args.start_level, args.start_level)
 
     gui = EllaGUIApp(
         expected_sentence="",

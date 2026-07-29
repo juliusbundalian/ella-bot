@@ -13,7 +13,6 @@ def _make_scene(volume_level=3, listen_seconds=7):
     scene.volume_level = volume_level
     scene.listen_seconds = listen_seconds
     scene.pressed_button = None
-    scene.show_reset_confirm = False
     return scene
 
 
@@ -74,10 +73,10 @@ def test_listen_clamps_at_min():
 
 
 def test_listen_clamps_at_max():
-    scene = _make_scene(listen_seconds=10)
+    scene = _make_scene(listen_seconds=12)
     with patch("ella_bot.config.app_config.save_setting"):
         scene._tap_listen(1)
-    assert scene.listen_seconds == 10
+    assert scene.listen_seconds == 12
 
 
 def test_listen_tap_updates_asr():
@@ -85,3 +84,10 @@ def test_listen_tap_updates_asr():
     with patch("ella_bot.config.app_config.save_setting"):
         scene._tap_listen(1)
     assert scene.app.asr.listen_seconds == 8
+
+
+def test_settings_has_no_profile_reset_state():
+    scene = _make_scene()
+    assert not hasattr(scene, "show_reset_confirm")
+    assert not hasattr(scene, "btn_reset")
+    assert not hasattr(scene, "_reset_progress")

@@ -2,6 +2,12 @@ import sys
 import os
 import json
 import time
+import tempfile
+import shutil
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 # Ensure project src path is in Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -11,6 +17,8 @@ from ella_bot.ui.pygame_gui.app import EllaGUIApp
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
 from ella_bot.ui.pygame_gui.scenes.main_menu import MainMenuScene
+from ella_bot.ui.pygame_gui.scenes.profiles import ProfilesScene
+from ella_bot.ui.pygame_gui.scenes.level_selection import LevelSelectionScene
 from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 from ella_bot.ui.pygame_gui.scenes.results import ResultsScene
 from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
@@ -25,7 +33,11 @@ class E2ETestASR(BaseASR):
         self.app = None
         self.attempt_counts = {}
 
-    def transcribe(self, expected_sentence: str = None) -> ASRResult:
+    def transcribe(
+        self,
+        expected_sentence: str = None,
+        is_paused=None,
+    ) -> ASRResult:
         if not expected_sentence:
             expected_sentence = self.app.expected_sentence
             
@@ -45,13 +57,36 @@ class E2ETestASR(BaseASR):
             return ASRResult(transcript=expected_sentence, words=words)
 
 
+def test_e2e_asr_accepts_attempt_runner_pause_keyword():
+    asr = E2ETestASR()
+    asr.app = MagicMock(current_level='1a', expected_sentence='cat')
+
+    result = asr.transcribe(expected_sentence='cat', is_paused=lambda: False)
+
+    assert result == ASRResult(transcript='', words=[])
+
+
+def test_e2e_harness_uses_only_an_isolated_profile_store(tmp_path):
+    asr = E2ETestASR()
+
+    app = _build_harness_app(tmp_path, asr=asr, tts=None, overrides={})
+
+    project_data_dir = (Path(__file__).resolve().parents[1] / 'data').resolve()
+    assert app.config.session_log_path == tmp_path / 'sessions.jsonl'
+    assert app.profile_store.registry_path == tmp_path / 'profiles.json'
+    assert app.config.session_log_path.parent.resolve() != project_data_dir
+    assert tuple(profile.name for profile in app.profiles()) == ('E2E Reader',)
+    assert app.active_profile().name == 'E2E Reader'
+
+
 class AutoMainMenuScene(MainMenuScene):
     def update(self, now_ms: int) -> None:
         super().update(now_ms)
         # Automatically transition to the reading prompt scene without waiting for mouse clicks
         print("[TEST MANAGER] Main menu active, automatically transitioning to reading prompt scene...")
-        self.app.switch_scene("reading_prompt")
-        self.app.active_scene._start_attempt()
+        if self.app.start_new_session("1a"):
+            self.app.switch_scene("reading_prompt")
+            self.app.active_scene._start_attempt()
 
 
 class AutoReadingPromptScene(ReadingPromptScene):
@@ -105,23 +140,31 @@ class E2EInteractiveApp(EllaGUIApp):
         except Exception as exc:
             raise RuntimeError("pygame is required for GUI mode.") from exc
 
-        pygame.init()
-        pygame.font.init()
+        self.shutdown_complete = False
+        try:
+            self._initialize_e2e_gui(pygame)
+            self._run_e2e_loop(pygame)
+        finally:
+            try:
+                self.shutdown_complete = self.shutdown() is not False
+            finally:
+                pygame.quit()
 
-        # Always run E2E test in windowed mode (not fullscreen) for better testing and visualization
-        self.screen = pygame.display.set_mode((self.config.width, self.config.height))
-        pygame.display.set_caption("E.L.L.A. E2E Automated Integration Test GUI")
-
-        self.clock = pygame.time.Clock()
+    def _initialize_e2e_gui(self, pygame_module) -> None:
+        pygame_module.init()
+        pygame_module.font.init()
+        self.screen = pygame_module.display.set_mode(
+            (self.config.width, self.config.height)
+        )
+        pygame_module.display.set_caption(
+            'E.L.L.A. E2E Automated Integration Test GUI'
+        )
+        self.clock = pygame_module.time.Clock()
         width, height = self.screen.get_size()
-        
-        # Cache standard fonts
         self.font_title = self._get_sys_font(42)
         self.font_subtitle = self._get_sys_font(24)
         self.font_body = self._get_sys_font(30)
         self.font_small = self._get_sys_font(22)
-        
-        # Cache prompt fonts
         self.font_prompt_large = self._get_sys_font(max(96, int(height * 0.28)))
         self.font_prompt_medium = self._get_sys_font(max(96, int(height * 0.12)))
         self.font_prompt_small = self._get_sys_font(max(96, int(height * 0.09)))
@@ -129,7 +172,7 @@ class E2EInteractiveApp(EllaGUIApp):
 
         from ella_bot.ui.pygame_gui.animator import AvatarAnimator
         self.animator = AvatarAnimator(
-            pygame_module=pygame,
+            pygame_module=pygame_module,
             assets_dir=self.config.assets_dir,
             frame_size=None,
             animation_fps=self.config.animation_fps,
@@ -137,36 +180,108 @@ class E2EInteractiveApp(EllaGUIApp):
             loading_fps=self.config.loading_fps,
             processing_fps=self.config.processing_fps,
         )
-        self.animator.set_state("warmup", reset=True)
-
-        # Inject our customized scenes
+        self.animator.set_state('warmup', reset=True)
         self.scenes = {
-            "intro": IntroScene(self),
-            "main_menu": AutoMainMenuScene(self),
-            "reading_prompt": AutoReadingPromptScene(self),
-            "settings": SettingsScene(self),
-            "results": AutoResultsScene(self),
-            "final_eval": AutoFinalEvaluationScene(self),
+            'intro': IntroScene(self),
+            'main_menu': AutoMainMenuScene(self),
+            'profiles': ProfilesScene(self),
+            'level_selection': LevelSelectionScene(self),
+            'reading_prompt': AutoReadingPromptScene(self),
+            'settings': SettingsScene(self),
+            'results': AutoResultsScene(self),
+            'final_eval': AutoFinalEvaluationScene(self),
         }
-        self.switch_scene("intro")
+        self.switch_scene('intro')
 
+    def _run_e2e_loop(self, pygame_module) -> None:
         self.running = True
         while self.running:
-            now_ms = pygame.time.get_ticks()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+            now_ms = pygame_module.time.get_ticks()
+            for event in pygame_module.event.get():
+                if event.type == pygame_module.QUIT:
                     self.running = False
                 else:
                     self.active_scene.handle_event(event)
-
             self.animator.update(now_ms)
             self.active_scene.update(now_ms)
             self.active_scene.render()
-            
-            pygame.display.flip()
+            pygame_module.display.flip()
             self.clock.tick(self.config.fps)
 
-        pygame.quit()
+
+def test_e2e_run_shuts_down_before_pygame_quit_on_failure(monkeypatch):
+    app = object.__new__(E2EInteractiveApp)
+    actions = []
+    app._initialize_e2e_gui = MagicMock()
+    app._run_e2e_loop = MagicMock(side_effect=RuntimeError('loop failed'))
+    app.shutdown = MagicMock(side_effect=lambda: actions.append('shutdown'))
+    monkeypatch.setattr(pygame, 'quit', lambda: actions.append('quit'))
+
+    with pytest.raises(RuntimeError, match='loop failed'):
+        app.run()
+
+    assert actions == ['shutdown', 'quit']
+
+
+def test_e2e_run_shuts_down_when_gui_initialization_fails(monkeypatch):
+    app = object.__new__(E2EInteractiveApp)
+    actions = []
+    app._initialize_e2e_gui = MagicMock(
+        side_effect=RuntimeError('initialization failed')
+    )
+    app._run_e2e_loop = MagicMock()
+    app.shutdown = MagicMock(side_effect=lambda: actions.append('shutdown'))
+    monkeypatch.setattr(pygame, 'quit', lambda: actions.append('quit'))
+
+    with pytest.raises(RuntimeError, match='initialization failed'):
+        app.run()
+
+    assert actions == ['shutdown', 'quit']
+
+
+def test_e2e_cleanup_preserves_data_when_worker_shutdown_is_incomplete(tmp_path):
+    data_dir = tmp_path / 'harness-data'
+    data_dir.mkdir()
+    (data_dir / 'profiles.json').write_text('{}', encoding='utf-8')
+    app = MagicMock(shutdown_complete=False)
+
+    cleaned = _cleanup_harness_data(data_dir, app)
+
+    assert cleaned is False
+    assert data_dir.exists()
+
+
+def _build_harness_config(data_dir: Path) -> GUIConfig:
+    return GUIConfig(
+        width=1280,
+        height=720,
+        fullscreen=False,
+        pass_bar=0.50,
+        session_log_path=Path(data_dir) / 'sessions.jsonl',
+    )
+
+
+def _build_harness_app(data_dir: Path, *, asr, tts, overrides):
+    config = _build_harness_config(data_dir)
+    app = E2EInteractiveApp(
+        expected_sentence='',
+        asr=asr,
+        tts=tts,
+        audio_feedback=True,
+        pronunciation_overrides=overrides,
+        config=config,
+    )
+    if app.profiles():
+        raise RuntimeError('E2E data directory must start without profiles')
+    app.create_profile('E2E Reader')
+    return app
+
+
+def _cleanup_harness_data(data_dir: Path, app) -> bool:
+    if not getattr(app, 'shutdown_complete', False):
+        return False
+    shutil.rmtree(data_dir)
+    return True
 
 
 def main():
@@ -187,13 +302,7 @@ def main():
         overrides = json.load(f)
         
     asr = E2ETestASR()
-    
-    config = GUIConfig(
-        width=1280,
-        height=720,
-        fullscreen=False,
-        pass_bar=0.50,
-    )
+    temporary_data = Path(tempfile.mkdtemp(prefix='ella-e2e-'))
     
     # Build TTS Config
     tts_engine = settings.get("tts_engine", "auto")
@@ -216,13 +325,11 @@ def main():
         )
     )
     
-    app = E2EInteractiveApp(
-        expected_sentence="",
+    app = _build_harness_app(
+        temporary_data,
         asr=asr,
         tts=tts,
-        audio_feedback=True,
-        pronunciation_overrides=overrides,
-        config=config,
+        overrides=overrides,
     )
     
     # Inject references and custom pools
@@ -237,7 +344,10 @@ def main():
     print("        All Items -> Level Up -> Next Level (1a to 4)")
     print("==================================================\n")
     
-    app.run()
+    try:
+        app.run()
+    finally:
+        _cleanup_harness_data(temporary_data, app)
 
 
 if __name__ == "__main__":

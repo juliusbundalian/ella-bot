@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ella_bot.services.evaluation import EvaluationService, rating_for
+from ella_bot.services.evaluation import EvaluationService, TierResult, rating_for
 
 
 def make_service(tmp_path) -> EvaluationService:
@@ -31,7 +31,7 @@ def test_finish_sublevel_computes_fluency_and_first_try(tmp_path):
     assert result.items_total == 2
     assert result.first_try_correct == 1            # only item 2 right on first try
     assert result.attempts == 3
-    assert result.fluency == pytest.approx((0.40 + 1.00 + 1.00) / 3)
+    assert result.fluency == pytest.approx((1.00 + 1.00) / 2)
     assert result.rating == rating_for(result.fluency)
 
 
@@ -115,3 +115,32 @@ def test_reset_all_clears_all_state(tmp_path):
     svc.reset_all()
     assert svc._attempts == {}
     assert svc._tier_results == {}
+
+
+def test_evaluation_checkpoint_round_trip_preserves_attempts_and_identity(tmp_path):
+    original = EvaluationService(tmp_path / "sessions.jsonl", pass_bar=0.70)
+    original.record_attempt("2a", 1, "word", "ward", 0.5, 1.0, False)
+    original.record_attempt("2a", 1, "word", "word", 1.0, 0.0, True)
+    original._tier_results[1] = TierResult(1, 0.9, "A", 7, 6, True)
+
+    restored = EvaluationService.from_checkpoint(
+        tmp_path / "sessions.jsonl", 0.70, original.to_checkpoint()
+    )
+
+    assert restored.session_id == original.session_id
+    assert restored._started == original._started
+    assert restored._attempts == original._attempts
+    assert restored._tier_results == original._tier_results
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"session_id": 3, "started_at": "bad", "attempts": {}, "tier_results": {}},
+        {"session_id": "s", "started_at": "bad", "attempts": {}, "tier_results": {}},
+    ],
+)
+def test_evaluation_checkpoint_rejects_invalid_payload(tmp_path, payload):
+    with pytest.raises(ValueError):
+        EvaluationService.from_checkpoint(tmp_path / "s.jsonl", 0.70, payload)
