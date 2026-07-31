@@ -8,6 +8,7 @@ import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_button_click
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
@@ -133,6 +134,8 @@ class MainMenuScene(BaseScene):
                 and self.profile_required_cancel_button.collidepoint(mouse_pos)
             ):
                 self.pressed_button = 'profile_required_cancel'
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.show_resume_prompt:
@@ -142,6 +145,8 @@ class MainMenuScene(BaseScene):
                 self.pressed_button = "resume_new"
             elif self.resume_cancel_button and self.resume_cancel_button.collidepoint(mouse_pos):
                 self.pressed_button = "resume_cancel"
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.show_exit_confirm:
@@ -149,18 +154,21 @@ class MainMenuScene(BaseScene):
                 self.pressed_button = "confirm_yes"
             elif self.menu_confirm_no_button and self.menu_confirm_no_button.collidepoint(mouse_pos):
                 self.pressed_button = "confirm_no"
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.menu_profiles_button and self.menu_profiles_button.collidepoint(mouse_pos):
             self.pressed_button = 'profiles'
-            return
-
-        if self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
+        elif self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
             self.pressed_button = "start"
         elif self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
             self.pressed_button = "exit"
         elif self.menu_gear_button and self.menu_gear_button.collidepoint(mouse_pos):
             self.pressed_button = "gear"
+
+        if self.pressed_button:
+            play_button_click()
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         try:
@@ -219,6 +227,72 @@ class MainMenuScene(BaseScene):
         surf = self.app.font_body.render(label, True, _WHITE)
         screen.blit(surf, surf.get_rect(center=rect.center))
 
+    def _draw_welcome_speech_bubble(
+        self,
+        screen: pygame.Surface,
+        greeting: str,
+        bot_rect: pygame.Rect | None,
+        inner_rect: pygame.Rect,
+    ) -> None:
+        greeting_surf = self.app.font_body.render(greeting, True, _TEXT)
+        pad_x, pad_y = 18, 10
+        bubble_w = greeting_surf.get_width() + pad_x * 2
+        bubble_h = greeting_surf.get_height() + pad_y * 2
+
+        if bot_rect:
+            bot_top = bot_rect.top
+            bot_centerx = bot_rect.centerx
+        else:
+            bot_top = inner_rect.bottom - int(inner_rect.height * 0.3)
+            bot_centerx = inner_rect.right - int(inner_rect.width * 0.16)
+
+        bubble_bottom = bot_top - 12
+        bubble_centerx = bot_centerx
+        bubble_left = bubble_centerx - bubble_w // 2
+        bubble_top = bubble_bottom - bubble_h
+
+        if bubble_left < inner_rect.left + 16:
+            bubble_left = inner_rect.left + 16
+        if bubble_left + bubble_w > inner_rect.right - 16:
+            bubble_left = inner_rect.right - 16 - bubble_w
+        if bubble_top < inner_rect.top + 16:
+            bubble_top = inner_rect.top + 16
+
+        bubble_rect = pygame.Rect(bubble_left, bubble_top, bubble_w, bubble_h)
+
+        tail_x = min(
+            max(bot_centerx, bubble_rect.left + 16),
+            bubble_rect.right - 16,
+        )
+        p1 = (tail_x - 7, bubble_rect.bottom - 1)
+        p2 = (tail_x + 7, bubble_rect.bottom - 1)
+        p3 = (tail_x + 4, bubble_rect.bottom + 10)
+
+        shadow_offset = 3
+        shadow_rect = pygame.Rect(
+            bubble_rect.left + shadow_offset,
+            bubble_rect.top + shadow_offset,
+            bubble_rect.width,
+            bubble_rect.height,
+        )
+        shadow_p1 = (p1[0] + shadow_offset, p1[1] + shadow_offset)
+        shadow_p2 = (p2[0] + shadow_offset, p2[1] + shadow_offset)
+        shadow_p3 = (p3[0] + shadow_offset, p3[1] + shadow_offset)
+
+        pygame.draw.rect(screen, (225, 225, 225), shadow_rect, border_radius=14)
+        pygame.draw.polygon(screen, (225, 225, 225), [shadow_p1, shadow_p2, shadow_p3])
+
+        pygame.draw.rect(screen, _WHITE, bubble_rect, border_radius=14)
+        pygame.draw.polygon(screen, _WHITE, [p1, p2, p3])
+
+        pygame.draw.rect(screen, _BTN_OUTLINE, bubble_rect, width=2, border_radius=14)
+        pygame.draw.line(screen, _BTN_OUTLINE, p1, p3, 2)
+        pygame.draw.line(screen, _BTN_OUTLINE, p2, p3, 2)
+        pygame.draw.line(screen, _WHITE, (p1[0] + 1, p1[1]), (p2[0] - 1, p2[1]), 3)
+
+        text_rect = greeting_surf.get_rect(center=bubble_rect.center)
+        screen.blit(greeting_surf, text_rect)
+
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
@@ -249,19 +323,13 @@ class MainMenuScene(BaseScene):
 
         profile = self.app.active_profile()
         greeting = 'Welcome!' if profile is None else f'Welcome, {profile.name}!'
-        greeting_surf = self.app.font_body.render(greeting, True, _TEXT)
-        greeting_rect = greeting_surf.get_rect(
-            centerx=inner_rect.centerx,
-            top=content_top,
-        )
-        screen.blit(greeting_surf, greeting_rect)
 
         button_area_bottom = inner_rect.bottom - 36
-        available_height = max(3, button_area_bottom - greeting_rect.bottom)
+        available_height = max(3, button_area_bottom - content_top)
         btn_gap = min(16, available_height // 10)
         btn_h = min(72, max(1, (available_height - 2 * btn_gap) // 3))
         total_height = 3 * btn_h + 2 * btn_gap
-        btn_y = greeting_rect.bottom + (available_height - total_height) // 2
+        btn_y = content_top + (available_height - total_height) // 2
         btn_w = min(300, max(1, inner_rect.width - 72))
         btn_x = inner_rect.centerx - btn_w // 2
         self.menu_start_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
@@ -282,7 +350,8 @@ class MainMenuScene(BaseScene):
         self._draw_button(screen, self.menu_exit_button, 'Exit', 'exit')
 
         # --- Bot (bottom-right, same as reading prompt) ---
-        self.bot.draw(screen, inner_rect)
+        bot_rect = self.bot.draw(screen, inner_rect)
+        self._draw_welcome_speech_bubble(screen, greeting, bot_rect, inner_rect)
 
         # --- Outer/inner pink borders (drawn on top so they frame everything) ---
         pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)

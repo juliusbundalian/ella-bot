@@ -4,6 +4,7 @@ import pygame
 
 from ella_bot.services.profile_store import MAX_PROFILES, ProfileStoreError
 from ella_bot.ui.pygame_gui.scene import BaseScene
+from ella_bot.services.sound_effects import play_button_click
 
 
 _CARD_BG = (0, 0, 0)
@@ -201,20 +202,27 @@ class ProfilesScene(BaseScene):
                 )
             elif self._modal_cancel_button and self._modal_cancel_button.collidepoint(mouse_pos):
                 self.pressed_button = 'modal_cancel'
+            if self.pressed_button:
+                play_button_click()
             return
 
         for (action, profile_id), rect in self.manage_buttons.items():
             if rect.collidepoint(mouse_pos):
                 self.pressed_button = f'{action}:{profile_id}'
+                play_button_click()
                 return
         for profile_id, rect in self.profile_cards.items():
             if rect.collidepoint(mouse_pos):
                 self.pressed_button = f'profile:{profile_id}'
+                play_button_click()
                 return
         if self.create_button and self.create_button.collidepoint(mouse_pos):
             self.pressed_button = 'create'
         elif self.back_button and self.back_button.collidepoint(mouse_pos):
             self.pressed_button = 'back'
+
+        if self.pressed_button:
+            play_button_click()
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         pressed = self.pressed_button

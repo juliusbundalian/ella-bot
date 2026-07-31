@@ -4,7 +4,7 @@ import time
 import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.utils.file_utils import resolve_asset_path
-from ella_bot.services.sound_effects import play_level_sound
+from ella_bot.services.sound_effects import play_level_sound, play_button_click
 from ella_bot.ui.pygame_gui.components.confetti import ConfettiAnimation
 
 _CARD_BG = (0, 0, 0)
@@ -138,6 +138,7 @@ class ResultsScene(BaseScene):
                 ):
                     if rect and rect.collidepoint(event.pos):
                         self.pressed_button = key
+                        play_button_click()
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 key = self.pressed_button
                 self.pressed_button = None
@@ -151,6 +152,7 @@ class ResultsScene(BaseScene):
             for key, rect in (("next", self.next_button), ("menu", self.menu_button)):
                 if rect and rect.collidepoint(event.pos):
                     self.pressed_button = key
+                    play_button_click()
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             key = self.pressed_button
             self.pressed_button = None

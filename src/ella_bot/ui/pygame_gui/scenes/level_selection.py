@@ -6,6 +6,7 @@ import pygame
 
 from ella_bot.core.constants import LEVEL_ORDER
 from ella_bot.ui.pygame_gui.scene import BaseScene
+from ella_bot.services.sound_effects import play_button_click
 
 
 _CARD_BG = (0, 0, 0)
@@ -69,13 +70,17 @@ class LevelSelectionScene(BaseScene):
                 self.pressed_button = "confirm"
             elif self.cancel_button and self.cancel_button.collidepoint(mouse_pos):
                 self.pressed_button = "cancel"
+            if self.pressed_button:
+                play_button_click()
             return
         for level, rect in self.level_buttons.items():
             if rect.collidepoint(mouse_pos):
                 self.pressed_button = f"level:{level}"
+                play_button_click()
                 return
         if self.back_button and self.back_button.collidepoint(mouse_pos):
             self.pressed_button = "back"
+            play_button_click()
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         pressed = self.pressed_button

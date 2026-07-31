@@ -35,3 +35,9 @@ def play_level_sound(passed: bool) -> None:
     """
     sfx_file = "level_pass.wav" if passed else "level_fail.wav"
     play_sound_effect(sfx_file)
+
+
+def play_button_click() -> None:
+    """Play crisp button click sound effect."""
+    play_sound_effect("button_click.wav")
+

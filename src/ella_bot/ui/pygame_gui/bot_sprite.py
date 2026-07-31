@@ -104,13 +104,13 @@ class BotSprite:
             self.frame_index = (self.frame_index + 1) % len(frames)
             self.last_tick_ms = now_ms
 
-    def draw(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
+    def draw(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> pygame.Rect | None:
         max_width = int(prompt_rect.width * 0.32)
         max_height = int(prompt_rect.height * 0.42)
 
         scaled = self._get_scaled_frames(max_width, max_height)
         if not scaled:
-            return
+            return None
 
         rendered = scaled[self.frame_index % len(scaled)]
         overlap = int(rendered.get_height() * 0.28)
@@ -124,3 +124,5 @@ class BotSprite:
             screen.blit(rendered, target_rect)
         finally:
             screen.set_clip(old_clip)
+
+        return target_rect

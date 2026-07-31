@@ -212,3 +212,13 @@ def test_entering_main_menu_does_not_reset_progress():
     scene = _scene()
     scene.on_enter()
     scene.app.session.reset_current_level.assert_not_called()
+
+
+def test_welcome_speech_bubble_position_and_drawing():
+    scene = _scene()
+    inner_rect = pygame.Rect(32, 32, 1216, 656)
+    bot_rect = pygame.Rect(900, 400, 200, 250)
+    screen = scene.app.screen
+
+    scene._draw_welcome_speech_bubble(screen, "Welcome, Maria!", bot_rect, inner_rect)
+

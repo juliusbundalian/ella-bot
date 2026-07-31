@@ -5,6 +5,7 @@ import pygame
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.config.app_config import save_setting
 from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_button_click
 
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
@@ -69,6 +70,7 @@ class SettingsScene(BaseScene):
         ]:
             if rect and rect.collidepoint(pos):
                 self.pressed_button = name
+                play_button_click()
                 break
 
     def _on_mouse_up(self, pos) -> None:

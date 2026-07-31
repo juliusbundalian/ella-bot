@@ -11,6 +11,7 @@ from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
+from ella_bot.services.sound_effects import play_button_click
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 from ella_bot.validation.validators import (
@@ -91,6 +92,8 @@ class ReadingPromptScene(BaseScene):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.modal.visible:
                 action = self.modal.hit_test(event.pos)
+                if action and action != "consumed":
+                    play_button_click()
                 if action == "close":
                     if self.modal.show_confirm:
                         self.modal.show_confirm = False
@@ -123,6 +126,7 @@ class ReadingPromptScene(BaseScene):
                 return  # "consumed" — click inside modal but no button hit
 
             if self.menu_button_rect and self.menu_button_rect.collidepoint(event.pos):
+                play_button_click()
                 self._set_paused(True)
                 return
 
