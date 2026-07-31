@@ -1,0 +1,102 @@
+{
+  "evaluation": {
+    "attempts": {
+      "1a": [
+        {
+          "accuracy": 0.0,
+          "correct": false,
+          "expected": "a",
+          "heard": "",
+          "item": 1,
+          "ts": "2026-07-31T21:16:46",
+          "wer": 1.0
+        },
+        {
+          "accuracy": 0.0,
+          "correct": false,
+          "expected": "e",
+          "heard": "",
+          "item": 2,
+          "ts": "2026-07-31T21:17:19",
+          "wer": 1.0
+        },
+        {
+          "accuracy": 0.0,
+          "correct": false,
+          "expected": "i",
+          "heard": "",
+          "item": 3,
+          "ts": "2026-07-31T21:17:40",
+          "wer": 1.0
+        },
+        {
+          "accuracy": 0.0,
+          "correct": false,
+          "expected": "o",
+          "heard": "",
+          "item": 4,
+          "ts": "2026-07-31T21:17:56",
+          "wer": 1.0
+        },
+        {
+          "accuracy": 0.0,
+          "correct": false,
+          "expected": "u",
+          "heard": "",
+          "item": 5,
+          "ts": "2026-07-31T21:18:11",
+          "wer": 1.0
+        }
+      ]
+    },
+    "session_id": "2026-07-31T18:30:42",
+    "started_at": "2026-07-31T18:30:42.776035",
+    "tier_results": {}
+  },
+  "latest_result": {
+    "attempts": 5,
+    "first_try_correct": 0,
+    "fluency": 0.0,
+    "items_total": 5,
+    "level": "1a",
+    "passed": false,
+    "rating": "F",
+    "tier": 1
+  },
+  "latest_result_kind": "sublevel",
+  "phase": "results",
+  "saved_at": "2026-07-31T21:41:35+08:00",
+  "schema_version": 1,
+  "selected_start_level": "1a",
+  "session": {
+    "completed_in_level": 5,
+    "current_level": "1a",
+    "expected_sentence": "u",
+    "last_announced_sentence": "u",
+    "level_goal": 5,
+    "level_indices": {
+      "1a": 4,
+      "1b": 0,
+      "1c": 0,
+      "1d": 0,
+      "1e": 0,
+      "1f": 0,
+      "1g": 0,
+      "2a": 0,
+      "2b": 0,
+      "2c": 0,
+      "2d": 0,
+      "3": 0,
+      "4": 0
+    },
+    "session_pools": {
+      "1a": [
+        "a",
+        "e",
+        "i",
+        "o",
+        "u"
+      ]
+    }
+  }
+}

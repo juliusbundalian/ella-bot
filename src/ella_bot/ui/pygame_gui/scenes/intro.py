@@ -24,7 +24,7 @@ class IntroScene(BaseScene):
         self.app.event_queue.put(("state", "speaking"))
         if self.app.tts is not None:
             try:
-                self.app.tts.speak("Hi there! I'm Ella, your offline reading assistant! I'm ready when you are.")
+                self.app.tts.speak("Hi! I'm ELLA, your Enhanced Learning Literacy Assistant!")
             except Exception as exc:
                 self.app.event_queue.put(("error", str(exc)))
                 

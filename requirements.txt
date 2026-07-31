@@ -4,5 +4,6 @@
 # sounddevice
 # Optional dependency for GUI mode:
 # pygame-ce
+opencv-python-headless
 # Optional dependency for automatic pronunciation coaching:
 # pronouncing
