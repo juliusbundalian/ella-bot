@@ -56,9 +56,12 @@ class LottieBackground:
             return
 
         target_json_path = self.lottie_path
+        extracted_path = self.lottie_path.parent / f"{self.lottie_path.stem}_extracted.json"
 
-        # If .lottie zip archive, extract main animation JSON
-        if zipfile.is_zipfile(self.lottie_path):
+        # Check if pre-extracted JSON exists first (helps on Raspberry Pi with restricted permissions)
+        if extracted_path.exists():
+            target_json_path = extracted_path
+        elif zipfile.is_zipfile(self.lottie_path):
             try:
                 with zipfile.ZipFile(self.lottie_path) as z:
                     json_file = None
@@ -68,7 +71,6 @@ class LottieBackground:
                             break
                     if json_file:
                         json_bytes = z.read(json_file)
-                        extracted_path = self.lottie_path.parent / f"{self.lottie_path.stem}_extracted.json"
                         extracted_path.write_bytes(json_bytes)
                         target_json_path = extracted_path
                         self._temp_json_path = extracted_path
