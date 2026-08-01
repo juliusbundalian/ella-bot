@@ -208,7 +208,7 @@ class PauseModal:
         # 3. ACTION BUTTONS ("Restart Level" & "Back to Menu")
         btn_w, btn_h = 325, 58
         stack_gap = 14
-        btn_start_y = listen_row_cy + 42
+        btn_start_y = card_rect.bottom - (btn_h * 2 + stack_gap + 35)
 
         # Restart Level (Violet variant)
         self.restart_rect = pygame.Rect(cx - btn_w // 2, btn_start_y, btn_w, btn_h)
