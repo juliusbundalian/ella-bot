@@ -74,9 +74,15 @@ class ResultsScene(BaseScene):
 
         if self._main_menu_svg is None:
             try:
+                svg2_bg_path = resolve_asset_path("assets/BG/Main Menu (2).svg")
+                svg2_path = resolve_asset_path("assets/Main Menu (2).svg")
                 p1080_trans = resolve_asset_path("assets/Main Menu 1080p Transparent.png")
                 svg1_path = resolve_asset_path("assets/Main Menu (1).svg")
-                if p1080_trans.exists():
+                if svg2_bg_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_bg_path)).convert_alpha()
+                elif svg2_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_path)).convert_alpha()
+                elif p1080_trans.exists():
                     self._main_menu_svg = pygame.image.load(str(p1080_trans)).convert_alpha()
                 elif svg1_path.exists():
                     self._main_menu_svg = pygame.image.load(str(svg1_path)).convert_alpha()

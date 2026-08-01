@@ -28,7 +28,7 @@ class BotSprite:
         self._scaled_cache: dict[str, list[pygame.Surface]] = {}
         self._cache_target_size: tuple[int, int] | None = None
         self.intervals_ms = {
-            "idle": 1400,
+            "idle": 140,
             "listening": 320,
             "speaking": 160,
             "thinking": 200,
@@ -38,24 +38,29 @@ class BotSprite:
 
     def _load_frames(self) -> dict[str, list[pygame.Surface]]:
         base = get_project_root() / "bot"
-        mapping = {
-            "idle": base / "idle",
-            "listening": base / "listening",
-            "speaking": base / "speaking",
-            "thinking": base / "thinking",
-            "warmup": base / "warmup",
-            "error": base / "error",
+        robot_svg_dir = get_project_root() / "assets" / "Robot SVG"
+        mapping: dict[str, list] = {
+            "idle": [robot_svg_dir, base / "idle"],
+            "listening": [base / "listening"],
+            "speaking": [base / "speaking"],
+            "thinking": [base / "thinking"],
+            "warmup": [base / "warmup"],
+            "error": [base / "error"],
         }
         frames: dict[str, list[pygame.Surface]] = {}
-        for state, folder in mapping.items():
+        for state, folders in mapping.items():
             images: list[pygame.Surface] = []
-            if folder.exists():
-                for image_path in sorted(folder.glob("*.png")):
-                    try:
-                        image = pygame.image.load(str(image_path)).convert_alpha()
-                        images.append(image)
-                    except Exception:
-                        continue
+            for folder in folders:
+                if folder.exists():
+                    for pattern in ("*.svg", "*.png"):
+                        for image_path in sorted(folder.glob(pattern)):
+                            try:
+                                image = pygame.image.load(str(image_path)).convert_alpha()
+                                images.append(image)
+                            except Exception:
+                                continue
+                if images:
+                    break
             if images:
                 frames[state] = images
         return frames
@@ -105,24 +110,18 @@ class BotSprite:
             self.last_tick_ms = now_ms
 
     def draw(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> pygame.Rect | None:
-        max_width = int(prompt_rect.width * 0.32)
-        max_height = int(prompt_rect.height * 0.42)
+        max_width = int(prompt_rect.width * 0.50)
+        max_height = int(prompt_rect.height * 0.90)
 
         scaled = self._get_scaled_frames(max_width, max_height)
         if not scaled:
             return None
 
         rendered = scaled[self.frame_index % len(scaled)]
-        overlap = int(rendered.get_height() * 0.28)
+        hide_lower_half_offset = int(rendered.get_height() * 0.27)
         target_rect = rendered.get_rect(
-            bottomright=(prompt_rect.right - 26, prompt_rect.bottom + overlap - 48)
+            bottomright=(prompt_rect.right + 100, prompt_rect.bottom + hide_lower_half_offset)
         )
 
-        old_clip = screen.get_clip()
-        try:
-            screen.set_clip(prompt_rect)
-            screen.blit(rendered, target_rect)
-        finally:
-            screen.set_clip(old_clip)
-
+        screen.blit(rendered, target_rect)
         return target_rect
