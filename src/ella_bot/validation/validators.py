@@ -166,11 +166,15 @@ ASR_HOMOPHONES: Dict[str, set[str]] = {
     "yo": {"yo", "yoh", "you", "your", "yolk"},
     "yu": {"yu", "yuh", "yum", "yuck"},
 
-    "za": {"za", "zah", "zap", "zar"},
-    "ze": {"ze", "zeh", "zee", "zen", "zest"},
-    "zi": {"zi", "zee", "zih", "zip", "zinc"},
+    "za": {"za", "zah", "zap", "zag"},
+    "ze": {"ze", "zeh", "zet", "zen", "zest"},
+    "zi": {"zi", "zee", "zih", "zip", "zig"},
     "zo": {"zo", "zoh", "zoo", "zone"},
-    "zu": {"zu", "zuh", "zoo"}
+    "zu": {"zu", "zuh", "zug"},
+
+    # Digraphs & Phonics endings
+    "ain": {"ain", "ane", "ein", "an", "ay-n"},
+    "ein": {"ein", "ain", "ane", "ine"},
 }
 
 STRICT_HOMOPHONES: Dict[str, set[str]] = {
