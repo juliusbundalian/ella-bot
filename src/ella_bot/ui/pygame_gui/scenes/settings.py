@@ -142,43 +142,37 @@ class SettingsScene(BaseScene):
         else:
             screen.fill((0, 0, 0))
 
-        # 2. Main Purple Dialog Container Card (Figma Oval / Rounded Card)
-        card_w, card_h = 780, 520
-        card_x = (width - card_w) // 2
-        card_y = (height - card_h) // 2 + 15
-        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
+        # 2. Full-Screen Purple Card Container (#57276C fill, #7F3F97 stroke)
+        card_rect = pygame.Rect(32, 32, width - 64, height - 64)
 
         # Drop shadow
-        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(5, 5), border_radius=180)
+        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(4, 4), border_radius=60)
         # Main body (#57276C) & Border (#7F3F97)
-        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=180)
-        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=180)
+        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=60)
+        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=60)
 
         cx = card_rect.centerx
 
         # 3. Top Banner "Options"
-        banner_w, banner_h = 280, 60
-        banner_rect = pygame.Rect(cx - banner_w // 2, card_rect.top - 20, banner_w, banner_h)
-        banner_btn = Button(banner_rect, label="Options", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        banner_w, banner_h = 300, 64
+        banner_rect = pygame.Rect(cx - banner_w // 2, card_rect.top + 28, banner_w, banner_h)
+        banner_btn = Button(banner_rect, label="Options", variant="yellow", font=self.app.font_button, stroke_weight=8)
         banner_btn.draw(screen)
 
-        # 4. Top-Right Close "X" Button
-        close_sz = 60
-        self.btn_close = pygame.Rect(card_rect.right - close_sz - 25, card_rect.top + 18, close_sz, close_sz)
-        self._draw_circular_button(screen, self.btn_close, "X", self.pressed_button == "close")
+        self.btn_close = None
 
         # Section Font
         title_font = getattr(self.app, "font_button", self.app.font_title)
 
-        # 5. VOLUME SECTION
-        vol_y = card_rect.top + 70
+        # 4. VOLUME SECTION
+        vol_y = banner_rect.bottom + 40
         vol_lbl = title_font.render("Volume", True, (227, 198, 236))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=cx, top=vol_y))
 
         # 6 Volume level indicators
-        vol_row_cy = vol_y + vol_lbl.get_height() + 24
-        btn_sz = 56
-        seg_w, seg_h, seg_gap = 48, 28, 14
+        vol_row_cy = vol_y + vol_lbl.get_height() + 28
+        btn_sz = 60
+        seg_w, seg_h, seg_gap = 56, 32, 16
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
         seg_x0 = cx - total_seg_w // 2
 
@@ -187,35 +181,35 @@ class SettingsScene(BaseScene):
             ry = vol_row_cy - seg_h // 2
             pill_r = pygame.Rect(rx, ry, seg_w, seg_h)
             if (i + 1) <= self.volume_level:
-                pygame.draw.rect(screen, (242, 210, 20), pill_r, border_radius=14)  # Gold fill
-                pygame.draw.rect(screen, (175, 141, 55), pill_r, width=3, border_radius=14)
+                pygame.draw.rect(screen, (242, 210, 20), pill_r, border_radius=16)  # Gold fill
+                pygame.draw.rect(screen, (175, 141, 55), pill_r, width=3, border_radius=16)
             else:
-                pygame.draw.rect(screen, (70, 30, 90), pill_r, border_radius=14)
-                pygame.draw.rect(screen, (127, 63, 151), pill_r, width=3, border_radius=14)
+                pygame.draw.rect(screen, (70, 30, 90), pill_r, border_radius=16)
+                pygame.draw.rect(screen, (127, 63, 151), pill_r, width=3, border_radius=16)
 
-        self.btn_vol_minus = pygame.Rect(seg_x0 - 35 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 35, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_vol_minus = pygame.Rect(seg_x0 - 40 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 40, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_circular_button(screen, self.btn_vol_minus, "-", self.pressed_button == "vol_minus")
         self._draw_circular_button(screen, self.btn_vol_plus, "+", self.pressed_button == "vol_plus")
 
-        # 6. LISTENING TIME SECTION
-        listen_y = vol_row_cy + 34
+        # 5. LISTENING TIME SECTION
+        listen_y = vol_row_cy + 45
         listen_lbl = title_font.render("Listening Time", True, (227, 198, 236))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=cx, top=listen_y))
 
-        listen_row_cy = listen_y + listen_lbl.get_height() + 24
+        listen_row_cy = listen_y + listen_lbl.get_height() + 28
         val_surf = title_font.render(f"{self.listen_seconds} seconds", True, (242, 210, 20))
         val_rect = val_surf.get_rect(centerx=cx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)
 
-        self.btn_listen_minus = pygame.Rect(cx - 190 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self.btn_listen_plus = pygame.Rect(cx + 190, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_listen_minus = pygame.Rect(cx - 210 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self.btn_listen_plus = pygame.Rect(cx + 210, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._draw_circular_button(screen, self.btn_listen_minus, "-", self.pressed_button == "listen_minus")
         self._draw_circular_button(screen, self.btn_listen_plus, "+", self.pressed_button == "listen_plus")
 
-        # 7. BOTTOM ACTION BUTTON ("Back to Menu")
+        # 6. BOTTOM ACTION BUTTON ("Back to Menu")
         btn_w, btn_h = 325, 64
-        btn_y = card_rect.bottom - btn_h - 30
+        btn_y = card_rect.bottom - btn_h - 36
         self.btn_back = pygame.Rect(cx - btn_w // 2, btn_y, btn_w, btn_h)
 
         back_btn = Button(self.btn_back, label="Back to Menu", variant="yellow", font=self.app.font_button, stroke_weight=8)
