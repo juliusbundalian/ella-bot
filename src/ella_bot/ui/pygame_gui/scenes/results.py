@@ -211,24 +211,22 @@ class ResultsScene(BaseScene):
             screen.blit(letter_shadow, letter_rect.move(off_x, off_y))
         screen.blit(letter_surf, letter_rect)
 
-        # --- "RATINGS" PILL BADGE ---
+        # --- "RATINGS" PILL BADGE (#7F3F97 without outline) ---
         badge_w, badge_h = 220, 48
         badge_rect = pygame.Rect(cx - badge_w // 2, letter_rect.bottom + 6, badge_w, badge_h)
-        pygame.draw.rect(screen, (87, 39, 108), badge_rect, border_radius=24)
-        pygame.draw.rect(screen, (127, 63, 151), badge_rect, width=3, border_radius=24)
+        pygame.draw.rect(screen, (127, 63, 151), badge_rect, border_radius=24)
 
         rat_surf = self.app.font_body.render("RATINGS", True, (242, 210, 20))
         screen.blit(rat_surf, rat_surf.get_rect(center=badge_rect.center))
 
-        # --- SCORE & FLUENCY CIRCLES (Moved downwards beside Ratings) ---
+        # --- SCORE & FLUENCY CIRCLES (#7F3F97 fill without outlines) ---
         circ_size = 116
         circ_cy = letter_rect.centery + 24
         font_circ_val = getattr(self, "_font_circ_val", None) or self.app._get_sys_font(28)
 
         # LEFT CIRCLE: SCORE ("10/10 SCORE" or "5/5 SCORE")
         score_cx = cx - 210
-        pygame.draw.circle(screen, (87, 39, 108), (score_cx, circ_cy), circ_size // 2)
-        pygame.draw.circle(screen, (127, 63, 151), (score_cx, circ_cy), circ_size // 2, width=4)
+        pygame.draw.circle(screen, (127, 63, 151), (score_cx, circ_cy), circ_size // 2)
 
         score_val = f"{result.first_try_correct}/{result.items_total}" if result else "10/10"
         s1 = font_circ_val.render(score_val, True, (255, 250, 243))
@@ -238,8 +236,7 @@ class ResultsScene(BaseScene):
 
         # RIGHT CIRCLE: FLUENCY ("100% FLUENCY" or "90% FLUENCY")
         fluency_cx = cx + 210
-        pygame.draw.circle(screen, (87, 39, 108), (fluency_cx, circ_cy), circ_size // 2)
-        pygame.draw.circle(screen, (127, 63, 151), (fluency_cx, circ_cy), circ_size // 2, width=4)
+        pygame.draw.circle(screen, (127, 63, 151), (fluency_cx, circ_cy), circ_size // 2)
 
         fl_val = f"{round(result.fluency * 100)}%" if result else "100%"
         f1 = font_circ_val.render(fl_val, True, (255, 250, 243))
@@ -247,11 +244,11 @@ class ResultsScene(BaseScene):
         screen.blit(f1, f1.get_rect(center=(fluency_cx, circ_cy - 12)))
         screen.blit(f2, f2.get_rect(center=(fluency_cx, circ_cy + 18)))
 
-        # --- TIME ROW ("TIME 1min 20 secs") ---
+        # --- TIME ROW ("TIME 1min 20 secs") (#7F3F97 badge without outline) ---
         time_y = badge_rect.bottom + 18
         time_badge_w, time_badge_h = 120, 34
         time_badge = pygame.Rect(cx - 150, time_y, time_badge_w, time_badge_h)
-        pygame.draw.rect(screen, (87, 39, 108), time_badge, border_radius=17)
+        pygame.draw.rect(screen, (127, 63, 151), time_badge, border_radius=17)
 
         t_lbl = self.app.font_small.render("TIME", True, (242, 210, 20))
         screen.blit(t_lbl, t_lbl.get_rect(center=time_badge.center))
