@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 _VOLUME_MIN = 1
 _VOLUME_MAX = 6
-_LISTEN_MIN = 3
-_LISTEN_MAX = 15
+_LISTEN_MIN = 5
+_LISTEN_MAX = 12
 
 
 class SettingsScene(BaseScene):
@@ -164,13 +164,13 @@ class SettingsScene(BaseScene):
         # Section Font
         title_font = getattr(self.app, "font_button", self.app.font_title)
 
-        # 4. VOLUME SECTION
-        vol_y = banner_rect.bottom + 40
+        # 4. VOLUME SECTION (Shifted downward for balanced layout)
+        vol_y = banner_rect.bottom + 85
         vol_lbl = title_font.render("Volume", True, (227, 198, 236))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=cx, top=vol_y))
 
         # 6 Volume level indicators
-        vol_row_cy = vol_y + vol_lbl.get_height() + 28
+        vol_row_cy = vol_y + vol_lbl.get_height() + 24
         btn_sz = 60
         seg_w, seg_h, seg_gap = 56, 32, 16
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
@@ -192,12 +192,12 @@ class SettingsScene(BaseScene):
         self._draw_circular_button(screen, self.btn_vol_minus, "-", self.pressed_button == "vol_minus")
         self._draw_circular_button(screen, self.btn_vol_plus, "+", self.pressed_button == "vol_plus")
 
-        # 5. LISTENING TIME SECTION
-        listen_y = vol_row_cy + 45
+        # 5. LISTENING TIME SECTION (Spaced down further)
+        listen_y = vol_row_cy + 55
         listen_lbl = title_font.render("Listening Time", True, (227, 198, 236))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=cx, top=listen_y))
 
-        listen_row_cy = listen_y + listen_lbl.get_height() + 28
+        listen_row_cy = listen_y + listen_lbl.get_height() + 24
         val_surf = title_font.render(f"{self.listen_seconds} seconds", True, (242, 210, 20))
         val_rect = val_surf.get_rect(centerx=cx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)

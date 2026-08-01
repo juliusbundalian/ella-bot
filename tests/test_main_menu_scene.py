@@ -60,10 +60,10 @@ def test_profiles_action_opens_profiles_scene():
 @pytest.mark.parametrize(
     ('profile', 'expected_greeting'),
     [
-        (None, 'Welcome!'),
+        (None, 'Hello, Unique User !'),
         (
             Profile('a' * 32, 'Maria', '2026-07-28T12:00:00+08:00'),
-            'Welcome, Maria!',
+            'Hello, Maria !',
         ),
     ],
 )
@@ -217,8 +217,7 @@ def test_entering_main_menu_does_not_reset_progress():
 def test_welcome_speech_bubble_position_and_drawing():
     scene = _scene()
     inner_rect = pygame.Rect(32, 32, 1216, 656)
-    bot_rect = pygame.Rect(900, 400, 200, 250)
     screen = scene.app.screen
 
-    scene._draw_welcome_speech_bubble(screen, "Welcome, Maria!", bot_rect, inner_rect)
+    scene._draw_welcome_speech_bubble(screen, inner_rect)
 

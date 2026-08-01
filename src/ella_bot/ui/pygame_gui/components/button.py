@@ -105,11 +105,16 @@ class Button:
         # Draw text label centered on true optical bounding rect
         elif self.label and self.font:
             text_surf = self.font.render(self.label, True, text_color)
-            bound = text_surf.get_bounding_rect()
-            if bound.width > 0 and bound.height > 0:
-                text_x = self.rect.centerx - bound.width // 2 - bound.x
-                text_y = self.rect.centery - bound.height // 2 - bound.y
-                screen.blit(text_surf, (text_x, text_y))
-            else:
-                text_rect = text_surf.get_rect(center=self.rect.center)
-                screen.blit(text_surf, text_rect)
+            if not isinstance(text_surf, pygame.Surface):
+                return
+            try:
+                bound = text_surf.get_bounding_rect()
+                if isinstance(bound.width, int) and bound.width > 0 and bound.height > 0:
+                    text_x = self.rect.centerx - bound.width // 2 - bound.x
+                    text_y = self.rect.centery - bound.height // 2 - bound.y
+                    screen.blit(text_surf, (text_x, text_y))
+                    return
+            except Exception:
+                pass
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            screen.blit(text_surf, text_rect)

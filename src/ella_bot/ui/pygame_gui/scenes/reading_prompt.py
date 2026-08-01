@@ -49,6 +49,8 @@ class ReadingPromptScene(BaseScene):
         self._touch_activity()
         self.app.animator.set_state("idle", reset=True)
         self.app.sublevel_start_time = time.monotonic()
+        if hasattr(self.app, "session") and hasattr(self.app.session, "last_announced_sentence"):
+            self.app.session.last_announced_sentence = ""
 
         # Drain and clear the event queue to prevent any stale background thread events from leaking
         self._drain_event_queue()

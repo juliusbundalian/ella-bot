@@ -126,6 +126,7 @@ def test_build_tts_piper_defaults_to_hfc_female(monkeypatch):
 
 
 def test_build_tts_piper_honors_explicit_model(monkeypatch):
+    import pathlib
     from ella_bot.speech.tts.engines import piper as piper_mod
     captured = {}
 
@@ -134,6 +135,7 @@ def test_build_tts_piper_honors_explicit_model(monkeypatch):
             captured["model"] = piper_model
 
     monkeypatch.setattr(piper_mod, "PiperTTS", FakePiper)
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
     from ella_bot.speech.tts.factory import build_tts
     build_tts("piper", TTSConfig(piper_model="./models/en_US-amy-medium.onnx"))
     assert captured["model"].endswith("en_US-amy-medium.onnx")
