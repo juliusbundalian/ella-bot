@@ -39,8 +39,23 @@ class ReadingPromptScene(BaseScene):
         self.runner = AttemptRunner(self.app, lambda: self.is_paused)
         self._auto_start_at: float | None = None
         self.pre_pause_state = "idle"
+        self._lottie_bg = None
+
+    def _load_assets(self) -> None:
+        if getattr(self, "_lottie_bg", None) is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_config_path
+                from pathlib import Path
+                from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+                lottie_file = resolve_config_path("assets/Reading_bg.lottie")
+                if not lottie_file.exists():
+                    lottie_file = Path("assets/Reading_bg.lottie")
+                self._lottie_bg = LottieBackground(lottie_file)
+            except Exception:
+                self._lottie_bg = None
 
     def on_enter(self) -> None:
+        self._load_assets()
         self.app.state = "idle"
         self.app.message = ""
         self.app.prompt_active = False
@@ -199,9 +214,20 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.put(MessageChanged(""))
 
     def render(self) -> None:
+        self._load_assets()
         screen = self.app.screen
         width, height = screen.get_size()
-        draw_gradient(screen, self.app.config, pygame)
+        now_ms = pygame.time.get_ticks()
+
+        # Render Lottie Reading Background (Reading_bg.lottie)
+        if self._lottie_bg:
+            vf = self._lottie_bg.get_frame(now_ms, (width, height))
+            if vf:
+                screen.blit(vf, (0, 0))
+            else:
+                draw_gradient(screen, self.app.config, pygame)
+        else:
+            draw_gradient(screen, self.app.config, pygame)
 
         prompt_padding = 0
         prompt_rect = pygame.Rect(
@@ -211,17 +237,15 @@ class ReadingPromptScene(BaseScene):
             height - prompt_padding * 2,
         )
 
-        card_color = (0, 0, 0)
-        inner_card_color = (255, 255, 255)
+        inner_rect = prompt_rect.inflate(-64, -64)
         outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
-        pygame.draw.rect(screen, card_color, prompt_rect, border_radius=0)
 
-        middle_rect = prompt_rect.inflate(-24, -24)
-        pygame.draw.rect(screen, inner_card_color, middle_rect, border_radius=56)
-
-        inner_rect = prompt_rect.inflate(-64, -64)
-        pygame.draw.rect(screen, inner_card_color, inner_rect, border_radius=36)
+        # Draw semi-transparent card overlay so Reading_bg.lottie animation shows through
+        card_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(card_surf, (255, 255, 255, 190), inner_rect, border_radius=36)
+        pygame.draw.rect(card_surf, (255, 185, 207, 230), inner_rect, width=6, border_radius=36)
+        screen.blit(card_surf, (0, 0))
 
         label_text = f"Level {self.app._display_level_name()} | Item {self.app._current_item_number()}"
         label_bg = (230, 127, 159)
