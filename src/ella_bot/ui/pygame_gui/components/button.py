@@ -16,6 +16,12 @@ BUTTON_THEMES = {
         "pressed": (220, 188, 15),
     },
     "violet": {
+        "fill": (175, 110, 210),     # #AF6ED2 (light violet fill matching Figma spec)
+        "stroke": (127, 63, 151),    # #7F3F97
+        "text": (255, 250, 243),     # #FFFAF3
+        "pressed": (150, 90, 185),
+    },
+    "dark_violet": {
         "fill": (87, 39, 108),       # #57276C
         "stroke": (127, 63, 151),    # #7F3F97
         "text": (255, 250, 243),     # #FFFAF3

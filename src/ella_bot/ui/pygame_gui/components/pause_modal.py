@@ -164,11 +164,11 @@ class PauseModal:
         title_font = getattr(self.app, "font_button", self.app.font_title)
 
         # 1. VOLUME SECTION
-        vol_y = card_rect.top + 62
+        vol_y = card_rect.top + 75
         vol_lbl = title_font.render("Volume", True, (227, 198, 236))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=cx, top=vol_y))
 
-        vol_row_cy = vol_y + vol_lbl.get_height() + 20
+        vol_row_cy = vol_y + vol_lbl.get_height() + 22
         btn_sz = 54
         seg_w, seg_h, seg_gap = 44, 26, 12
         total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
@@ -191,11 +191,11 @@ class PauseModal:
         self._draw_circular_button(screen, self._vol_plus_rect, "+", self._pressed_button == "vol_plus")
 
         # 2. LISTENING TIME SECTION
-        listen_y = vol_row_cy + 30
+        listen_y = vol_row_cy + 38
         listen_lbl = title_font.render("Listening Time", True, (227, 198, 236))
         screen.blit(listen_lbl, listen_lbl.get_rect(centerx=cx, top=listen_y))
 
-        listen_row_cy = listen_y + listen_lbl.get_height() + 20
+        listen_row_cy = listen_y + listen_lbl.get_height() + 22
         val_surf = title_font.render(f"{self.listen_seconds} seconds", True, (242, 210, 20))
         val_rect = val_surf.get_rect(centerx=cx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)
@@ -206,17 +206,17 @@ class PauseModal:
         self._draw_circular_button(screen, self._listen_plus_rect, "+", self._pressed_button == "listen_plus")
 
         # 3. ACTION BUTTONS ("Restart Level" & "Back to Menu")
-        btn_w, btn_h = 310, 56
+        btn_w, btn_h = 325, 58
         stack_gap = 14
-        btn_start_y = listen_row_cy + 35
+        btn_start_y = listen_row_cy + 42
 
-        # Restart Level (replaces Reset Button)
+        # Restart Level (Violet variant)
         self.restart_rect = pygame.Rect(cx - btn_w // 2, btn_start_y, btn_w, btn_h)
-        restart_btn = Button(self.restart_rect, label="Restart Level", variant="purple", font=self.app.font_button, stroke_weight=6)
+        restart_btn = Button(self.restart_rect, label="Restart Level", variant="violet", font=self.app.font_button, stroke_weight=6)
         restart_btn.is_pressed = (self._pressed_button == "restart")
         restart_btn.draw(screen)
 
-        # Back to Menu
+        # Back to Menu (Yellow variant)
         self.main_menu_rect = pygame.Rect(cx - btn_w // 2, btn_start_y + btn_h + stack_gap, btn_w, btn_h)
         menu_btn = Button(self.main_menu_rect, label="Back to Menu", variant="yellow", font=self.app.font_button, stroke_weight=6)
         menu_btn.is_pressed = (self._pressed_button == "main_menu")
