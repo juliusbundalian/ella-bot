@@ -241,12 +241,7 @@ class ReadingPromptScene(BaseScene):
         outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
 
-        # Draw semi-transparent card overlay so Reading_bg.lottie animation shows through
-        card_surf = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.rect(card_surf, (255, 255, 255, 190), inner_rect, border_radius=36)
-        pygame.draw.rect(card_surf, (255, 185, 207, 230), inner_rect, width=6, border_radius=36)
-        screen.blit(card_surf, (0, 0))
-
+        # Remove frontal board container — leave edge-to-edge Lottie background, level pill, pause button, ELLA, and letters/words
         label_text = f"Level {self.app._display_level_name()} | Item {self.app._current_item_number()}"
         label_bg = (230, 127, 159)
         label_fg = (255, 255, 255)
@@ -254,7 +249,7 @@ class ReadingPromptScene(BaseScene):
         label_pad_x = 24
         label_pad_y = 12
         label_rect = label_surf.get_rect()
-        label_rect.topleft = (inner_rect.left + 48, inner_rect.top + 36)
+        label_rect.topleft = (32, 28)
         pill_rect = pygame.Rect(
             label_rect.left - label_pad_x,
             label_rect.top - label_pad_y,
@@ -264,7 +259,7 @@ class ReadingPromptScene(BaseScene):
         pygame.draw.rect(screen, label_bg, pill_rect, border_radius=12)
         screen.blit(label_surf, label_rect)
 
-        menu_rect = pygame.Rect(inner_rect.right - 84, inner_rect.top + 24, 56, 56)
+        menu_rect = pygame.Rect(width - 88, 24, 56, 56)
         self.menu_button_rect = menu_rect
         if self._icon_menu is None:
             try:
@@ -300,10 +295,6 @@ class ReadingPromptScene(BaseScene):
             )
 
         self.bot.draw(screen, inner_rect)
-
-        pygame.draw.rect(screen, outer_border, prompt_rect, width=12, border_radius=68)
-        pygame.draw.rect(screen, inner_border, inner_rect, width=12, border_radius=36)
-
         self.modal.render(screen, inner_rect)
 
     @staticmethod
