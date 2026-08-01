@@ -11,6 +11,7 @@ from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
+from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.services.sound_effects import play_button_click
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
@@ -53,6 +54,19 @@ class ReadingPromptScene(BaseScene):
                 self._lottie_bg = LottieBackground(lottie_file)
             except Exception:
                 self._lottie_bg = None
+
+        if getattr(self, "_settings_icon", None) is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_asset_path
+                svg_text = resolve_asset_path("assets/ic_settings.svg").read_text(encoding="utf-8")
+                svg_tinted = (
+                    svg_text.replace('fill="#FFFFFF"', 'fill="#FFFAF3"')
+                    .replace('height="24px"', 'height="44px"')
+                    .replace('width="24px"', 'width="44px"')
+                )
+                self._settings_icon = pygame.image.load(io.BytesIO(svg_tinted.encode("utf-8"))).convert_alpha()
+            except Exception:
+                self._settings_icon = False
 
     def on_enter(self) -> None:
         self._load_assets()
@@ -241,45 +255,41 @@ class ReadingPromptScene(BaseScene):
         outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
 
-        # Remove frontal board container — leave edge-to-edge Lottie background, level pill, pause button, ELLA, and letters/words
-        label_text = f"Level {self.app._display_level_name()} | Item {self.app._current_item_number()}"
-        label_bg = (230, 127, 159)
-        label_fg = (255, 255, 255)
+        # 1. Level Indicator (Top-Centered Pill matching Figma spec)
+        level_str = str(self.app._display_level_name()).upper()
+        item_num = self.app._current_item_number()
+        label_text = f"LEVEL {level_str} | Item {item_num}"
+        label_bg = (216, 150, 216)   # Pink/violet pill fill
+        label_fg = (87, 39, 108)     # Dark violet text
         label_surf = self.app.font_subtitle.render(label_text, True, label_fg)
-        label_pad_x = 24
+        label_pad_x = 28
         label_pad_y = 12
-        label_rect = label_surf.get_rect()
-        label_rect.topleft = (32, 28)
+        label_rect = label_surf.get_rect(centerx=width // 2, top=28)
         pill_rect = pygame.Rect(
             label_rect.left - label_pad_x,
             label_rect.top - label_pad_y,
             label_rect.width + label_pad_x * 2,
             label_rect.height + label_pad_y * 2,
         )
-        pygame.draw.rect(screen, label_bg, pill_rect, border_radius=12)
+        pygame.draw.rect(screen, label_bg, pill_rect, border_radius=24)
+        pygame.draw.rect(screen, (127, 63, 151), pill_rect, width=3, border_radius=24)
         screen.blit(label_surf, label_rect)
 
-        menu_rect = pygame.Rect(width - 88, 24, 56, 56)
-        self.menu_button_rect = menu_rect
-        if self._icon_menu is None:
-            try:
-                from ella_bot.utils.file_utils import resolve_asset_path
-                svg_text = resolve_asset_path("assets/ic_menu.svg").read_text()
-                svg_sized = (svg_text
-                             .replace('height="24px"', 'height="32px"')
-                             .replace('width="24px"', 'width="32px"'))
-                self._icon_menu = pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha()
-            except Exception:
-                self._icon_menu = False
-        btn_fill = (255, 182, 193)
-        btn_outline = (94, 42, 59)
-        pygame.draw.rect(screen, btn_outline,
-                         pygame.Rect(menu_rect.left + 4, menu_rect.top + 4, menu_rect.width, menu_rect.height),
-                         border_radius=12)
-        pygame.draw.rect(screen, btn_fill, menu_rect, border_radius=12)
-        pygame.draw.rect(screen, btn_outline, menu_rect, width=2, border_radius=12)
-        if self._icon_menu not in (None, False):
-            screen.blit(self._icon_menu, self._icon_menu.get_rect(center=menu_rect.center))
+        # 2. Settings / Pause Button (Left-Centered circular gear button matching Main Menu)
+        gear_size = 80
+        gear_x = 40
+        gear_y = height // 2 - gear_size // 2
+        self.menu_button_rect = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
+
+        pause_btn = Button(
+            self.menu_button_rect,
+            icon=self._settings_icon if self._settings_icon else None,
+            variant="violet",
+            stroke_weight=8,
+            corner_radius=50,
+        )
+        pause_btn.is_pressed = (self.is_paused or self.modal.visible)
+        pause_btn.draw(screen)
 
         prompt_font, prompt_text_rect = self._prompt_layout(inner_rect, pygame)
         if prompt_font is not None:
