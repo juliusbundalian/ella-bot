@@ -151,7 +151,12 @@ class ResultsScene(BaseScene):
             key = self.pressed_button
             self.pressed_button = None
             if key == "next" and self.next_button and self.next_button.collidepoint(event.pos):
-                self._do_next()
+                result = getattr(self.app, "latest_result", None)
+                passed = getattr(result, "passed", True) if result else True
+                if passed:
+                    self._do_next()
+                else:
+                    self._do_retry()
             elif key == "menu" and self.menu_button and self.menu_button.collidepoint(event.pos):
                 self._do_main_menu()
 
@@ -255,7 +260,7 @@ class ResultsScene(BaseScene):
         t_val = self.app.font_body.render(t_val_str, True, (87, 39, 108))
         screen.blit(t_val, (time_badge.right + 16, time_y + (time_badge_h - t_val.get_height()) // 2))
 
-        # --- BOTTOM BUTTONS: MAIN MENU (Violet) & CONTINUE (Yellow) ---
+        # --- BOTTOM BUTTONS: MAIN MENU (Violet) & CONTINUE/RETRY (Yellow) ---
         btn_w, btn_h = 285, 64
         btn_gap = 30
         btn_y = height - btn_h - 45
@@ -267,7 +272,10 @@ class ResultsScene(BaseScene):
         menu_btn.is_pressed = (self.pressed_button == "menu")
         menu_btn.draw(screen)
 
-        cont_btn = Button(self.next_button, label="Continue", variant="yellow", font=self.app.font_button, stroke_weight=8)
+        passed = getattr(result, "passed", True) if result else True
+        next_label = "Continue" if passed else "Retry"
+
+        cont_btn = Button(self.next_button, label=next_label, variant="yellow", font=self.app.font_button, stroke_weight=8)
         cont_btn.is_pressed = (self.pressed_button == "next")
         cont_btn.draw(screen)
 
