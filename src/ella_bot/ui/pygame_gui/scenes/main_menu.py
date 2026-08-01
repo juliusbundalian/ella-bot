@@ -438,36 +438,76 @@ class MainMenuScene(BaseScene):
         elif self.show_resume_prompt:
             self._draw_resume_prompt(screen, width, height)
 
+    def _get_adaptive_font(self, size: int, bold: bool = False):
+        if hasattr(self.app, "_get_sys_font"):
+            try:
+                res = self.app._get_sys_font(size, bold=bold)
+                if isinstance(res, pygame.font.Font):
+                    return res
+            except Exception:
+                pass
+        font = getattr(self.app, "font_body", None)
+        if isinstance(font, pygame.font.Font):
+            return font
+        return pygame.font.SysFont(None, size, bold=bold)
+
+    def _render_adaptive_text(self, text: str, size: int, color: tuple, max_w: int, bold: bool = False):
+        font = self._get_adaptive_font(size, bold=bold)
+        surf = font.render(text, True, color)
+        if isinstance(surf, pygame.Surface):
+            if max_w > 0 and surf.get_width() > max_w:
+                scale_ratio = max_w / surf.get_width()
+                new_w = max_w
+                new_h = max(1, int(surf.get_height() * scale_ratio))
+                surf = pygame.transform.smoothscale(surf, (new_w, new_h))
+            return surf
+        return None
+
     def _draw_profile_required_prompt(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = min(660, int(width * 0.58))
-        dlg_h = min(300, int(height * 0.44))
+        dlg_w = min(660, max(360, int(width * 0.62)))
+        dlg_h = min(300, max(210, int(height * 0.46)))
         dlg_rect = pygame.Rect(
             (width - dlg_w) // 2,
             (height - dlg_h) // 2,
             dlg_w,
             dlg_h,
         )
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
+
+        title_size = max(22, min(38, int(dlg_h * 0.14)))
+        title = self._render_adaptive_text("Profile Required", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if title:
+            screen.blit(
+                title,
+                title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.10)),
+            )
 
         message = self.app.font_body.render(
             self.profile_required_message,
             True,
-            _TEXT,
+            (227, 198, 236),
         )
-        screen.blit(
-            message,
-            message.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 68),
-        )
+        if isinstance(message, pygame.Surface):
+            if message.get_width() > dlg_w - 40:
+                scale = (dlg_w - 40) / message.get_width()
+                message = pygame.transform.smoothscale(message, (dlg_w - 40, max(1, int(message.get_height() * scale))))
+            screen.blit(
+                message,
+                message.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.35)),
+            )
 
-        btn_w, btn_h, btn_gap = 210, 62, 20
+        btn_w = min(190, (dlg_w - 60) // 2)
+        btn_h = min(58, max(42, int(dlg_h * 0.22)))
+        btn_gap = 20
         total_w = 2 * btn_w + btn_gap
         btn_x = dlg_rect.centerx - total_w // 2
-        btn_y = dlg_rect.bottom - btn_h - 32
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.10)
         self.profile_required_open_button = pygame.Rect(
             btn_x,
             btn_y,
@@ -480,63 +520,84 @@ class MainMenuScene(BaseScene):
             btn_w,
             btn_h,
         )
-        self._draw_button(
-            screen,
+
+        button_font_size = max(18, min(28, int(btn_h * 0.50)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_open = Button(
             self.profile_required_open_button,
-            'Profiles',
-            'profile_required_open',
+            label="Profiles",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_open.is_pressed = (self.pressed_button == "profile_required_open")
+        btn_open.draw(screen)
+
+        btn_cancel = Button(
             self.profile_required_cancel_button,
-            'Cancel',
-            'profile_required_cancel',
+            label="Cancel",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
+        btn_cancel.is_pressed = (self.pressed_button == "profile_required_cancel")
+        btn_cancel.draw(screen)
 
     def _draw_resume_prompt(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = min(760, int(width * 0.68))
-        dlg_h = min(390, int(height * 0.58))
+        dlg_w = min(740, max(400, int(width * 0.70)))
+        dlg_h = min(360, max(250, int(height * 0.56)))
         dlg_rect = pygame.Rect(
             (width - dlg_w) // 2,
             (height - dlg_h) // 2,
             dlg_w,
             dlg_h,
         )
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=24)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=24)
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
 
-        title = self.app.font_title.render("Saved Session", True, (50, 50, 50))
-        screen.blit(title, title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 30))
+        title_size = max(24, min(42, int(dlg_h * 0.13)))
+        title = self._render_adaptive_text("Saved Session", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if title:
+            screen.blit(title, title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.08)))
 
         summary = self.resume_summary
         if summary is not None:
+            details_size = max(20, min(34, int(dlg_h * 0.11)))
             details = f"Level {summary.level.upper()}  •  Item {summary.item_number}"
-            detail_surf = self.app.font_body.render(details, True, (50, 50, 50))
-            screen.blit(
-                detail_surf,
-                detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 120),
-            )
+            detail_surf = self._render_adaptive_text(details, details_size, (242, 210, 20), max_w=dlg_w - 40, bold=True)
+            if detail_surf:
+                screen.blit(
+                    detail_surf,
+                    detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.26)),
+                )
             try:
                 saved = datetime.fromisoformat(summary.saved_at).astimezone()
                 saved_text = saved.strftime("Saved %b %d, %Y at %I:%M %p")
             except (TypeError, ValueError):
                 saved_text = f"Saved {summary.saved_at}"
-            saved_surf = self.app.font_small.render(saved_text, True, (78, 78, 78))
-            screen.blit(
-                saved_surf,
-                saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 168),
-            )
+            small_size = max(15, min(24, int(dlg_h * 0.08)))
+            saved_surf = self.app.font_small.render(saved_text, True, (227, 198, 236))
+            if isinstance(saved_surf, pygame.Surface):
+                if saved_surf.get_width() > dlg_w - 40:
+                    scale = (dlg_w - 40) / saved_surf.get_width()
+                    saved_surf = pygame.transform.smoothscale(saved_surf, (dlg_w - 40, max(1, int(saved_surf.get_height() * scale))))
+                screen.blit(
+                    saved_surf,
+                    saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.46)),
+                )
 
-        btn_gap = 16
-        btn_w = min(190, (dlg_w - 80 - 2 * btn_gap) // 3)
-        btn_h = 66
+        btn_gap = 14
+        btn_w = min(200, (dlg_w - 40 - 2 * btn_gap) // 3)
+        btn_h = min(58, max(42, int(dlg_h * 0.20)))
         total_w = 3 * btn_w + 2 * btn_gap
         btn_x = dlg_rect.centerx - total_w // 2
-        btn_y = dlg_rect.bottom - btn_h - 34
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.09)
         self.resume_continue_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self.resume_new_button = pygame.Rect(
             btn_x + btn_w + btn_gap,
@@ -550,46 +611,88 @@ class MainMenuScene(BaseScene):
             btn_w,
             btn_h,
         )
-        self._draw_button(
-            screen,
+
+        button_font_size = max(16, min(26, int(btn_h * 0.48)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_cont = Button(
             self.resume_continue_button,
-            "Continue",
-            "resume_continue",
+            label="Continue",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_cont.is_pressed = (self.pressed_button == "resume_continue")
+        btn_cont.draw(screen)
+
+        btn_new = Button(
             self.resume_new_button,
-            "New Session",
-            "resume_new",
+            label="New Session",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_new.is_pressed = (self.pressed_button == "resume_new")
+        btn_new.draw(screen)
+
+        btn_cancel = Button(
             self.resume_cancel_button,
-            "Cancel",
-            "resume_cancel",
+            label="Cancel",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
+        btn_cancel.is_pressed = (self.pressed_button == "resume_cancel")
+        btn_cancel.draw(screen)
 
     def _draw_exit_confirm(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = int(width * 0.55)
-        dlg_h = int(height * 0.32)
+        dlg_w = min(640, max(340, int(width * 0.60)))
+        dlg_h = min(280, max(200, int(height * 0.42)))
         dlg_x = (width - dlg_w) // 2
         dlg_y = (height - dlg_h) // 2
         dlg_rect = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
 
-        msg = self.app.font_body.render("Are you sure you want to exit?", True, (50, 50, 50))
-        screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.35))))
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
 
-        btn_w, btn_h = 150, 62
-        btn_y = dlg_y + dlg_h - btn_h - 22
-        yes_rect = pygame.Rect(width // 2 - btn_w - 14, btn_y, btn_w, btn_h)
-        no_rect = pygame.Rect(width // 2 + 14, btn_y, btn_w, btn_h)
+        title_size = max(22, min(38, int(dlg_h * 0.15)))
+        msg = self._render_adaptive_text("Are you sure you want to exit?", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if msg:
+            screen.blit(msg, msg.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.18)))
+
+        btn_w = min(170, (dlg_w - 60) // 2)
+        btn_h = min(58, max(42, int(dlg_h * 0.24)))
+        gap = 20
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.10)
+        yes_rect = pygame.Rect(dlg_rect.centerx - btn_w - gap // 2, btn_y, btn_w, btn_h)
+        no_rect = pygame.Rect(dlg_rect.centerx + gap // 2, btn_y, btn_w, btn_h)
         self.menu_confirm_yes_button = yes_rect
         self.menu_confirm_no_button = no_rect
-        self._draw_button(screen, yes_rect, "Yes", "confirm_yes")
-        self._draw_button(screen, no_rect, "No", "confirm_no")
+
+        button_font_size = max(18, min(28, int(btn_h * 0.50)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_yes = Button(
+            yes_rect,
+            label="Yes",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
+        )
+        btn_yes.is_pressed = (self.pressed_button == "confirm_yes")
+        btn_yes.draw(screen)
+
+        btn_no = Button(
+            no_rect,
+            label="No",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
+        )
+        btn_no.is_pressed = (self.pressed_button == "confirm_no")
+        btn_no.draw(screen)

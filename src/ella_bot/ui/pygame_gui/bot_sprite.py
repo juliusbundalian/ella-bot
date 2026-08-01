@@ -30,7 +30,7 @@ class BotSprite:
         self.intervals_ms = {
             "idle": 140,
             "listening": 320,
-            "speaking": 160,
+            "speaking": 100,
             "thinking": 200,
             "warmup": 200,
             "error": 1200,
@@ -39,38 +39,79 @@ class BotSprite:
     def _load_frames(self) -> dict[str, list[pygame.Surface]]:
         base = get_project_root() / "bot"
         robot_svg_dir = get_project_root() / "assets" / "Robot SVG"
-        mapping: dict[str, list] = {
-            "idle": [robot_svg_dir, base / "idle"],
-            "listening": [base / "listening"],
-            "speaking": [base / "speaking"],
-            "thinking": [base / "thinking"],
-            "warmup": [base / "warmup"],
-            "error": [base / "error"],
-        }
+        talking_png_dir = get_project_root() / "assets" / "talking png"
+
         frames: dict[str, list[pygame.Surface]] = {}
-        for state, folders in mapping.items():
-            images: list[pygame.Surface] = []
-            for folder in folders:
-                if folder.exists():
-                    for pattern in ("*.svg", "*.png"):
-                        for image_path in sorted(folder.glob(pattern)):
-                            try:
-                                image = pygame.image.load(str(image_path)).convert_alpha()
-                                images.append(image)
-                            except Exception:
-                                continue
+
+        # 1. Load speaking frames from assets/talking png for TTS speech
+        speaking_images: list[pygame.Surface] = []
+        if talking_png_dir.exists():
+            for image_path in sorted(talking_png_dir.glob("speak_*.png")):
+                try:
+                    image = pygame.image.load(str(image_path)).convert_alpha()
+                    speaking_images.append(image)
+                except Exception:
+                    continue
+
+        if speaking_images:
+            frames["speaking"] = speaking_images
+            static_pose = [speaking_images[0]]
+            for state in ("listening", "thinking", "warmup", "error"):
+                frames[state] = static_pose
+        else:
+            mapping: dict[str, list] = {
+                "listening": [base / "listening"],
+                "speaking": [base / "speaking"],
+                "thinking": [base / "thinking"],
+                "warmup": [base / "warmup"],
+                "error": [base / "error"],
+            }
+            for state, folders in mapping.items():
+                images: list[pygame.Surface] = []
+                for folder in folders:
+                    if folder.exists():
+                        for pattern in ("*.svg", "*.png"):
+                            for image_path in sorted(folder.glob(pattern)):
+                                try:
+                                    image = pygame.image.load(str(image_path)).convert_alpha()
+                                    images.append(image)
+                                except Exception:
+                                    continue
+                        if images:
+                            break
                 if images:
-                    break
-            if images:
-                frames[state] = images
+                    frames[state] = images
+
+        # 2. Load idle frames from assets/Robot SVG (used for Main Menu)
+        idle_images: list[pygame.Surface] = []
+        if robot_svg_dir.exists():
+            for pattern in ("*.svg", "*.png"):
+                for image_path in sorted(robot_svg_dir.glob(pattern)):
+                    try:
+                        image = pygame.image.load(str(image_path)).convert_alpha()
+                        idle_images.append(image)
+                    except Exception:
+                        continue
+
+        if not idle_images:
+            idle_folder = base / "idle"
+            if idle_folder.exists():
+                for pattern in ("*.svg", "*.png"):
+                    for image_path in sorted(idle_folder.glob(pattern)):
+                        try:
+                            image = pygame.image.load(str(image_path)).convert_alpha()
+                            idle_images.append(image)
+                        except Exception:
+                            continue
+
+        if idle_images:
+            frames["idle"] = idle_images
+        elif speaking_images:
+            frames["idle"] = [speaking_images[0]]
+
         return frames
 
     def _get_scaled_frames(self, max_width: int, max_height: int) -> list[pygame.Surface]:
-        """Return scaled frames for the current state, caching by target bounding box.
-
-        The cache is invalidated when (max_width, max_height) changes — which only
-        happens on a window resize, never on a fixed-resolution Pi 5 kiosk.
-        """
         target = (max_width, max_height)
         if target != self._cache_target_size:
             self._scaled_cache.clear()
@@ -104,7 +145,7 @@ class BotSprite:
             self.last_tick_ms = now_ms
             return
 
-        interval_ms = self.intervals_ms.get(self.state, 240)
+        interval_ms = self.intervals_ms.get(self.state, 140)
         if now_ms - self.last_tick_ms >= interval_ms:
             self.frame_index = (self.frame_index + 1) % len(frames)
             self.last_tick_ms = now_ms
