@@ -210,7 +210,8 @@ class ReadingPromptScene(BaseScene):
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
         if not self.modal.visible:
-            self.bot.update(now_ms, self.app.state)
+            tts_amp = getattr(self.app.tts, "current_amplitude", 0.0) if getattr(self.app, "tts", None) else 0.0
+            self.bot.update(now_ms, self.app.state, tts_amplitude=tts_amp)
 
         if self.modal.visible:
             return

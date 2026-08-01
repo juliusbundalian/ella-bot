@@ -130,7 +130,7 @@ class BotSprite:
             self._scaled_cache[key] = scaled
         return self._scaled_cache[key]
 
-    def update(self, now_ms: int, app_state: str) -> None:
+    def update(self, now_ms: int, app_state: str, tts_amplitude: float = 0.0) -> None:
         next_state = bot_state_for_app(app_state)
         if next_state != self.state:
             self.state = next_state
@@ -139,7 +139,17 @@ class BotSprite:
 
         frames = self.frames.get(self.state, [])
         if len(frames) <= 1:
+            self.frame_index = 0
             return
+
+        if self.state == "speaking":
+            if tts_amplitude > 0.0:
+                normalized = min(1.0, tts_amplitude / 0.50)
+                self.frame_index = int(normalized * (len(frames) - 1))
+                return
+            elif tts_amplitude == 0.0 and self.last_tick_ms > 0:
+                self.frame_index = 0
+                return
 
         if self.last_tick_ms == 0:
             self.last_tick_ms = now_ms
