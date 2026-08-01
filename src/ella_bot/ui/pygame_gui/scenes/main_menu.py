@@ -98,9 +98,12 @@ class MainMenuScene(BaseScene):
     def _load_assets(self) -> None:
         if self._video_bg is None:
             try:
+                final_lightray_path = resolve_asset_path("assets/Final_Lightray.lottie")
                 lightray_path = resolve_asset_path("assets/Lightray.lottie")
                 lottie_path = resolve_asset_path("assets/shinebg.lottie")
-                if lightray_path.exists():
+                if final_lightray_path.exists():
+                    self._video_bg = LottieBackground(final_lightray_path)
+                elif lightray_path.exists():
                     self._video_bg = LottieBackground(lightray_path)
                 elif lottie_path.exists():
                     self._video_bg = LottieBackground(lottie_path)
