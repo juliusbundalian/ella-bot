@@ -1,0 +1,66 @@
+{
+  "evaluation": {
+    "attempts": {
+      "1a": [
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "a",
+          "heard": "a",
+          "item": 1,
+          "ts": "2026-08-06T22:05:49",
+          "wer": 0.0
+        },
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "e",
+          "heard": "e",
+          "item": 2,
+          "ts": "2026-08-06T22:07:31",
+          "wer": 0.0
+        }
+      ]
+    },
+    "session_id": "2026-08-06T22:05:08",
+    "started_at": "2026-08-06T22:05:08.823683",
+    "tier_results": {}
+  },
+  "latest_result": null,
+  "latest_result_kind": null,
+  "phase": "reading",
+  "saved_at": "2026-08-06T22:07:31+08:00",
+  "schema_version": 1,
+  "selected_start_level": "1a",
+  "session": {
+    "completed_in_level": 2,
+    "current_level": "1a",
+    "expected_sentence": "i",
+    "last_announced_sentence": "e",
+    "level_goal": 5,
+    "level_indices": {
+      "1a": 2,
+      "1b": 0,
+      "1c": 0,
+      "1d": 0,
+      "1e": 0,
+      "1f": 0,
+      "1g": 0,
+      "2a": 0,
+      "2b": 0,
+      "2c": 0,
+      "2d": 0,
+      "3": 0,
+      "4": 0
+    },
+    "session_pools": {
+      "1a": [
+        "a",
+        "e",
+        "i",
+        "o",
+        "u"
+      ]
+    }
+  }
+}

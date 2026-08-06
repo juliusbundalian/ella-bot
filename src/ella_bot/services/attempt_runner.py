@@ -6,7 +6,7 @@ import time
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from ella_bot.core.constants import max_attempts_for_level
+from ella_bot.core.constants import max_attempts_for_level, tier_of
 from ella_bot.core.events import (
     StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
     SubLevelCompleted, SessionCompleted,
@@ -95,6 +95,11 @@ class AttemptRunner:
         return self._abort_requested
 
     def run(self) -> None:
+        level = self.app.session.current_level
+        if tier_of(level) == 1:
+            self._run_level1_practice()
+            return
+
         self.app.event_queue.put(StateChanged("speaking"))
         self.app.event_queue.put(MessageChanged(""))
 
@@ -463,3 +468,96 @@ class AttemptRunner:
         else:
             self.app.event_queue.put(StateChanged("retry"))
         self.app.event_queue.put(MessageChanged("Replay finished."))
+
+    def _run_level1_practice(self) -> None:
+        self.app.event_queue.put(StateChanged("speaking"))
+        self.app.event_queue.put(MessageChanged(""))
+
+        target_item = self.app.session.expected_sentence.strip()
+        if hasattr(self.app.session, "last_announced_sentence"):
+            self.app.session.last_announced_sentence = target_item
+
+        if self.app.audio_feedback and self.app.tts is not None:
+            try:
+                if self._wait_if_paused():
+                    return
+                announcement = self.app.session.build_start_announcement()
+                level_overrides = overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                )
+                target_override = level_overrides.get(target_item.lower(), target_item)
+                if "phonemes:" in target_override:
+                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                    parts = pattern.split(announcement, maxsplit=1)
+                    if len(parts) == 2:
+                        intro_part = parts[0].strip().rstrip(",").rstrip(".")
+                        if self._speak(intro_part):
+                            return
+                        if self._speak(target_override):
+                            return
+                    else:
+                        if self._speak(announcement):
+                            return
+                else:
+                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                    announcement_with_overrides = pattern.sub(target_override, announcement)
+                    if self._speak(announcement_with_overrides):
+                        return
+            except Exception as exc:
+                logger.debug("Level 1 Intro TTS error: %s", exc)
+                self.app.event_queue.put(ErrorOccurred(str(exc)))
+
+        if self._wait_if_paused():
+            return
+
+        self.app.prompt_active = False
+        self.app.event_queue.put(StateChanged("idle"))
+        self.app.event_queue.put(MessageChanged(""))
+
+    def replay_level1(self) -> None:
+        target_item = self.app.session.expected_sentence.strip()
+        if self.app.audio_feedback and self.app.tts is not None:
+            try:
+                if self._wait_if_paused():
+                    return
+                self.app.event_queue.put(StateChanged("speaking"))
+                self.app.event_queue.put(MessageChanged("Replaying pronunciation..."))
+                level_overrides = overrides_for_level(
+                    self.app.session.current_level, self.app.pronunciation_overrides
+                )
+                target_override = level_overrides.get(target_item.lower(), target_item)
+                if self._speak(target_override):
+                    return
+            except Exception as exc:
+                logger.debug("Replay Level 1 error: %s", exc)
+
+        if self._wait_if_paused():
+            return
+
+        self.app.prompt_active = False
+        self.app.event_queue.put(StateChanged("idle"))
+        self.app.event_queue.put(MessageChanged(""))
+
+    def advance_level1(self) -> None:
+        session = self.app.session
+        level = session.current_level
+
+        if self._wait_if_paused():
+            return
+
+        self.app.evaluation.record_attempt(
+            level=level,
+            item=session.current_item_number(),
+            expected=session.expected_sentence,
+            heard=session.expected_sentence,
+            accuracy=1.0,
+            wer=0.0,
+            correct=True,
+        )
+
+        if self._advance_after_attempt(level, session, correct=True, exhausted=False):
+            return
+
+        self.app.save_active_session("reading")
+        self._run_level1_practice()
+

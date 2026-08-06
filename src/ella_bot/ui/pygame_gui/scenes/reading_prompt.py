@@ -13,6 +13,7 @@ from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
 from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.services.sound_effects import play_button_click
+from ella_bot.core.constants import tier_of
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 from ella_bot.validation.validators import (
@@ -35,6 +36,8 @@ class ReadingPromptScene(BaseScene):
         self.modal = PauseModal(self.app)
         self.is_paused = False
         self.menu_button_rect: Optional[pygame.Rect] = None
+        self.replay_button_rect: Optional[pygame.Rect] = None
+        self.next_button_rect: Optional[pygame.Rect] = None
         self._icon_menu = None
         self.bot = BotSprite()
         self.runner = AttemptRunner(self.app, lambda: self.is_paused)
@@ -120,6 +123,10 @@ class ReadingPromptScene(BaseScene):
         self.last_activity_monotonic = time.monotonic()
 
     def handle_event(self, event) -> None:
+        is_level_1 = False
+        if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.modal.visible:
                 action = self.modal.hit_test(event.pos)
@@ -161,7 +168,17 @@ class ReadingPromptScene(BaseScene):
                 self._set_paused(True)
                 return
 
-            self._start_attempt()
+            if is_level_1:
+                if self.replay_button_rect and self.replay_button_rect.collidepoint(event.pos):
+                    play_button_click()
+                    self._replay_level1_audio()
+                    return
+                if self.next_button_rect and self.next_button_rect.collidepoint(event.pos):
+                    play_button_click()
+                    self._advance_level1_item()
+                    return
+            else:
+                self._start_attempt()
         elif event.type == pygame.KEYDOWN:
             if self.modal.visible:
                 return
@@ -169,15 +186,25 @@ class ReadingPromptScene(BaseScene):
                 self.app.switch_scene("main_menu")
             elif event.key == pygame.K_SPACE:
                 self._touch_activity()
-                self._start_attempt()
+                if is_level_1:
+                    self._advance_level1_item()
+                else:
+                    self._start_attempt()
+            elif event.key in (pygame.K_n, pygame.K_RETURN):
+                if is_level_1:
+                    self._touch_activity()
+                    self._advance_level1_item()
             elif event.key == pygame.K_r:
                 self._touch_activity()
-                self._speak_last_feedback()
+                if is_level_1:
+                    self._replay_level1_audio()
+                else:
+                    self._speak_last_feedback()
             elif event.key == pygame.K_o:
                 self._touch_activity()
-                if self.app.asr is not None:
+                if not is_level_1 and self.app.asr is not None:
                     self.app.asr.bypass_transcription = self.app.expected_sentence
-                self._start_attempt()
+                    self._start_attempt()
 
     def _abort_paused_attempt(self) -> bool:
         self._auto_start_at = None
@@ -306,6 +333,40 @@ class ReadingPromptScene(BaseScene):
             )
 
         self.bot.draw(screen, inner_rect)
+
+        is_level_1 = False
+        if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
+
+        if is_level_1:
+            btn_w, btn_h = 180, 56
+            gap = 24
+            center_x = width // 2
+            btn_y = height - 90
+
+            self.replay_button_rect = pygame.Rect(center_x - btn_w - gap // 2, btn_y, btn_w, btn_h)
+            self.next_button_rect = pygame.Rect(center_x + gap // 2, btn_y, btn_w, btn_h)
+
+            replay_btn = Button(
+                self.replay_button_rect,
+                label="Replay",
+                variant="violet",
+                font=self.app.font_button,
+                stroke_weight=6,
+            )
+            next_btn = Button(
+                self.next_button_rect,
+                label="Next",
+                variant="yellow",
+                font=self.app.font_button,
+                stroke_weight=6,
+            )
+            replay_btn.draw(screen)
+            next_btn.draw(screen)
+        else:
+            self.replay_button_rect = None
+            self.next_button_rect = None
+
         self.modal.render(screen, inner_rect)
 
     @staticmethod
@@ -626,3 +687,20 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.put(MessageChanged(""))
             else:
                 self.app.event_queue.put(StateChanged(self.pre_pause_state))
+
+    def _replay_level1_audio(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        if self.is_paused:
+            return
+        self.worker_thread = threading.Thread(target=self.runner.replay_level1, daemon=True)
+        self.worker_thread.start()
+
+    def _advance_level1_item(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        if self.is_paused:
+            return
+        self.worker_thread = threading.Thread(target=self.runner.advance_level1, daemon=True)
+        self.worker_thread.start()
+
