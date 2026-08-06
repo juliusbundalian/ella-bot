@@ -1,62 +1,147 @@
 from __future__ import annotations
 
-import queue
-import threading
+import subprocess
 import time
+from typing import List, Optional
+import cv2
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
+from ella_bot.utils.file_utils import resolve_asset_path
+
 
 class IntroScene(BaseScene):
     def __init__(self, app):
         super().__init__(app)
-        self.startup_thread = None
+        self.frames: List[pygame.Surface] = []
+        self.fps: float = 30.0
+        self.duration: float = 0.0
+        self.start_time: float = 0.0
+        self.sound: Optional[pygame.mixer.Sound] = None
+        self.sound_channel: Optional[pygame.mixer.Channel] = None
+        self.has_finished: bool = False
+        self._video_loaded: bool = False
+
+    def _ensure_audio(self, mp4_path, wav_path) -> bool:
+        if wav_path.exists():
+            return True
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            cmd = [
+                ffmpeg_exe, "-y", "-i", str(mp4_path),
+                "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+                str(wav_path)
+            ]
+            res = subprocess.run(cmd, capture_output=True)
+            return res.returncode == 0 and wav_path.exists()
+        except Exception as exc:
+            print(f"[DEBUG] Error extracting intro audio: {exc}")
+            return False
+
+    def _load_video(self) -> None:
+        if self._video_loaded:
+            return
+        mp4_path = resolve_asset_path("assets/intro_ella.mp4")
+        if not mp4_path.exists():
+            mp4_path = resolve_asset_path("intro_ella.mp4")
+
+        wav_path = resolve_asset_path("assets/intro_ella.wav")
+        if not wav_path.exists():
+            wav_path = resolve_asset_path("intro_ella.wav")
+
+        if not mp4_path.exists():
+            self._video_loaded = True
+            return
+
+        self._ensure_audio(mp4_path, wav_path)
+
+        try:
+            cap = cv2.VideoCapture(str(mp4_path))
+            self.fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            loaded_surfaces = []
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                surf = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+                loaded_surfaces.append(surf)
+            cap.release()
+
+            self.frames = loaded_surfaces
+            self.duration = len(self.frames) / self.fps if self.fps > 0 else 0.0
+
+            if wav_path.exists() and pygame.mixer.get_init():
+                self.sound = pygame.mixer.Sound(str(wav_path))
+        except Exception as exc:
+            print(f"[DEBUG] Failed loading intro video: {exc}")
+
+        self._video_loaded = True
 
     def on_enter(self) -> None:
-        self.app.animator.set_state("warmup", reset=True)
-        self.startup_thread = threading.Thread(target=self._startup_sequence, daemon=True)
-        self.startup_thread.start()
+        self._load_video()
+        self.start_time = time.monotonic()
+        self.has_finished = False
 
-    def _startup_sequence(self) -> None:
-        self.app.event_queue.put(("state", "warmup"))
-        time.sleep(2)
-        
-        self.app.event_queue.put(("state", "speaking"))
-        if self.app.tts is not None:
+        if self.sound:
             try:
-                self.app.tts.speak("Hi! I'm ELLA, your Enhanced Learning Literacy Assistant!")
-            except Exception as exc:
-                self.app.event_queue.put(("error", str(exc)))
-                
-        self.app.event_queue.put(("intro_done", True))
+                self.sound_channel = self.sound.play()
+            except Exception:
+                self.sound_channel = None
+
+        if not self.frames:
+            # Fallback immediately if video loading failed or file missing
+            self.app.switch_scene("main_menu")
+
+    def on_exit(self) -> bool:
+        if self.sound_channel:
+            try:
+                self.sound_channel.stop()
+            except Exception:
+                pass
+        return True
+
+    def handle_event(self, event) -> None:
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+            self._finish_and_advance()
+
+    def _finish_and_advance(self) -> None:
+        if self.has_finished:
+            return
+        self.has_finished = True
+        if self.sound_channel:
+            try:
+                self.sound_channel.stop()
+            except Exception:
+                pass
+        self.app.switch_scene("main_menu")
 
     def update(self, now_ms: int) -> None:
-        while True:
-            try:
-                event, payload = self.app.event_queue.get_nowait()
-            except queue.Empty:
-                break
+        if self.has_finished or not self.frames:
+            return
 
-            if event == "state" and isinstance(payload, str):
-                self.app.animator.set_state(payload, reset=True)
-            elif event == "intro_done":
-                self.app.switch_scene("main_menu")
+        elapsed = time.monotonic() - self.start_time
+        if elapsed >= self.duration + 0.2:
+            self._finish_and_advance()
 
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
-        screen.fill((0, 0, 0))
-        
-        padding = 16
-        card_rect = pygame.Rect(padding, padding, width - padding * 2, height - padding * 2)
-        pygame.draw.rect(screen, (255, 255, 255), card_rect, border_radius=0)
 
-        avatar_frame = self.app.animator.current_frame()
-        frame_w = max(1, avatar_frame.get_width())
-        frame_h = max(1, avatar_frame.get_height())
-        scale = max(width / frame_w, height / frame_h)
+        if not self.frames or self.has_finished:
+            screen.fill((0, 0, 0))
+            return
 
-        target_size = (max(1, int(frame_w * scale)), max(1, int(frame_h * scale)))
-        rendered_frame = pygame.transform.smoothscale(avatar_frame, target_size)
-        avatar_target = rendered_frame.get_rect(center=(width // 2, height // 2))
-        screen.blit(rendered_frame, avatar_target)
+        elapsed = time.monotonic() - self.start_time
+        frame_idx = min(max(0, int(elapsed * self.fps)), len(self.frames) - 1)
+        current_frame = self.frames[frame_idx]
+
+        fw, fh = current_frame.get_size()
+        scale = max(width / fw, height / fh)
+        target_size = (int(fw * scale), int(fh * scale))
+
+        scaled_frame = pygame.transform.smoothscale(current_frame, target_size)
+        dest_rect = scaled_frame.get_rect(center=(width // 2, height // 2))
+
+        screen.blit(scaled_frame, dest_rect)
