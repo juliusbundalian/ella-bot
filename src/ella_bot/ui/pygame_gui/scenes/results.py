@@ -5,7 +5,7 @@ import time
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
-from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+from ella_bot.ui.pygame_gui.lottie_bg import load_animated_background
 from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.ui.pygame_gui.components.confetti import ConfettiAnimation
 from ella_bot.utils.file_utils import resolve_asset_path
@@ -62,15 +62,17 @@ class ResultsScene(BaseScene):
 
     def _load_assets(self) -> None:
         if self._lottie_bg is None:
-            try:
-                final_lightray_path = resolve_asset_path("assets/Final_Lightray.lottie")
-                lightray_path = resolve_asset_path("assets/Lightray.lottie")
-                if final_lightray_path.exists():
-                    self._lottie_bg = LottieBackground(final_lightray_path)
-                elif lightray_path.exists():
-                    self._lottie_bg = LottieBackground(lightray_path)
-            except Exception:
-                self._lottie_bg = None
+            self._lottie_bg = load_animated_background(
+                [
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._lottie_bg is None:
+                self._lottie_bg = False
 
         if self._main_menu_svg is None:
             try:

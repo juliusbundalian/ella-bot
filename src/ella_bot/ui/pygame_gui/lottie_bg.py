@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import json
 import logging
 import zipfile
 from pathlib import Path
 from typing import Optional
 
 import pygame
+
+from ella_bot.utils.file_utils import resolve_asset_path
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,13 @@ class LottieBackground:
         self._loaded = False
         self._init_lottie()
 
+    def __bool__(self) -> bool:
+        return self._loaded
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
     def _init_lottie(self) -> None:
         if rlottie_python is None:
             logger.warning("rlottie_python is not installed; LottieBackground disabled.")
@@ -61,6 +69,8 @@ class LottieBackground:
         # Check if pre-extracted JSON exists first (helps on Raspberry Pi with restricted permissions)
         if extracted_path.exists():
             target_json_path = extracted_path
+        elif self.lottie_path.suffix.lower() == ".json":
+            target_json_path = self.lottie_path
         elif zipfile.is_zipfile(self.lottie_path):
             try:
                 with zipfile.ZipFile(self.lottie_path) as z:
@@ -148,3 +158,35 @@ class LottieBackground:
                 self._temp_json_path.unlink()
             except Exception:
                 pass
+
+
+def load_animated_background(
+    lottie_candidates: list[str | Path],
+    video_fallback: str | Path | None = None,
+    target_size: Optional[tuple[int, int]] = None,
+):
+    """Load the first working animation, with an optional MP4 fallback."""
+    for candidate in lottie_candidates:
+        try:
+            path = resolve_asset_path(str(candidate))
+            if not path.exists():
+                continue
+            background = LottieBackground(path, target_size=target_size)
+            if background.is_loaded:
+                return background
+        except Exception as exc:
+            logger.warning("Could not load Lottie background '%s': %s", candidate, exc)
+
+    if video_fallback:
+        try:
+            from ella_bot.ui.pygame_gui.video_bg import VideoBackground
+
+            path = resolve_asset_path(str(video_fallback))
+            if path.exists():
+                background = VideoBackground(path, target_size=target_size)
+                if background.is_loaded:
+                    return background
+        except Exception as exc:
+            logger.warning("Could not load video background '%s': %s", video_fallback, exc)
+
+    return None

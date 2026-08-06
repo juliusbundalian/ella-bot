@@ -7,7 +7,7 @@ from ella_bot.services.profile_store import MAX_PROFILES, ProfileStoreError
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.services.sound_effects import play_button_click
 from ella_bot.ui.pygame_gui.components.button import Button
-from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground, load_animated_background
 
 
 def _summary_text(summary) -> str:
@@ -43,15 +43,17 @@ class ProfilesScene(BaseScene):
 
     def _load_assets(self) -> None:
         if self._lottie_bg is None:
-            try:
-                from ella_bot.utils.file_utils import resolve_config_path
-                from pathlib import Path
-                lottie_file = resolve_config_path("assets/Final_Lightray.lottie")
-                if not lottie_file.exists():
-                    lottie_file = Path("assets/Final_Lightray.lottie")
-                self._lottie_bg = LottieBackground(lottie_file)
-            except Exception:
-                pass
+            self._lottie_bg = load_animated_background(
+                [
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._lottie_bg is None:
+                self._lottie_bg = False
 
     def on_enter(self) -> None:
         self._load_assets()

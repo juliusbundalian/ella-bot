@@ -36,6 +36,13 @@ class VideoBackground:
         self._loaded = False
         self._init_video()
 
+    def __bool__(self) -> bool:
+        return self._loaded
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
     def _init_video(self) -> None:
         if cv2 is None:
             logger.warning("cv2 (opencv) is not installed; VideoBackground disabled.")

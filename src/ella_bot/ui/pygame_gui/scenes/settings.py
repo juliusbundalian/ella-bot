@@ -4,7 +4,7 @@ import logging
 import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
-from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+from ella_bot.ui.pygame_gui.lottie_bg import load_animated_background
 from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.config.app_config import save_setting
 from ella_bot.utils.file_utils import resolve_asset_path
@@ -49,12 +49,17 @@ class SettingsScene(BaseScene):
 
     def _load_assets(self) -> None:
         if self._lottie_bg is None:
-            try:
-                final_lightray_path = resolve_asset_path("assets/Final_Lightray.lottie")
-                if final_lightray_path.exists():
-                    self._lottie_bg = LottieBackground(final_lightray_path)
-            except Exception:
-                self._lottie_bg = None
+            self._lottie_bg = load_animated_background(
+                [
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._lottie_bg is None:
+                self._lottie_bg = False
 
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
