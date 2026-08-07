@@ -418,6 +418,7 @@ class ReadingPromptScene(BaseScene):
         return None, text_rect
 
     def _start_attempt(self) -> None:
+        self._auto_start_at = None
         if self.worker_thread and self.worker_thread.is_alive():
             return
         if self.is_paused:

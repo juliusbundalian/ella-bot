@@ -142,14 +142,10 @@ class BotSprite:
             self.frame_index = 0
             return
 
-        if self.state == "speaking":
-            if tts_amplitude > 0.0:
-                normalized = min(1.0, tts_amplitude / 0.50)
-                self.frame_index = int(normalized * (len(frames) - 1))
-                return
-            elif tts_amplitude == 0.0 and self.last_tick_ms > 0:
-                self.frame_index = 0
-                return
+        if self.state == "speaking" and tts_amplitude > 0.0:
+            normalized = min(1.0, tts_amplitude / 0.50)
+            self.frame_index = int(normalized * (len(frames) - 1))
+            return
 
         if self.last_tick_ms == 0:
             self.last_tick_ms = now_ms

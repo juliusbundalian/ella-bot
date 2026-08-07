@@ -1,6 +1,6 @@
-from __future__ import annotations
-
-"""Sound effect player for ELLA application."""
+import time
+from pathlib import Path
+from typing import Callable, Optional
 
 from ella_bot.utils.file_utils import resolve_asset_path
 from ella_bot.utils.logging import get_logger
@@ -39,5 +39,123 @@ def play_level_sound(passed: bool) -> None:
 
 def play_button_click() -> None:
     """Play crisp button click sound effect."""
-    play_sound_effect("button_click.wav")
+    play_button_click_path = resolve_asset_path("assets/audio/sfx/button_click.wav")
+    if play_button_click_path.exists():
+        play_sound_effect("button_click.wav")
+
+
+def resolve_level1_playback(level: str, item: str) -> Optional[Path]:
+    """Resolve pre-recorded playback audio for a Level 1 item.
+
+    Checks assets/Level 1 playbacks/playbacks/{LEVEL}/ for matching .wav files.
+    """
+    folder = str(level).strip().upper()
+    base_dir = resolve_asset_path("assets/Level 1 playbacks/playbacks")
+    sub_dir = base_dir / folder
+    if not sub_dir.exists():
+        return None
+
+    item_clean = item.lower().strip()
+    # 1. Direct match (e.g. b.wav for item 'b')
+    exact_wav = sub_dir / f"{item_clean}.wav"
+    if exact_wav.exists():
+        return exact_wav
+
+    # 2. Match sound substring in item (e.g. ch.wav for 'chip', dge.wav for 'bridge', bl.wav for 'blue')
+    if sub_dir.exists():
+        wav_files = sorted(sub_dir.glob("*.wav"), key=lambda p: len(p.stem), reverse=True)
+        for wav_file in wav_files:
+            sound_name = wav_file.stem.lower()
+            if sound_name in item_clean:
+                return wav_file
+    return None
+
+
+LEVEL1_START_PROMPTS = [
+    "lets_start_our_reading_practice",
+    "lets_learn_some_sounds",
+    "lets_have_fun_practicing_sounds",
+    "lets_begin",
+    "welcome",
+]
+
+LEVEL1_INTRO_PROMPTS = [
+    "listen_to_the_sound",
+    "listen_carefully",
+    "here_is_the_sound",
+    "lets_hear_it_first",
+    "lets_hear_the_sound_together",
+    "pay_close_attention",
+    "use_your_listening_ears",
+    "here_comes_the_next_one",
+    "lets_practice_another_sound",
+    "lets_practice_together",
+]
+
+
+def resolve_level1_prompt(prompt_name: str) -> Optional[Path]:
+    """Resolve pre-recorded prompt audio from assets/Level 1 playbacks/prompts/."""
+    base_dir = resolve_asset_path("assets/Level 1 playbacks/prompts")
+    clean_name = prompt_name.strip()
+    if not clean_name.startswith("prompt_"):
+        clean_name = f"prompt_{clean_name}"
+    if not clean_name.endswith(".wav"):
+        clean_name = f"{clean_name}.wav"
+    wav_path = base_dir / clean_name
+    if wav_path.exists():
+        return wav_path
+    return None
+
+
+def resolve_random_level1_intro_prompt(
+    is_first_item: bool = False, last_prompt: str = ""
+) -> tuple[Optional[Path], str]:
+    """Return a random pre-recorded Level 1 intro prompt path and prompt key, avoiding repeating last_prompt."""
+    import random
+    pool = LEVEL1_START_PROMPTS if is_first_item else LEVEL1_INTRO_PROMPTS
+    candidates = [p for p in pool if p != last_prompt]
+    if not candidates:
+        candidates = pool
+    chosen = random.choice(candidates)
+    path = resolve_level1_prompt(chosen)
+    return path, chosen
+
+
+def play_audio_file(
+    wav_path: Path,
+    is_paused: Optional[Callable[[], bool]] = None,
+    app: Optional[object] = None,
+) -> bool:
+    """Play a WAV audio file using Pygame mixer.
+
+    Returns True if aborted during playback, False otherwise.
+    """
+    try:
+        import pygame
+        if not pygame.mixer.get_init():
+            try:
+                pygame.mixer.init()
+            except Exception:
+                return False
+
+        sound = pygame.mixer.Sound(str(wav_path))
+        channel = sound.play()
+        while channel and channel.get_busy():
+            if is_paused and is_paused():
+                sound.stop()
+                if app and getattr(app, "tts", None) is not None:
+                    app.tts.current_amplitude = 0.0
+                return True
+            time.sleep(0.02)
+
+        if app and getattr(app, "tts", None) is not None:
+            app.tts.current_amplitude = 0.0
+
+        return False
+    except Exception as exc:
+        if app and getattr(app, "tts", None) is not None:
+            app.tts.current_amplitude = 0.0
+        logger.warning("Error playing audio file %s: %s", wav_path, exc)
+        return False
+
 
