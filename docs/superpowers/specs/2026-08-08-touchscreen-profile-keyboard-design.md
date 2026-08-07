@@ -19,7 +19,8 @@ Opening Create Profile or Rename Profile displays the name field, an embedded QW
 The keyboard provides:
 
 - Letter keys in QWERTY order.
-- A Shift key that toggles the letter keys between lowercase and uppercase.
+- A one-shot Shift key that capitalizes only the next alphabetic key, then
+  automatically returns the letter keys to lowercase.
 - Space, apostrophe, and hyphen keys.
 - A Backspace key.
 
@@ -34,7 +35,7 @@ The keyboard appears only while the Create or Rename modal is open. Confirmation
 Add a reusable Pygame component under `src/ella_bot/ui/pygame_gui/components/`. It owns:
 
 - The keyboard layout and responsive key rectangles.
-- Shift state.
+- One-shot Shift state.
 - Pressed-key visual state.
 - Pointer down/up hit testing.
 - Rendering key labels and button states.
@@ -81,7 +82,7 @@ Component tests will verify:
 - Key layout and hitboxes are produced within the supplied keyboard rectangle.
 - Press/release on the same character emits that character.
 - Releasing outside a key emits no action.
-- Shift changes letter case.
+- Shift capitalizes only the next alphabetic key and then returns to lowercase.
 - Space, apostrophe, hyphen, and Backspace emit the correct actions.
 
 Profile scene tests will verify:
