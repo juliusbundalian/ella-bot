@@ -77,9 +77,19 @@ LEVEL1_START_PROMPTS = [
     "lets_have_fun_practicing_sounds",
     "lets_begin",
     "welcome",
+    "hello",
 ]
 
-LEVEL1_INTRO_PROMPTS = [
+LEVEL1_TRANSITION_PROMPTS = [
+    "here_comes_the_next_one",
+    "lets_continue",
+    "lets_keep_going",
+    "lets_move_on",
+    "lets_practice_another_sound",
+    "lets_try_another_one",
+]
+
+LEVEL1_ATTENTION_PROMPTS = [
     "listen_to_the_sound",
     "listen_carefully",
     "here_is_the_sound",
@@ -87,9 +97,28 @@ LEVEL1_INTRO_PROMPTS = [
     "lets_hear_the_sound_together",
     "pay_close_attention",
     "use_your_listening_ears",
-    "here_comes_the_next_one",
-    "lets_practice_another_sound",
     "lets_practice_together",
+]
+
+LEVEL1_ACTION_PROMPTS = [
+    "now_its_your_turn",
+    "can_you_say",
+    "try_saying_it",
+    "repeat_after_me",
+    "your_turn",
+    "you_try",
+]
+
+LEVEL1_PRAISE_PROMPTS = [
+    "nice_job",
+    "well_done",
+    "wonderful",
+    "fantastic",
+    "great_effort",
+    "excellent_effort",
+    "great_practice",
+    "keep_it_up",
+    "youre_doing_great",
 ]
 
 
@@ -112,13 +141,82 @@ def resolve_random_level1_intro_prompt(
 ) -> tuple[Optional[Path], str]:
     """Return a random pre-recorded Level 1 intro prompt path and prompt key, avoiding repeating last_prompt."""
     import random
-    pool = LEVEL1_START_PROMPTS if is_first_item else LEVEL1_INTRO_PROMPTS
+    pool = LEVEL1_START_PROMPTS if is_first_item else LEVEL1_ATTENTION_PROMPTS
     candidates = [p for p in pool if p != last_prompt]
     if not candidates:
         candidates = pool
     chosen = random.choice(candidates)
     path = resolve_level1_prompt(chosen)
     return path, chosen
+
+
+def build_level1_audio_sequence(
+    level: str,
+    item: str,
+    item_number: int = 1,
+    recent_keys: Optional[set[str]] = None,
+) -> tuple[list[Path], list[Path], list[str]]:
+    """Build natural pre-sound and post-sound prompt sequences for Level 1 practice.
+
+    Returns (pre_paths, post_paths, keys_used).
+    """
+    import random
+    recent_keys = recent_keys or set()
+    pre_paths: list[Path] = []
+    post_paths: list[Path] = []
+    keys_used: list[str] = []
+
+    def pick_prompt(pool: list[str], target_list: list[Path]) -> Optional[str]:
+        candidates = [p for p in pool if p not in recent_keys and p not in keys_used]
+        if not candidates:
+            candidates = [p for p in pool if p not in keys_used]
+        if not candidates:
+            candidates = pool
+        chosen = random.choice(candidates)
+        path = resolve_level1_prompt(chosen)
+        if path and path.exists():
+            target_list.append(path)
+            keys_used.append(chosen)
+            return chosen
+        return None
+
+    # 1. Pre-sound intro prompts
+    if item_number == 1:
+        pick_prompt(LEVEL1_START_PROMPTS, pre_paths)
+        pick_prompt(LEVEL1_ATTENTION_PROMPTS, pre_paths)
+    else:
+        if random.random() < 0.5:
+            pick_prompt(LEVEL1_TRANSITION_PROMPTS, pre_paths)
+            pick_prompt(LEVEL1_ATTENTION_PROMPTS, pre_paths)
+        else:
+            pick_prompt(LEVEL1_ATTENTION_PROMPTS, pre_paths)
+
+    # 2. Post-sound action prompt (e.g. "Now it's your turn!", "Try saying it!", "Your turn!")
+    pick_prompt(LEVEL1_ACTION_PROMPTS, post_paths)
+
+    return pre_paths, post_paths, keys_used
+
+
+def play_audio_sequence(
+    wav_paths: list[Path],
+    is_paused: Optional[Callable[[], bool]] = None,
+    app: Optional[object] = None,
+) -> bool:
+    """Play a sequence of WAV audio files back-to-back with brief natural pauses between them.
+
+    Returns True if aborted during playback, False otherwise.
+    """
+    for idx, path in enumerate(wav_paths):
+        if not path or not path.exists():
+            continue
+        aborted = play_audio_file(path, is_paused=is_paused, app=app)
+        if aborted:
+            return True
+        if idx < len(wav_paths) - 1:
+            time.sleep(0.10)
+            if is_paused and is_paused():
+                return True
+    return False
 
 
 def play_audio_file(

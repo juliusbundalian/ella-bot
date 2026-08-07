@@ -12,10 +12,11 @@ from ella_bot.core.events import (
     SubLevelCompleted, SessionCompleted,
 )
 from ella_bot.services.sound_effects import (
+    build_level1_audio_sequence,
     play_audio_file,
+    play_audio_sequence,
     resolve_level1_playback,
     resolve_level1_prompt,
-    resolve_random_level1_intro_prompt,
 )
 from ella_bot.utils.logging import get_logger
 from ella_bot.validation.feedback import (
@@ -76,7 +77,7 @@ class AttemptRunner:
         self._item_attempt_count: int = 0
         self._current_item_key: tuple = ("", 0)
         self._abort_requested = False
-        self._last_level1_prompt: str = ""
+        self._recent_prompt_keys: set[str] = set()
 
     def abort(self) -> None:
         self._abort_requested = True
@@ -497,6 +498,8 @@ class AttemptRunner:
 
         level = self.app.session.current_level
         target_item = self.app.session.expected_sentence.strip()
+        item_num = self.app.session.current_item_number()
+
         if hasattr(self.app.session, "last_announced_sentence"):
             self.app.session.last_announced_sentence = target_item
 
@@ -505,21 +508,29 @@ class AttemptRunner:
                 if self._wait_if_paused():
                     return
 
-                # 1. Play a varied intro prompt audio if available, or fall back to announcement TTS
-                is_first = self.app.session.current_item_number() == 1
-                prompt_path, prompt_key = resolve_random_level1_intro_prompt(
-                    is_first_item=is_first, last_prompt=self._last_level1_prompt
+                level_overrides = overrides_for_level(
+                    level, self.app.pronunciation_overrides
                 )
-                if prompt_path and prompt_path.exists():
-                    self._last_level1_prompt = prompt_key
-                    if play_audio_file(prompt_path, is_paused=self._is_paused, app=self.app):
+                target_override = level_overrides.get(target_item.lower(), target_item)
+                sound_wav = resolve_level1_playback(level, target_item)
+
+                pre_paths, post_paths, keys_used = build_level1_audio_sequence(
+                    level=level,
+                    item=target_item,
+                    item_number=item_num,
+                    recent_keys=self._recent_prompt_keys,
+                )
+
+                self._recent_prompt_keys.update(keys_used)
+                if len(self._recent_prompt_keys) > 10:
+                    self._recent_prompt_keys = set(list(self._recent_prompt_keys)[-6:])
+
+                # 1. Play pre-sound intro prompt WAV files
+                if pre_paths:
+                    if play_audio_sequence(pre_paths, is_paused=self._is_paused, app=self.app):
                         return
                 else:
                     announcement = self.app.session.build_start_announcement()
-                    level_overrides = overrides_for_level(
-                        level, self.app.pronunciation_overrides
-                    )
-                    target_override = level_overrides.get(target_item.lower(), target_item)
                     if "phonemes:" in target_override:
                         pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
                         parts = pattern.split(announcement, maxsplit=1)
@@ -527,23 +538,30 @@ class AttemptRunner:
                             intro_part = parts[0].strip().rstrip(",").rstrip(".")
                             if self._speak(intro_part):
                                 return
-                        elif self._speak(announcement):
-                            return
-                    else:
-                        pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                        announcement_with_overrides = pattern.sub(target_override, announcement)
-                        if self._speak(announcement_with_overrides):
-                            return
+                    elif self._speak(announcement):
+                        return
 
                 if self._wait_if_paused():
                     return
 
-                # 2. Play Level 1 item sound playback WAV file (or fall back to TTS)
-                if self._play_level1_item_sound(level, target_item):
+                # 2. Play item sound WAV if available, otherwise speak target_override via TTS
+                if sound_wav and sound_wav.exists():
+                    if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                        return
+                else:
+                    if self._speak(target_override):
+                        return
+
+                if self._wait_if_paused():
                     return
 
+                # 3. Play post-sound action prompt WAV files (e.g. "Now it's your turn!")
+                if post_paths:
+                    if play_audio_sequence(post_paths, is_paused=self._is_paused, app=self.app):
+                        return
+
             except Exception as exc:
-                logger.debug("Level 1 Intro TTS error: %s", exc)
+                logger.debug("Level 1 Intro Audio error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))
 
         if self._wait_if_paused():
