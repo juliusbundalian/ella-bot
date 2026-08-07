@@ -56,13 +56,15 @@ def _tap(keyboard, key):
     return keyboard.handle_mouse_up(point)
 
 
-def test_shift_toggles_case_and_reset_restores_lowercase():
+def test_shift_capitalizes_only_the_next_letter():
     keyboard = _keyboard()
     _draw(keyboard)
 
     assert _tap(keyboard, "shift") == KeyboardAction("shift")
     assert keyboard.uppercase is True
     assert _tap(keyboard, "q") == KeyboardAction("text", "Q")
+    assert keyboard.uppercase is False
+    assert _tap(keyboard, "w") == KeyboardAction("text", "w")
 
     keyboard.reset()
 

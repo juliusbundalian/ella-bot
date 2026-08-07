@@ -130,5 +130,6 @@ class OnScreenKeyboard:
             return action
         if len(pressed) == 1 and pressed.isalpha():
             letter = pressed.upper() if self.uppercase else pressed
+            self.uppercase = False
             return KeyboardAction("text", letter)
         return action
