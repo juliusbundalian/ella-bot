@@ -313,6 +313,39 @@ class ProfilesScene(BaseScene):
             if rect and rect.collidepoint(mouse_pos):
                 self._select_profile(profile_id)
 
+    def _get_adaptive_font(self, size: int, bold: bool = False):
+        if hasattr(self.app, "_get_sys_font"):
+            try:
+                res = self.app._get_sys_font(size, bold=bold)
+                if isinstance(res, pygame.font.Font):
+                    return res
+            except Exception:
+                pass
+        font = getattr(self.app, "font_body", None)
+        if isinstance(font, pygame.font.Font):
+            return font
+        return pygame.font.SysFont(None, size, bold=bold)
+
+    def _render_adaptive_text(
+        self,
+        text: str,
+        size: int,
+        color: tuple,
+        max_w: int = 0,
+        bold: bool = False,
+        default_font: pygame.font.Font | None = None,
+    ) -> pygame.Surface | None:
+        font = default_font or self._get_adaptive_font(size, bold=bold)
+        surf = font.render(text, True, color)
+        if isinstance(surf, pygame.Surface):
+            if max_w > 0 and surf.get_width() > max_w:
+                scale_ratio = max_w / surf.get_width()
+                new_w = max_w
+                new_h = max(1, int(surf.get_height() * scale_ratio))
+                surf = pygame.transform.smoothscale(surf, (new_w, new_h))
+            return surf
+        return None
+
     def render(self) -> None:
         self._load_assets()
         screen = self.app.screen
@@ -338,11 +371,13 @@ class ProfilesScene(BaseScene):
         cx = card_rect.centerx
 
         # 3. Top Title Banner "Who's Learning?"
-        banner_w, banner_h = 320, 60
+        banner_w, banner_h = min(360, card_rect.width - 40), 60
         banner_rect = pygame.Rect(cx - banner_w // 2, card_rect.top + 22, banner_w, banner_h)
         title_font = getattr(self.app, "font_title", self.app.font_button)
-        title_surf = title_font.render("Who's Learning?", True, (255, 250, 243))
-        banner_btn = Button(banner_rect, label="Who's Learning?", variant="yellow", font=self.app.font_button, stroke_weight=8)
+        if title_font and hasattr(title_font, "render"):
+            title_font.render("Who's Learning?", True, (255, 250, 243))
+        banner_btn_font = self._get_adaptive_font(28, bold=True)
+        banner_btn = Button(banner_rect, label="Who's Learning?", variant="yellow", font=banner_btn_font, stroke_weight=8)
         banner_btn.draw(screen)
 
         # Profiles Grid setup
@@ -406,20 +441,28 @@ class ProfilesScene(BaseScene):
             )
 
         # 4. Bottom Action Button ("Back to Menu")
-        btn_w, btn_h = 325, 64
+        btn_w, btn_h = min(325, card_rect.width - 40), 64
         btn_y = card_rect.bottom - btn_h - 25
         self.back_button = pygame.Rect(cx - btn_w // 2, btn_y, btn_w, btn_h)
 
-        back_btn = Button(self.back_button, label="Back to Menu", variant="yellow", font=self.app.font_button, stroke_weight=8)
+        back_btn_font = self._get_adaptive_font(26, bold=True)
+        back_btn = Button(self.back_button, label="Back to Menu", variant="yellow", font=back_btn_font, stroke_weight=8)
         back_btn.is_pressed = (self.pressed_button == "back")
         back_btn.draw(screen)
 
         if self.error_message and self.modal is None:
-            error = self.app.font_small.render(self.error_message, True, (255, 100, 100))
-            screen.blit(
-                error,
-                error.get_rect(centerx=cx, bottom=self.back_button.top - 8),
+            error = self._render_adaptive_text(
+                self.error_message,
+                22,
+                (255, 100, 100),
+                max_w=card_rect.width - 40,
+                default_font=self.app.font_small,
             )
+            if error:
+                screen.blit(
+                    error,
+                    error.get_rect(centerx=cx, bottom=self.back_button.top - 8),
+                )
 
         # 5. Render Modals
         if self.modal in ("create", "rename"):
@@ -446,8 +489,17 @@ class ProfilesScene(BaseScene):
 
         # Profile Name (Bold cream)
         title_font = getattr(self.app, "font_body", self.app.font_title)
-        name_surf = title_font.render(profile.name, True, (255, 250, 243))
-        screen.blit(name_surf, name_surf.get_rect(left=rect.left + 20, top=rect.top + 14))
+        max_name_w = rect.width - (140 if is_active else 40)
+        name_surf = self._render_adaptive_text(
+            profile.name,
+            24,
+            (255, 250, 243),
+            max_w=max_name_w,
+            bold=True,
+            default_font=title_font,
+        )
+        if name_surf:
+            screen.blit(name_surf, name_surf.get_rect(left=rect.left + 20, top=rect.top + 14))
 
         # Progress / Subtitle
         try:
@@ -456,17 +508,30 @@ class ProfilesScene(BaseScene):
             summary = None
             self.error_message = str(exc) or "Profile progress could not be loaded."
 
-        progress_surf = self.app.font_small.render(_summary_text(summary), True, (227, 198, 236))
-        screen.blit(progress_surf, progress_surf.get_rect(left=rect.left + 20, top=rect.top + 48))
+        progress_surf = self._render_adaptive_text(
+            _summary_text(summary),
+            20,
+            (227, 198, 236),
+            max_w=rect.width - 40,
+            default_font=self.app.font_small,
+        )
+        if progress_surf:
+            screen.blit(progress_surf, progress_surf.get_rect(left=rect.left + 20, top=rect.top + 48))
 
         # Active Badge
         if is_active:
-            badge_surf = self.app.font_small.render("Active", True, (35, 10, 45))
-            badge_rect = badge_surf.get_rect()
-            badge_rect.inflate_ip(16, 8)
-            badge_rect.topright = (rect.right - 18, rect.top + 14)
-            pygame.draw.rect(screen, (242, 210, 20), badge_rect, border_radius=10)
-            screen.blit(badge_surf, badge_surf.get_rect(center=badge_rect.center))
+            badge_surf = self._render_adaptive_text(
+                "Active",
+                18,
+                (35, 10, 45),
+                default_font=self.app.font_small,
+            )
+            if badge_surf:
+                badge_rect = badge_surf.get_rect()
+                badge_rect.inflate_ip(16, 8)
+                badge_rect.topright = (rect.right - 18, rect.top + 14)
+                pygame.draw.rect(screen, (242, 210, 20), badge_rect, border_radius=10)
+                screen.blit(badge_surf, badge_surf.get_rect(center=badge_rect.center))
 
         # Action Buttons at Bottom of Card (Rename, Reset Progress, Delete)
         divider_y = rect.bottom - 42
@@ -511,8 +576,17 @@ class ProfilesScene(BaseScene):
 
         pygame.draw.rect(screen, fill, rect, border_radius=8)
         pygame.draw.rect(screen, stroke, rect, width=2, border_radius=8)
-        surface = self.app.font_small.render(label, True, (35, 10, 45))
-        screen.blit(surface, surface.get_rect(center=rect.center))
+
+        max_w = max(1, rect.width - 6)
+        font = getattr(self.app, "font_small", self.app.font_body)
+        surface = font.render(label, True, (35, 10, 45))
+        if isinstance(surface, pygame.Surface):
+            if surface.get_width() > max_w:
+                scale_ratio = max_w / surface.get_width()
+                new_w = max_w
+                new_h = max(1, int(surface.get_height() * scale_ratio))
+                surface = pygame.transform.smoothscale(surface, (new_w, new_h))
+            screen.blit(surface, surface.get_rect(center=rect.center))
 
     def _draw_create_card(self, screen, rect: pygame.Rect) -> None:
         is_pressed = self.pressed_button == "create"
@@ -523,9 +597,19 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, fill, rect, border_radius=20)
         pygame.draw.rect(screen, (242, 210, 20), rect, width=3, border_radius=20)
 
+        card_font_size = max(18, min(30, int(rect.height * 0.32)))
         title_font = getattr(self.app, "font_button", self.app.font_title)
-        label = title_font.render("+ Create Profile", True, (242, 210, 20))
-        screen.blit(label, label.get_rect(center=rect.center))
+        if title_font and hasattr(title_font, "render"):
+            title_font.render("+ Create Profile", True, (242, 210, 20))
+        label = self._render_adaptive_text(
+            "+ Create Profile",
+            card_font_size,
+            (242, 210, 20),
+            max_w=rect.width - 24,
+            bold=True,
+        )
+        if label:
+            screen.blit(label, label.get_rect(center=rect.center))
 
     def _draw_name_modal(self, screen, width: int, height: int) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -545,20 +629,25 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, (127, 63, 151), dialog, width=6, border_radius=30)
 
         is_create = self.modal == "create"
+        title_text = "Create Profile" if is_create else "Rename Profile"
+        title_size = max(22, min(36, int(dialog.height * 0.10)))
         title_font = getattr(self.app, "font_button", self.app.font_title)
-        title = title_font.render(
-            "Create Profile" if is_create else "Rename Profile",
-            True,
-            (255, 250, 243),
-        )
-        screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
+        if title_font and hasattr(title_font, "render"):
+            title_font.render(title_text, True, (255, 250, 243))
+        title = self._render_adaptive_text(title_text, title_size, (255, 250, 243), max_w=dialog.width - 40, bold=True)
+        if title:
+            screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
 
-        prompt = self.app.font_small.render(
+        prompt_size = max(14, min(22, int(dialog.height * 0.05)))
+        prompt = self._render_adaptive_text(
             "Enter a name (up to 20 characters)",
-            True,
+            prompt_size,
             (227, 198, 236),
+            max_w=dialog.width - 40,
+            default_font=self.app.font_small,
         )
-        screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 80))
+        if prompt:
+            screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 80))
 
         input_rect = pygame.Rect(
             dialog.left + 80,
@@ -568,11 +657,22 @@ class ProfilesScene(BaseScene):
         )
         pygame.draw.rect(screen, (60, 25, 75), input_rect, border_radius=12)
         pygame.draw.rect(screen, (127, 63, 151), input_rect, width=3, border_radius=12)
-        input_surface = title_font.render(self.name_input, True, (242, 210, 20))
-        screen.blit(
-            input_surface,
-            input_surface.get_rect(left=input_rect.left + 15, centery=input_rect.centery),
+
+        input_font_size = max(18, min(28, int(input_rect.height * 0.58)))
+        if title_font and hasattr(title_font, "render"):
+            title_font.render(self.name_input, True, (242, 210, 20))
+        input_surface = self._render_adaptive_text(
+            self.name_input,
+            input_font_size,
+            (242, 210, 20),
+            max_w=input_rect.width - 30,
+            bold=True,
         )
+        if input_surface:
+            screen.blit(
+                input_surface,
+                input_surface.get_rect(left=input_rect.left + 15, centery=input_rect.centery),
+            )
 
         button_width, button_height, gap = 180, 52, 20
         button_y = dialog.bottom - button_height - 20
@@ -589,9 +689,19 @@ class ProfilesScene(BaseScene):
             button_height,
         )
 
+        modal_btn_font_size = max(16, min(26, int(button_height * 0.48)))
+        modal_btn_font = self._get_adaptive_font(modal_btn_font_size, bold=True)
+
         if self.error_message:
-            error = self.app.font_small.render(self.error_message, True, (255, 100, 100))
-            screen.blit(error, error.get_rect(centerx=dialog.centerx, top=input_rect.bottom + 5))
+            error = self._render_adaptive_text(
+                self.error_message,
+                20,
+                (255, 100, 100),
+                max_w=dialog.width - 40,
+                default_font=self.app.font_small,
+            )
+            if error:
+                screen.blit(error, error.get_rect(centerx=dialog.centerx, top=input_rect.bottom + 5))
 
         keyboard_top = input_rect.bottom + 34
         keyboard_bottom = button_y - 18
@@ -607,7 +717,7 @@ class ProfilesScene(BaseScene):
             self._modal_save_button,
             label="Create" if is_create else "Save",
             variant="yellow",
-            font=self.app.font_button,
+            font=modal_btn_font,
             stroke_weight=6,
         )
         btn_save.is_pressed = (self.pressed_button == "modal_save")
@@ -617,7 +727,7 @@ class ProfilesScene(BaseScene):
             self._modal_cancel_button,
             label="Cancel",
             variant="yellow",
-            font=self.app.font_button,
+            font=modal_btn_font,
             stroke_weight=6,
         )
         btn_cancel.is_pressed = (self.pressed_button == "modal_cancel")
@@ -636,25 +746,40 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, (127, 63, 151), dialog, width=6, border_radius=30)
 
         is_reset = self.modal == "reset"
+        title_text = "Reset Progress" if is_reset else "Delete Profile"
+        title_size = max(22, min(36, int(dialog.height * 0.14)))
         title_font = getattr(self.app, "font_button", self.app.font_title)
-        title = title_font.render(
-            "Reset Progress" if is_reset else "Delete Profile",
-            True,
-            (255, 250, 243),
-        )
-        screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
+        if title_font and hasattr(title_font, "render"):
+            title_font.render(title_text, True, (255, 250, 243))
+        title = self._render_adaptive_text(title_text, title_size, (255, 250, 243), max_w=dialog.width - 40, bold=True)
+        if title:
+            screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
 
         message = (
             f"Erase all learning progress for {self.target_profile_name}? The profile will remain."
             if is_reset
             else f"Delete {self.target_profile_name} and all saved progress? This cannot be undone."
         )
-        prompt = self.app.font_small.render(message, True, (227, 198, 236))
-        screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 95))
+        prompt = self._render_adaptive_text(
+            message,
+            20,
+            (227, 198, 236),
+            max_w=dialog.width - 40,
+            default_font=self.app.font_small,
+        )
+        if prompt:
+            screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 95))
 
         if self.error_message:
-            error = self.app.font_small.render(self.error_message, True, (255, 100, 100))
-            screen.blit(error, error.get_rect(centerx=dialog.centerx, top=dialog.top + 130))
+            error = self._render_adaptive_text(
+                self.error_message,
+                20,
+                (255, 100, 100),
+                max_w=dialog.width - 40,
+                default_font=self.app.font_small,
+            )
+            if error:
+                screen.blit(error, error.get_rect(centerx=dialog.centerx, top=dialog.top + 130))
 
         button_width, button_height, gap = 160, 52, 20
         button_y = dialog.bottom - button_height - 24
@@ -671,11 +796,14 @@ class ProfilesScene(BaseScene):
             button_height,
         )
 
+        modal_btn_font_size = max(16, min(26, int(button_height * 0.48)))
+        modal_btn_font = self._get_adaptive_font(modal_btn_font_size, bold=True)
+
         btn_confirm = Button(
             self._modal_save_button,
             label="Reset" if is_reset else "Delete",
             variant="yellow",
-            font=self.app.font_button,
+            font=modal_btn_font,
             stroke_weight=6,
         )
         btn_confirm.is_pressed = (self.pressed_button == "modal_confirm")
@@ -685,7 +813,7 @@ class ProfilesScene(BaseScene):
             self._modal_cancel_button,
             label="Cancel",
             variant="yellow",
-            font=self.app.font_button,
+            font=modal_btn_font,
             stroke_weight=6,
         )
         btn_cancel.is_pressed = (self.pressed_button == "modal_cancel")
@@ -704,21 +832,35 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, (127, 63, 151), dialog, width=6, border_radius=30)
 
         title_font = getattr(self.app, "font_button", self.app.font_title)
-        title = title_font.render("Profile Deleted", True, (255, 250, 243))
-        screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
+        if title_font and hasattr(title_font, "render"):
+            title_font.render("Profile Deleted", True, (255, 250, 243))
+        title_size = max(22, min(36, int(dialog.height * 0.14)))
+        title = self._render_adaptive_text("Profile Deleted", title_size, (255, 250, 243), max_w=dialog.width - 40, bold=True)
+        if title:
+            screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
 
-        warning = self.app.font_small.render(self.error_message, True, (255, 100, 100))
-        screen.blit(warning, warning.get_rect(centerx=dialog.centerx, top=dialog.top + 90))
+        warning = self._render_adaptive_text(
+            self.error_message,
+            20,
+            (255, 100, 100),
+            max_w=dialog.width - 40,
+            default_font=self.app.font_small,
+        )
+        if warning:
+            screen.blit(warning, warning.get_rect(centerx=dialog.centerx, top=dialog.top + 90))
 
         self._modal_save_button = pygame.Rect(0, 0, 160, 52)
         self._modal_save_button.midbottom = (dialog.centerx, dialog.bottom - 24)
         self._modal_cancel_button = None
 
+        modal_btn_font_size = max(16, min(26, int(52 * 0.48)))
+        modal_btn_font = self._get_adaptive_font(modal_btn_font_size, bold=True)
+
         btn_ok = Button(
             self._modal_save_button,
             label="OK",
             variant="yellow",
-            font=self.app.font_button,
+            font=modal_btn_font,
             stroke_weight=6,
         )
         btn_ok.is_pressed = (self.pressed_button == "modal_ack")

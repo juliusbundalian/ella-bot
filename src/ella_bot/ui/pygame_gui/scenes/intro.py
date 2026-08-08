@@ -26,8 +26,17 @@ class IntroScene(BaseScene):
         if wav_path.exists():
             return True
         try:
-            import imageio_ffmpeg
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            import shutil
+            ffmpeg_exe = shutil.which("ffmpeg")
+            if not ffmpeg_exe:
+                try:
+                    import imageio_ffmpeg
+                    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                except Exception:
+                    ffmpeg_exe = None
+            if not ffmpeg_exe:
+                return False
+
             cmd = [
                 ffmpeg_exe, "-y", "-i", str(mp4_path),
                 "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
@@ -42,17 +51,22 @@ class IntroScene(BaseScene):
     def _load_video(self) -> None:
         if self._video_loaded:
             return
-        mp4_path = resolve_asset_path("assets/intro_ella.mp4")
+        mp4_path = resolve_asset_path("assets/SS_ELLA.mp4")
+        if not mp4_path.exists():
+            mp4_path = resolve_asset_path("SS_ELLA.mp4")
+        if not mp4_path.exists():
+            mp4_path = resolve_asset_path("assets/intro_ella.mp4")
         if not mp4_path.exists():
             mp4_path = resolve_asset_path("intro_ella.mp4")
-
-        wav_path = resolve_asset_path("assets/intro_ella.wav")
-        if not wav_path.exists():
-            wav_path = resolve_asset_path("intro_ella.wav")
 
         if not mp4_path.exists():
             self._video_loaded = True
             return
+
+        wav_name = f"{mp4_path.stem}.wav"
+        wav_path = resolve_asset_path(f"assets/{wav_name}")
+        if not wav_path.exists():
+            wav_path = resolve_asset_path(wav_name)
 
         self._ensure_audio(mp4_path, wav_path)
 
@@ -73,7 +87,10 @@ class IntroScene(BaseScene):
             self.duration = len(self.frames) / self.fps if self.fps > 0 else 0.0
 
             if wav_path.exists() and pygame.mixer.get_init():
-                self.sound = pygame.mixer.Sound(str(wav_path))
+                from ella_bot.services.sound_effects import boost_sound_volume
+
+                sound = pygame.mixer.Sound(str(wav_path))
+                self.sound = boost_sound_volume(sound)
         except Exception as exc:
             print(f"[DEBUG] Failed loading intro video: {exc}")
 

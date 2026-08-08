@@ -11,6 +11,8 @@ dependencies = [
     "vosk",
     "sounddevice",
     "pygame-ce",
+    "rlottie-python[full]>=1.3.8,<2",
+    "opencv-python-headless",
     "pyttsx3",
     "pronouncing",
     "numpy",

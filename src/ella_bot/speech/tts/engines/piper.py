@@ -21,7 +21,7 @@ def _apply_warmth(pcm_int16: np.ndarray, volume: float = 1.0) -> np.ndarray:
     output = 0.70 * audio + 0.30 * smoothed
     peak = np.max(np.abs(output)) if output.size else 0.0
     if peak > 0.0:
-        output = output / peak * 0.95 * max(0.0, min(1.0, volume))
+        output = output / peak * 0.98 * max(0.0, min(1.0, volume))
     return (output * 32767).astype(np.int16)
 
 
@@ -112,11 +112,11 @@ class PiperTTS(BaseTTS):
                     if audio_sample.dtype == np.float32:
                         audio_sample = (audio_sample * 32767).astype(np.int16)
 
-                    # Peak normalize isolated phonemes to 95% volume for crisp, clear playback
+                    # Peak normalize isolated phonemes to 98% volume for crisp, clear playback
                     audio_float = audio_sample.astype(np.float32)
                     peak = np.max(np.abs(audio_float)) if audio_float.size else 0.0
                     if peak > 0.0:
-                        target_gain = 32767.0 * 0.95 * max(0.0, min(1.0, syn_config.volume))
+                        target_gain = 32767.0 * 0.98 * max(0.0, min(1.0, syn_config.volume))
                         audio_float = (audio_float / peak) * target_gain
                     pcm_warm = audio_float.astype(np.int16)
                     sample_rate = getattr(self._voice.config, "sample_rate", 22050)

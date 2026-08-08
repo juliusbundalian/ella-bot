@@ -9,6 +9,7 @@ from ella_bot.utils.file_utils import resolve_asset_path, get_project_root
 class GUIConfig:
     width: int = 1280
     height: int = 720
+    left_padding: int = 10
     fullscreen: bool = False
     fps: int = 60
     animation_fps: int = 10

@@ -89,5 +89,7 @@ def load_settings() -> Dict[str, Any]:
             defaults["gui_width"] = parser.getint("GUI", "gui_width")
         if parser.has_option("GUI", "gui_height"):
             defaults["gui_height"] = parser.getint("GUI", "gui_height")
+        if parser.has_option("GUI", "gui_left_padding"):
+            defaults["gui_left_padding"] = parser.getint("GUI", "gui_left_padding")
 
     return defaults

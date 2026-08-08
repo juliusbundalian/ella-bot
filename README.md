@@ -77,7 +77,7 @@ Or specify a starting level:
 ```bash
 ella-bot --start-level 2a
 ella-bot --start-level 3
-ella-bot --start-level 4
+ella-bot --start-level 4          
 ```
 
 ## Configuration (`config/settings.ini`)
@@ -108,6 +108,7 @@ gui = True
 fullscreen = False
 gui_width = 1280
 gui_height = 720
+gui_left_padding = 10
 ```
 
 ### Overriding Settings on the Fly

@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ella_bot.core.events import AttemptReady, MessageChanged
@@ -19,6 +20,39 @@ def _make_app(tmp_path, *, create_profile=False):
     if create_profile and app.active_profile() is None:
         app.create_profile('Reader')
     return app
+
+
+def test_global_left_padding_shifts_render_and_pointer_together(tmp_path):
+    app = _make_app(tmp_path)
+    app.screen = MagicMock()
+    app.screen.get_height.return_value = 720
+    pygame = SimpleNamespace(
+        MOUSEMOTION=1,
+        MOUSEBUTTONDOWN=2,
+        MOUSEBUTTONUP=3,
+        draw=MagicMock(),
+        event=MagicMock(),
+    )
+    event = SimpleNamespace(
+        type=pygame.MOUSEBUTTONDOWN,
+        pos=(110, 50),
+        dict={"pos": (110, 50), "button": 1},
+    )
+    translated = object()
+    pygame.event.Event.return_value = translated
+
+    app._apply_render_padding(pygame)
+    result = app._translate_pointer_event(pygame, event)
+
+    app.screen.scroll.assert_called_once_with(10, 0)
+    pygame.draw.rect.assert_called_once_with(
+        app.screen, (0, 0, 0), (0, 0, 10, 720)
+    )
+    pygame.event.Event.assert_called_once_with(
+        pygame.MOUSEBUTTONDOWN,
+        {"pos": (100, 50), "button": 1},
+    )
+    assert result is translated
 
 
 def test_new_session_requires_active_profile(tmp_path):
