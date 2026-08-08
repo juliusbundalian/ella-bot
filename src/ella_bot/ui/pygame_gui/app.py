@@ -123,9 +123,8 @@ class EllaGUIApp:
         return pygame.font.SysFont(fonts, size, bold=bold)
 
     def _get_prompt_font(self, size):
-        """Return Arial exclusively for words, phrases, and sentences to read."""
-        import pygame
-        return pygame.font.SysFont("Arial", size)
+        """Return Rencana font with cross-platform fallbacks for words, phrases, and sentences to read."""
+        return self._get_sys_font(size)
 
     def _prompt_font(self, pygame_module):
         width, height = self.screen.get_size()
