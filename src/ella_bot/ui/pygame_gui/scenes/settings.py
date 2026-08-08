@@ -133,7 +133,7 @@ class SettingsScene(BaseScene):
 
     @staticmethod
     def _get_card_rect(width: int, height: int) -> pygame.Rect:
-        card_width = width - 184
+        card_width = 720
         return pygame.Rect((width - card_width) // 2, 32, card_width, height - 64)
 
     def render(self) -> None:
