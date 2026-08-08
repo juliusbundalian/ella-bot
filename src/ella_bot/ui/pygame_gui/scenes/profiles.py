@@ -610,8 +610,7 @@ class ProfilesScene(BaseScene):
 
         button_gap = 8
         button_left = rect.left + 16
-        button_widths = (70, 125, 70)
-        button_x = button_left
+        button_width = (rect.width - 32 - 2 * button_gap) // 3
         for index, (action, label) in enumerate(
             (
                 ("rename", "Rename"),
@@ -620,14 +619,13 @@ class ProfilesScene(BaseScene):
             )
         ):
             btn_r = pygame.Rect(
-                button_x,
+                button_left + index * (button_width + button_gap),
                 divider_y + 6,
-                button_widths[index],
+                button_width,
                 30,
             )
             self.manage_buttons[(action, profile.id)] = btn_r
             self._draw_management_button(screen, btn_r, label, f"{action}:{profile.id}")
-            button_x += button_widths[index] + button_gap
 
     def _draw_management_button(
         self,
