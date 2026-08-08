@@ -105,12 +105,70 @@ def test_carousel_arrow_moves_page_and_disables_at_last_page():
     scene.handle_event(
         pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=next_point)
     )
-    scene.carousel_page = 2
     scene.render()
 
+    assert scene.carousel_page == 1
+    assert tuple(scene.profile_cards) == (profiles[2].id, profiles[3].id)
+
+    next_point = scene.carousel_next_button.center
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=next_point)
+    )
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=next_point)
+    )
+    scene.render()
+
+    assert scene.carousel_page == 2
     assert tuple(scene.profile_cards) == (profiles[4].id,)
     assert scene.carousel_previous_button is not None
     assert scene.carousel_next_button is None
+
+    disabled_next_point = (952, 286)
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            button=1,
+            pos=disabled_next_point,
+        )
+    )
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONUP,
+            button=1,
+            pos=disabled_next_point,
+        )
+    )
+    assert scene.carousel_page == 2
+
+    previous_point = scene.carousel_previous_button.center
+    for expected_page in (1, 0):
+        scene.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=previous_point)
+        )
+        scene.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=previous_point)
+        )
+        scene.render()
+        assert scene.carousel_page == expected_page
+        previous_point = scene.carousel_previous_button.center if expected_page else None
+
+    disabled_previous_point = (328, 286)
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            button=1,
+            pos=disabled_previous_point,
+        )
+    )
+    scene.handle_event(
+        pygame.event.Event(
+            pygame.MOUSEBUTTONUP,
+            button=1,
+            pos=disabled_previous_point,
+        )
+    )
+    assert scene.carousel_page == 0
 
 
 def test_create_and_back_are_fixed_equal_actions_outside_carousel():
