@@ -21,9 +21,34 @@ may behave differently.
   - [System architecture](#system-architecture)
   - [First walkthrough](#first-walkthrough)
 - [Part II — Follow the Program](#part-ii--follow-the-program)
+  - [Startup and configuration](#from-a-terminal-command-to-a-running-app)
+  - [Core constants and events](#core-constants-and-immutable-events)
+  - [The complete practice attempt](#the-complete-practice-attempt)
 - [Part III — Understand the Subsystems](#part-iii--understand-the-subsystems)
+  - [Automatic speech recognition](#how-ella-listens-asr)
+  - [Text-to-speech](#how-ella-speaks-tts-and-prerecorded-audio)
+  - [Validation and feedback](#how-ella-compares-spoken-and-expected-text)
+  - [Progression and evaluation](#levels-tiers-attempts-passing-and-progression)
+  - [Profiles and checkpoints](#profiles-and-per-student-storage)
+  - [Threads and sound](#threads-events-cancellation-and-safe-shutdown)
+  - [Pygame and scenes](#pygames-eventupdaterender-loop)
+  - [Components, animation, and media](#buttons-the-on-screen-keyboard-modals-and-confetti)
+  - [Responsive layout and shutdown](#responsive-layout-and-touch-input)
 - [Part IV — Work With the Project](#part-iv--work-with-the-project)
+  - [Development setup](#set-up-a-development-copy)
+  - [Runtime resources](#supply-runtime-resources)
+  - [Raspberry Pi and ReSpeaker](#raspberry-pi-and-respeaker-boundary)
+  - [Testing](#run-and-understand-the-tests)
+  - [Guided code-reading tour](#guided-first-code-reading-tour)
+  - [Safe exercises](#safe-student-exercises)
+  - [Troubleshooting](#troubleshooting)
+  - [Privacy and responsible use](#privacy-security-and-responsible-use)
 - [Part V — Repository Reference](#part-v--repository-reference)
+  - [Production module reference](#entry-points-configuration-core-and-utilities)
+  - [Test-suite map](#test-suite-map)
+  - [Configuration and generated data](#configuration-and-generated-data)
+  - [Assets and scripts](#assets-and-non-runtime-material)
+  - [External voice-card subtree](#external-seeed-voicecard-subtree)
 - [Glossary](#glossary)
 - [Final Architecture Recap](#final-architecture-recap)
 
@@ -1113,8 +1138,586 @@ which makes both runtime degradation and headless testing safer.
 
 ## Part IV — Work With the Project
 
+### Set up a development copy
+
+These commands install the project for development. They do not install Linux
+kernel drivers or download speech models.
+
+#### Windows
+
+```powershell
+py -3.10 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+ella-bot --help
+```
+
+If PowerShell blocks activation, use Command Prompt with
+`.venv\Scripts\activate.bat`, or follow your school's approved Python setup.
+
+#### Linux or Raspberry Pi OS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+ella-bot --help
+```
+
+System audio/video packages may also be required, depending on the chosen
+backend. For example, eSpeak needs an eSpeak executable, microphone capture
+needs a working PortAudio/sounddevice environment, and intro audio extraction
+needs FFmpeg. Use instructions approved for the device's operating system;
+do not blindly install privileged packages from a school account.
+
+> **Do not use the repository's `install.cmd` to install ELLA.** Its current
+> contents download and install an unrelated program named Antigravity CLI
+> (`agy.exe`) from an external service. It does not create ELLA's virtual
+> environment or install `ella_bot`. Treat it as an unrelated/unreviewed root
+> file unless the project owners intentionally replace it.
+
+`requirements.txt` is also incomplete compared with `pyproject.toml`. It names
+only a few media dependencies and leaves others in comments. Editable install
+from `pyproject.toml` is the authoritative Python dependency path.
+
+### Supply runtime resources
+
+Python packages are only part of the setup:
+
+1. Put a compatible extracted Vosk model under `models/`, normally
+   `models/vosk-model-small-en-us-0.15/`.
+2. Put the configured Piper `.onnx` voice under `models/`. The present setting
+   is `en_US-hfc_female-medium.onnx`; related Piper metadata files may also be
+   required by the library/model distribution.
+3. Confirm `config/settings.ini` points to the intended model, sample rate,
+   microphone mode, TTS engine, and display mode.
+4. Confirm the operating system can see the microphone and speaker before
+   blaming Python.
+
+For a code-flow demonstration without microphone recognition, set
+`use_mic = False` in `[Speech]` and provide `--spoken "the expected text"`.
+Because `use_mic` and `audio_feedback` are `store_true` CLI options whose INI
+defaults can already be true, the current CLI has no matching `--no-use-mic`
+or `--no-audio-feedback` switch. Set those false in the INI file when you need
+to disable them.
+
+Run the application from the project root:
+
+```bash
+source .venv/bin/activate
+ella-bot
+```
+
+Useful non-destructive checks include:
+
+```bash
+ella-bot --help
+python -m ella_bot.cli.main --help
+python scripts/audition_level.py 1b --only s --dry-run
+```
+
+The last command prints what would be spoken without opening audio. The
+audition utility can also play a whole level and compare four Piper tuning
+variants for selected Level 1B consonants. Its real playback modes require the
+configured model and audio device.
+
+### Raspberry Pi and ReSpeaker boundary
+
+ELLA itself communicates with audio through `sounddevice`, Pygame, and system
+commands. It does not directly call the C functions in `seeed-voicecard`.
+Instead, the Linux driver makes ReSpeaker hardware appear to the operating
+system as audio devices.
+
+The bundled driver subtree contains advanced systems code:
+
+- **Kernel module:** C code loaded into the Linux kernel to control hardware.
+- **ALSA:** Linux's low-level audio system.
+- **Device-tree overlay:** a description telling the Pi which attached
+  hardware exists and how it is wired.
+- **DKMS:** a system that rebuilds an external kernel module when kernels
+  change.
+- **I2S/I2C:** hardware communication buses used by audio boards.
+
+Its Makefile builds `snd-soc-wm8960`, `snd-soc-ac108`, and
+`snd-soc-seeed-voicecard`. `dkms.conf` installs those modules into kernel sound
+directories. The installer also modifies boot configuration, `/etc/modules`,
+`/etc/voicecard`, systemd services, and installed kernel packages, then asks for
+a reboot.
+
+Those are administrator-level, machine-wide changes. Students should not run
+the driver installer casually. Use an image/driver version approved for the
+specific Pi, kernel, and ReSpeaker board, and back up device configuration
+first. The bundled driver's own README lists older Raspberry Pi models and
+describes 64-bit support as experimental; it does not establish current Pi 5
+compatibility. ELLA's TTS factory merely checks `lsmod` output for
+`seeed_voicecard` or `ac108` before preferring the ReSpeaker/eSpeak backend.
+
+### Run and understand the tests
+
+Activate the virtual environment and run the application suite:
+
+```bash
+.venv/bin/pytest tests -q
+```
+
+On Windows:
+
+```powershell
+.venv\Scripts\pytest tests -q
+```
+
+At the time of this handbook's verification, that command reported 321 passing
+tests. Use `tests/` explicitly. Running bare `pytest` at the repository root
+also collects two utility files whose names look like tests:
+
+- `scratch/test_settings_button.py` reads a hard-coded Windows development
+  path at import time;
+- `seeed-voicecard/tools/phase_test.py` treats pytest's `-q` argument as a WAV
+  filename.
+
+Their collection errors do not show a failure in ELLA's `tests/` suite, but
+they are a repository configuration problem worth fixing later with pytest
+collection settings or safer script entry points.
+
+#### How pytest tests are built
+
+`tests/conftest.py` puts `src/` on Python's import path. Individual tests use:
+
+- **assertions** to state an expected result;
+- pytest's `tmp_path` to isolate file writes in a temporary directory;
+- `monkeypatch` to replace a dependency or environment detail temporarily;
+- `MagicMock` and small fake classes for ASR, TTS, screens, streams, and apps;
+- synthetic Pygame surfaces instead of a learner's actual display;
+- deterministic inputs instead of a real microphone.
+
+This is **dependency isolation**: a profile test should test profiles, not fail
+because a speaker is unplugged.
+
+Examples:
+
+```bash
+# One specific behavior
+.venv/bin/pytest tests/test_validators.py::test_missing_word_is_detected -v
+
+# One subsystem
+.venv/bin/pytest tests/test_session_checkpoint.py -q
+
+# The application suite
+.venv/bin/pytest tests -q
+```
+
+`tests/test_gui_e2e.py` includes an automated GUI harness with fake ASR and an
+isolated profile store, plus shutdown-safety tests. Its ordinary pytest tests
+do not need to complete a real spoken curriculum. `tests/test_levels_feedback.py`
+is different: it defines a manual `run_tests()` program that checks all 738
+configured items and then performs an audible TTS demonstration; pytest does
+not automatically call that function.
+
+### Guided first code-reading tour
+
+Open files in this order and answer one question at each stop:
+
+1. `pyproject.toml` — What command starts the package?
+2. `src/ella_bot/cli/main.py` — Which objects are constructed before the GUI?
+3. `src/ella_bot/ui/pygame_gui/app.py` — Which state and services does the app
+   own?
+4. `src/ella_bot/ui/pygame_gui/scenes/main_menu.py` — What must be true before
+   reading can start?
+5. `src/ella_bot/ui/pygame_gui/scenes/reading_prompt.py` — Where is the worker
+   created, and which target does it actually run?
+6. `src/ella_bot/services/attempt_runner.py` — Where do Tier 1 and later tiers
+   split?
+7. `src/ella_bot/validation/validators.py` — How are missing, extra, and
+   substituted words represented?
+8. `src/ella_bot/services/session_manager.py` — How is the next item chosen?
+9. `src/ella_bot/services/evaluation.py` — Why is best accuracy different from
+   first-try correctness?
+10. `src/ella_bot/services/session_checkpoint.py` — What makes a save safe to
+    restore?
+11. Read the matching `tests/test_*.py` after each module — Which behavior does
+    the project promise not to break?
+
+Use “find references” in an editor or `rg` in a terminal:
+
+```bash
+rg -n 'AttemptReady' src tests
+rg -n 'start_new_session' src tests
+```
+
+Following a name through producer, consumer, and test is often easier than
+reading a large file from top to bottom.
+
+### Safe student exercises
+
+Work on a separate Git branch or disposable copy, avoid real `data/`, and run
+the named tests after every exercise.
+
+#### Exercise 1: Change an encouraging phrase
+
+- File: `src/ella_bot/validation/feedback.py`
+- Change: edit or add one string in `_ALMOST_PHRASES`.
+- Observe: an attempt with accuracy from 75% to below 95% may choose the new
+  phrase.
+- Verify:
+
+```bash
+.venv/bin/pytest tests/test_feedback.py -q
+```
+
+Keep the wording supportive and short enough for TTS.
+
+#### Exercise 2: Add one practice item
+
+- File: `config/level_pools.json`
+- Change: add one unique, age-appropriate string to the correct level array.
+- Observe: Tier 1 uses the whole array; Tier 2+ may randomly choose ten items.
+- Check pronunciation without audio:
+
+```bash
+python scripts/audition_level.py 2a --only your-new-item --dry-run
+.venv/bin/pytest tests/test_session_manager.py tests/test_levels_feedback.py -q
+```
+
+Note that the second file is collected but its manual 738-item routine is not
+executed by pytest. To include a new item in automatic regression coverage,
+add a focused pytest assertion rather than relying only on that script.
+
+#### Exercise 3: Explore window and timing settings
+
+- File: `config/settings.ini`
+- Change: set `fullscreen = False`, choose a safe width/height, or adjust
+  `listen_seconds` within the UI-supported 5–12 range.
+- Observe: startup uses the new defaults; CLI values still win where a matching
+  option exists.
+- Verify:
+
+```bash
+.venv/bin/pytest tests/test_config.py tests/test_settings_scene.py -q
+```
+
+Restore shared device settings when the experiment ends.
+
+#### Exercise 4: Write a validator test
+
+- File: `tests/test_validators.py`
+- Change: add a test with one expected phrase and one recognized phrase, then
+  assert the intended missing/substitution/extra result.
+- Observe: the test teaches you the alignment contract before you modify it.
+- Verify:
+
+```bash
+.venv/bin/pytest tests/test_validators.py -v
+```
+
+Do not add broad “equivalents” just to make one recording pass; forgiving rules
+can create false positives for many other learners.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Safe checks |
+|---|---|---|
+| `ella-bot` command not found | Virtual environment inactive or package not installed editable. | Activate `.venv`; run `python -m pip show ella-bot`; retry `python -m ella_bot.cli.main --help`. |
+| Vosk model runtime error | Missing/wrong extracted model path. | Check `[Speech] vosk_model`; confirm it names a directory under `models/`. |
+| No microphone transcript | Wrong device/rate, permissions, silent capture, or stream failure. | Review logs; query sounddevice devices in an approved diagnostic shell; check `input_device`, 16 kHz setting, and OS input meter. |
+| Growing ASR backlog in log | Decoder cannot keep up with incoming audio. | Compare processed/backlog seconds in diagnostics; close CPU-heavy programs; verify rate/device configuration. |
+| No spoken feedback | `audio_feedback` false, TTS/model unavailable, or output routed elsewhere. | Check `[TTS]`, startup warnings, OS speaker selection, and model file. |
+| Piper is silent but GUI continues | Piper catches/logs playback exceptions internally. | Read terminal logs; verify model compatibility and sounddevice output. |
+| Wrong phonics pronunciation | Override missing, malformed, or applied at wrong tier. | Run `audition_level.py --dry-run`; inspect `pronunciation_overrides.json` and level scoping. |
+| Tier 1 has no demonstration WAV | No exact/substring audio match and TTS fallback unavailable. | Inspect the level's playback folder and filename stem; verify audio feedback/TTS. |
+| Black or static background | Lottie/OpenCV unavailable, asset path wrong, or decode failed. | Read media warnings; confirm fallback assets; run focused Lottie tests. |
+| Tap does not align with button | Incorrect `gui_left_padding` or display scaling. | Set padding to zero temporarily; run `test_global_left_padding_shifts_render_and_pointer_together`. |
+| Cannot create profile | Five-profile limit, invalid length/characters, duplicate name, or disk error. | Read the displayed message; do not hand-edit registry. |
+| Saved session ignored | Checkpoint corrupt/incompatible and archived. | Look for `.invalid-<timestamp>` beside `active_session.json`; preserve it for debugging. |
+| Scene refuses to leave | Attempt worker did not stop within two seconds. | Wait for audio/ASR, use pause, and inspect logs; do not delete the checkpoint during the race. |
+| Bare `pytest` fails before tests | Utility scripts outside `tests/` were collected. | Run `.venv/bin/pytest tests -q`. |
+
+### Privacy, security, and responsible use
+
+- Voice is processed locally in normal use, but recognized text and expected
+  lesson text are written to per-profile JSONL history.
+- Profile names and progress should be protected like other student records.
+- The code has no authentication or encryption layer for local data. Device
+  accounts, filesystem permissions, physical access, and backups matter.
+- Do not commit the `data/` directory, captured recordings, model licenses, or
+  real learner examples without authorization.
+- Corrupt-file archives may still contain private content; “invalid” does not
+  mean safe to share.
+- Pronunciation confidence is model-dependent and can vary with accent, age,
+  microphone, noise, and disability. It must not be treated as a diagnosis.
+- Driver installation and root scripts can change an entire operating system.
+  Review source and obtain administrator/teacher approval first.
+- The repository contains large third-party media/fonts/models and external
+  driver code. Verify each asset's license before redistributing a packaged
+  device. The root project does not currently present a single top-level
+  license file in the inspected tree.
+
 ## Part V — Repository Reference
+
+This reference describes responsibility, not every line. Empty `__init__.py`
+files mark Python packages and are grouped together.
+
+### Entry points, configuration, core, and utilities
+
+| File | Responsibility and relationships |
+|---|---|
+| `main.py` | Deprecated compatibility launcher; imports and calls CLI `main()`. |
+| `src/ella_bot/cli/main.py` | Parses CLI/INI settings, resolves paths, constructs ASR/TTS/GUI, catches top-level runtime errors. |
+| `src/ella_bot/config/app_config.py` | Maps recognized INI keys into argparse defaults and saves individual settings. |
+| `src/ella_bot/config/loader.py` | Compatibility re-export of `app_config`; no independent loader logic. |
+| `src/ella_bot/core/constants.py` | Canonical levels, tiers, thresholds, session cap, and attempt-limit helpers. |
+| `src/ella_bot/core/events.py` | Frozen typed messages sent from attempt workers to the reading scene. |
+| `src/ella_bot/core/models.py` | Placeholder only; active domain dataclasses live in services/validation. |
+| `src/ella_bot/core/exceptions.py` | Placeholder only; profile exceptions currently live beside `ProfileStore`. |
+| `src/ella_bot/utils/file_utils.py` | Finds the project root and resolves asset/config/model paths. Model resolution keeps only the supplied basename. |
+| `src/ella_bot/utils/logging.py` | Configures and returns standard-library loggers. |
+
+`src/ella_bot/__init__.py`, package-level `__init__.py` files under `config`,
+`core`, `services`, `speech`, `ui`, `utils`, and `validation`, plus nested
+`asr`, `tts`, `engines`, `console`, `pygame_gui`, `components`, and `scenes`
+package initializers, are empty or minimal package markers.
+
+### Service and validation modules
+
+| File | Responsibility and relationships |
+|---|---|
+| `services/attempt_runner.py` | Orchestrates Tier 1 playback or scored ASR attempts, feedback, attempts, progression, checkpoints, and completion events. |
+| `services/evaluation.py` | Stores item attempts, calculates sublevel/tier/session summaries, validates checkpoint scoring state, appends JSONL. |
+| `services/profile_store.py` | Validates and atomically stores up to five profiles; maps each profile to checkpoint/history paths; resets/deletes data. |
+| `services/session_checkpoint.py` | Atomically saves and strictly validates exact reading/results state; archives invalid checkpoints. |
+| `services/session_manager.py` | Owns current level/item, random session pools, progression, retry/reset, announcements, and checkpoint session state. |
+| `services/sound_effects.py` | Loads/caches/amplifies Pygame sounds, selects pass/click audio, resolves Tier 1 WAVs/prompts, plays cancellable sequences. |
+| `validation/validators.py` | Normalizes text, corrects selected ASR phrases, aligns words, calculates WER/accuracy, applies equivalence/confidence rules. |
+| `validation/feedback.py` | Selects encouragement, builds hint/coaching lines, scopes overrides, sanitizes TTS text, and maps dictionary phones. |
+
+### Speech modules
+
+| File | Responsibility and relationships |
+|---|---|
+| `speech/interfaces.py` | Runtime-checkable `ASREngine` and `TTSEngine` protocols. |
+| `speech/asr/factory.py` | Selects active simulated or Vosk engine. |
+| `speech/asr/simulated.py` | Active `SimulatedASR` and duplicated basic ASR/Vosk types; factory selects only its simulated class. |
+| `speech/asr/vosk_engine.py` | Active persistent-stream `VoskASR`, result dataclasses, bypass support, and diagnostic formatting. |
+| `speech/tts/base.py` | `TTSConfig`, `BaseTTS`, and eSpeak, pyttsx3, macOS `say`, and ReSpeaker command backends. |
+| `speech/tts/factory.py` | Explicit/automatic TTS construction, model resolution, OS/hardware detection, and fallback order. |
+| `speech/tts/engines/piper.py` | In-process reusable Piper voice, synthesis settings, warmth filter, streaming, pause/stop/volume/amplitude. |
+| `speech/tts/engines/kokoro.py` | Optional background-warmed Kokoro ONNX engine and sounddevice playback. |
+| `speech/tts/engines/espeak.py` | Placeholder; active eSpeak class is in `tts/base.py`. |
+| `speech/tts/engines/mac_say.py` | Placeholder; active macOS class is in `tts/base.py`. |
+| `speech/tts/engines/pyttsx3.py` | Placeholder; active pyttsx3 class is in `tts/base.py`. |
+| `speech/tts/engines/respeaker.py` | Placeholder; active ReSpeaker/eSpeak class is in `tts/base.py`. |
+
+### User-interface modules
+
+| File | Responsibility and relationships |
+|---|---|
+| `ui/interfaces.py` | Placeholder; no active GUI protocol is defined there. |
+| `ui/console/console_ui.py` | Formats a validation/feedback result as terminal text; not selected by the current CLI flow. |
+| `ui/pygame_gui/app.py` | Main owner and scene manager: profiles, sessions, evaluation, checkpoints, fonts, pointer calibration, Pygame loop, shutdown. |
+| `ui/pygame_gui/config.py` | `GUIConfig` dimensions, FPS values, paths, pass bar, and theme colors. |
+| `ui/pygame_gui/scene.py` | Empty lifecycle methods inherited by every scene. |
+| `ui/pygame_gui/animator.py` | Global faces-based avatar animation and drawn fallbacks. |
+| `ui/pygame_gui/bot_sprite.py` | Scene-level robot frames, state mapping, amplitude-driven mouth, scale cache, and drawing. |
+| `ui/pygame_gui/ui_helpers.py` | Gradient and wrapped-text drawing helpers. |
+| `ui/pygame_gui/lottie_bg.py` | Lottie load/extract/render/loop/scale cache and animation-to-video fallback loader. |
+| `ui/pygame_gui/video_bg.py` | Streaming OpenCV MP4 background decoder and scale cache. |
+| `components/button.py` | Themed press/release-safe button and adaptive label drawing. |
+| `components/on_screen_keyboard.py` | Weighted touch-key layout, one-shot Shift, semantic text/backspace/shift actions. |
+| `components/pause_modal.py` | Reading overlay, live settings, resume, restart/menu confirmation. |
+| `components/confetti.py` | Lottie confetti parser/player plus physics-particle fallback. |
+| `scenes/intro.py` | Startup video/audio preload, skip, duration, fallback to menu. |
+| `scenes/main_menu.py` | Profile requirement, start/resume/new logic, settings/profiles/exit controls and media. |
+| `scenes/profiles.py` | Profile cards, touch/physical name entry, validation display, management confirmations and cleanup warning. |
+| `scenes/level_selection.py` | Level grid, confirmation, transactional session start. |
+| `scenes/reading_prompt.py` | Worker lifecycle, event drain, input/pause/replay/advance, target/robot layout; includes an unused legacy worker. |
+| `scenes/results.py` | Sublevel/tier presentation, pass/fail action, retry/advance checkpoint transaction, confetti. |
+| `scenes/final_eval.py` | Cumulative presentation, play-again transaction, menu, confetti. |
+| `scenes/settings.py` | Persistent volume/listening controls and settings background. |
+
+### Test-suite map
+
+| Test files | Behaviors protected |
+|---|---|
+| `test_cli.py`, `test_cli_gui.py`, `test_config.py` | CLI aliases/precedence, exact GUI start behavior, INI mapping and saving. |
+| `test_constants.py`, `test_events.py` | Canonical progression tables, attempt rules, immutable event payloads. |
+| `test_asr_factory.py`, `test_tts_piper.py`, `test_pronunciation_overrides.py`, `test_audition_level.py` | Engine choice, diagnostics, Piper streaming/config/stop, override content, safe audition validation. |
+| `test_validators.py`, `test_feedback.py`, `test_levels_feedback.py` | Word alignment, confidence/equivalence rules, coaching construction, plus a manual all-items/audible script. |
+| `test_attempt_runner.py`, `test_level1_practice.py` | Completion events, tier-scoped overrides, checkpoint clearing, prerecorded Tier 1 bypass/replay/advance and later ASR. |
+| `test_session_manager.py`, `test_evaluation.py` | Pools, progression, retries, checkpoint restore, best-per-item fluency, summaries and validation. |
+| `test_profile_store.py`, `test_session_checkpoint.py`, `test_app_session_flow.py` | Profile rules/isolation, atomic failure behavior, corruption recovery, binding, exact resume, transactional saves, safe shutdown. |
+| `test_sound_effects.py` | SFX selection, amplification, and fallback. |
+| `test_bot_sprite.py`, `test_lottie_bg.py`, `test_confetti.py`, `test_on_screen_keyboard.py` | Animation state/cache, background fallback, celebration, and touch keyboard behavior. |
+| `test_main_menu_scene.py`, `test_profiles_scene.py`, `test_level_selection_scene.py` | Profile gates/management/layout, checkpoint-aware menu, confirmed level start. |
+| `test_reading_prompt_auto_continue.py`, `test_results_scene.py`, `test_final_eval_scene.py`, `test_settings_scene.py` | Attempt timing/layout, pause/worker safety, results transactions, cumulative UI, settings limits. |
+| `test_gui_e2e.py` | Isolated automated harness pieces and initialization/shutdown/data-preservation safety. |
+| `tests/conftest.py`, `tests/__init__.py` | Test import setup and package marker. |
+
+### Configuration and generated data
+
+| Path | Format | Purpose |
+|---|---|---|
+| `config/settings.ini` | INI | Default system, speech, TTS, and GUI values; selected UI settings are rewritten here. |
+| `config/level_pools.json` | JSON object of arrays | Lesson content: 5 items in 1A, 21 in 1B, 104 in 1C, 6 in 1D, 12 in 1E, 6 in 1F, 21 in 1G, 40 in 2A, 101 in 2B, 100 in 2C, 63 in 2D, 175 in 3, and 84 in 4 (738 total). |
+| `config/pronunciation_overrides.json` | JSON mapping | Tier 1 target spelling to TTS-friendly word or `phonemes:` form. |
+| `config/empty_overrides.json` | JSON object | Empty override fixture/resource; not selected by default settings. |
+| `data/profiles.json` | Versioned JSON | Local profile registry and active profile selection. |
+| `data/profiles/<id>/active_session.json` | Versioned JSON | Latest exact reading/results checkpoint for one profile. |
+| `data/profiles/<id>/sessions.jsonl` | JSONL | Append-only evaluation history for one profile. |
+| `data/sessions.jsonl` | JSONL | Older/default session log path; profile-aware app binds active work to per-profile history. |
+
+### Assets and non-runtime material
+
+| Area | What it contains | Runtime status |
+|---|---|---|
+| `assets/Level 1 playbacks/` | Human/prerecorded lesson items and prompt WAVs. | Active Tier 1 audio source. |
+| `assets/audio/sfx/` | Click, pass/fail, cheering/confetti/chime effects. | Active interface/result audio. |
+| `assets/Robot SVG/`, `assets/talking png/`, `bot/`, `faces/` | Multiple generations of robot frames. | Active with overlapping animator/sprite fallbacks. |
+| `assets/*.lottie`, extracted JSON, MP4, PNG, SVG | Backgrounds, intro, menu art, icons, ribbon. | Selected through scene-specific fallback chains. |
+| `assets/fonts/` | Changa One regular/italic TTF. | Regular font actively preferred; system fallbacks remain. |
+| Root PNG screenshots and WAV files | Captures and audio experiments/demos. | Mostly reference/development artifacts, not primary resolved assets. |
+| `scratch/` | Render experiments, generated previews, audio generators, inspection scripts, HTML. | Development-only; one hard-coded script interferes with root pytest collection. |
+| `models/`, `piper/` | Local speech models and Piper runtime resources. | Environment/runtime resources; size/licensing may keep some content outside normal source control. |
+
+### Scripts and project documents
+
+| Path | Purpose/current caution |
+|---|---|
+| `scripts/audition_level.py` | Print or play configured targets; Level 1B Piper comparison has strict model/target preflight and a dry-run. |
+| `scripts/generate_sfx.py` | Generate a short 44.1 kHz mono PCM button click WAV mathematically. |
+| `scripts/smoke_test.bat` | Windows check that both supported help commands exit successfully. |
+| `scripts/ella-bot.desktop` | Desktop/autostart entry with a machine-specific `/home/ella/...` path. Must be adjusted on another device. |
+| `install.cmd` | Unrelated Antigravity CLI downloader, not an ELLA installer. |
+| `scratch_test_hallucinations.py` | Root-level ASR/validation experiment; development-only. |
+| `MIGRATION_PLAN.md`, `MIGRATION_NOTES.md` | Historical move from flat layout to `src/`; some aspirations/placeholders and old `--gui` wording no longer describe all live behavior. |
+| `PROJECT_ANALYSIS.md` | Historical snapshot; several “missing” services/tests now exist, so verify against current source. |
+| `docs/PEDAGOGY_UPDATES_JULY.md` | Rationale for strict fluency/coaching/aggregation. Its stated 70% acoustic threshold is stale; current source uses 35%. |
+| `docs/level-1a-1b-prerecorded-phoneme-feasibility-report.*` | Decision record explaining why isolated phonemes should use demonstration rather than unreliable automated ASR grading. |
+| `docs/superpowers/specs/`, `docs/superpowers/plans/` | Feature design and execution history. Helpful intent, not runtime authority. |
+| `docs/TECHNICAL_DOCUMENTATION.md` | Preserved earlier student guide draft; contains obsolete/inaccurate architecture and should not be treated as current truth. |
+
+### External `seeed-voicecard` subtree
+
+The driver is best understood by category:
+
+| Files | Advanced role |
+|---|---|
+| `seeed-voicecard.c`, `ac108.c`, `ac101.c`, `wm8960.c` and headers | Linux ALSA System-on-Chip codec/card kernel modules. |
+| `*-overlay.dts`, compiled `.dtbo` | Source/compiled device-tree overlays for 2-, 4-, and 8-microphone boards. |
+| `Makefile`, `dkms.conf`, `patches/` | Kernel building, automatic rebuild metadata, compatibility patches. |
+| `install*.sh`, `uninstall.sh`, `ubuntu-prerequisite.sh` | Privileged installation/removal and OS configuration. |
+| `*.conf`, `*.state`, `pulseaudio/` | ALSA/PulseAudio routing and mixer state. |
+| `seeed-voicecard.service`, `seeed-voicecard` | systemd startup service and helper command. |
+| `tools/coherence.py`, `tools/phase_test.py` | Multichannel microphone analysis utilities; not pytest tests. |
+| `ac108_plugin/` | ALSA PCM plugin source/binary and build files. |
+
+The top Git tree records this path with gitlink mode `160000`, but no matching
+`.gitmodules` entry exists in this checkout. That is why `git submodule status`
+reports a mapping error even though the files are present.
 
 ## Glossary
 
+| Term | Meaning |
+|---|---|
+| **ALSA** | Advanced Linux Sound Architecture, the low-level Linux audio system. |
+| **API** | Application programming interface: the operations one component promises another. |
+| **ARPAbet** | ASCII symbols representing English speech sounds in the CMU dictionary. |
+| **ASR** | Automatic speech recognition, converting audio to text. |
+| **Atomic write** | Replacing a complete file in one operation so partial files are less likely. |
+| **Backend** | One interchangeable implementation, such as Piper versus eSpeak TTS. |
+| **CLI** | Command-line interface. |
+| **Cloud service** | Processing performed on remote internet servers; ELLA's normal learner pipeline is local. |
+| **Codec** | Software/hardware that encodes, decodes, or controls an audio/video format/device. |
+| **Confidence** | The recognizer's numeric evidence for a word, not proof of learner knowledge. |
+| **Daemon thread** | Background Python thread that does not keep the process alive by itself. |
+| **Dataclass** | Python class designed mainly to hold named data fields. |
+| **Dependency** | Software or component another part requires. |
+| **Dependency injection** | Giving an object its ASR/TTS/store instead of constructing them inside it. |
+| **DKMS** | System for rebuilding external Linux kernel modules after kernel updates. |
+| **Dynamic programming** | Solving a problem by storing answers to smaller overlapping problems; used in word alignment. |
+| **Event** | Message representing input or a completed state change. |
+| **Event loop** | Repeated cycle that reads input, updates state, and draws frames. |
+| **Factory** | Function that selects and constructs an implementation. |
+| **Fallback** | Secondary option used when the preferred option is unavailable. |
+| **FIR filter** | Finite impulse response filter; Piper's warmth step combines nearby samples with fixed weights. |
+| **FPS** | Frames per second, how often screen/animation frames are updated. |
+| **GUI** | Graphical user interface. |
+| **Heuristic** | Practical rule that often helps but is not guaranteed to be universally correct. |
+| **INI** | Section-and-key text configuration format. |
+| **Interface/protocol** | Description of methods an interchangeable object must provide. |
+| **JSON** | Text format containing objects, arrays, strings, numbers, booleans, and null. |
+| **JSONL** | JSON Lines: one independent JSON object per line. |
+| **Kernel module** | Privileged code loaded into the operating-system kernel, commonly for hardware. |
+| **Lottie** | JSON-based vector animation format. |
+| **Mock/fake** | Controlled test replacement for a real dependency. |
+| **Module** | A Python source file or loadable operating-system component, depending on context. |
+| **Normalize** | Convert data to a consistent form before comparison. |
+| **ONNX** | Portable format/runtime ecosystem for trained machine-learning models. |
+| **PCM** | Pulse-code modulation, numeric samples representing an audio waveform. |
+| **Persistence** | Saving state beyond the current process. |
+| **Profile** | Local learner identity that owns separate progress files. |
+| **Pygame Surface** | In-memory image/canvas that Pygame can draw and display. |
+| **Queue** | First-in, first-out structure used here to pass worker events safely. |
+| **Sample rate** | Number of audio samples captured or played each second. |
+| **Scene** | One complete GUI screen with its own lifecycle and input/render logic. |
+| **Serialization** | Converting live objects into storable data such as JSON. |
+| **Soft limiter** | Smoothly compresses loud audio peaks before maximum digital range. |
+| **Subprocess** | Separate operating-system process launched by Python. |
+| **Test fixture** | Reusable test setup or resource. |
+| **Thread** | A path of execution sharing process memory with other threads. |
+| **Transactional change** | Prepare/validate/save first, then replace active state only if successful. |
+| **TTS** | Text-to-speech, converting text to audio. |
+| **View model** | Data already arranged for a user-interface view. |
+| **Vosk** | Offline speech-recognition engine used by ELLA. |
+| **WER** | Word error rate: word insertions, deletions, and substitutions divided by expected word count. |
+
+### Where to learn next
+
+- Start with Python functions, classes, dataclasses, exceptions, and type hints.
+- Learn JSON/INI parsing and safe filesystem operations from the profile and
+  checkpoint stores.
+- Study event loops and coordinate geometry with `Button` and a simple scene.
+- Study dynamic programming using the word-alignment table on very short
+  sentences.
+- Learn digital audio with sample rate, PCM arrays, normalization, filters, and
+  clipping before changing sound processing.
+- Learn concurrency with queues and cancellation before modifying attempt
+  workers.
+- Treat kernel drivers as a separate advanced systems-programming topic after
+  learning Linux processes, permissions, filesystems, and C.
+
 ## Final Architecture Recap
+
+ELLA is not one “AI brain.” It is a local pipeline whose parts have narrow
+responsibilities:
+
+```text
+settings + CLI
+    → app and scene manager
+        → profile/session checkpoint boundary
+        → session item selection
+        → Tier 1 prerecorded practice
+          OR Tiers 2–4 ASR → alignment → feedback
+        → evaluation summaries
+        → typed events back to the GUI
+        → results and saved history
+```
+
+Use this change-impact guide before editing:
+
+| If you change… | Re-check… |
+|---|---|
+| Level order, tiers, limits, or thresholds | constants, session manager, level grid, checkpoint validation, results, tests. |
+| `level_pools.json` | session pools, pronunciation coverage, prerecorded filenames, audition/manual all-item check. |
+| ASR result shape or capture | factory, attempt runner confidence pairing, validators, fake ASR tests, diagnostics. |
+| Word matching/equivalences | WER/accuracy, false-positive risk, feedback, pass results, validator and level tests. |
+| TTS factory/model config | CLI/INI keys, model resolver, Pi fallback, stop/pause behavior, speech tests. |
+| Profile or checkpoint schema | schema version, strict restore validation, atomic writes, migration/recovery, privacy docs, tests. |
+| Worker/event flow | typed events, queue drain, pause/join/shutdown, transactional saves, GUI tests. |
+| Scene layout or left padding | visible geometry, hitboxes, adaptive text, touch/keyboard paths, multiple resolutions. |
+| Media filenames/fallbacks | asset resolver, scene load order, Lottie/video/static behavior, memory use. |
+
+The best way to extend ELLA is to preserve these boundaries: let scenes handle
+input and drawing, let services own lesson/business rules, let speech backends
+remain interchangeable, let persistence validate before trusting data, and let
+tests describe the behavior that must survive the change.
