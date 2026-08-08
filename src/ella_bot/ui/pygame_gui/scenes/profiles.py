@@ -7,6 +7,10 @@ from ella_bot.services.profile_store import MAX_PROFILES, ProfileStoreError
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.services.sound_effects import play_button_click
 from ella_bot.ui.pygame_gui.components.button import Button
+from ella_bot.ui.pygame_gui.components.on_screen_keyboard import (
+    KeyboardAction,
+    OnScreenKeyboard,
+)
 from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground, load_animated_background
 
 
@@ -39,6 +43,7 @@ class ProfilesScene(BaseScene):
         self._management_profiles: dict[str, object] = {}
         self._modal_save_button: pygame.Rect | None = None
         self._modal_cancel_button: pygame.Rect | None = None
+        self.keyboard = OnScreenKeyboard(self.app.font_small)
         self._lottie_bg: Optional[LottieBackground] = None
 
     def _load_assets(self) -> None:
@@ -63,6 +68,7 @@ class ProfilesScene(BaseScene):
 
     def on_exit(self) -> None:
         pygame.key.stop_text_input()
+        self.keyboard.cancel_press()
         self.pressed_button = None
 
     def _open_create(self) -> None:
@@ -73,6 +79,7 @@ class ProfilesScene(BaseScene):
         self.name_input = ""
         self.error_message = ""
         self.pressed_button = None
+        self.keyboard.reset()
         pygame.key.start_text_input()
 
     def _open_rename(self, profile) -> None:
@@ -82,6 +89,7 @@ class ProfilesScene(BaseScene):
         self.name_input = profile.name
         self.error_message = ""
         self.pressed_button = None
+        self.keyboard.reset()
         pygame.key.start_text_input()
 
     def _open_confirmation(self, action: str, profile) -> None:
@@ -95,6 +103,7 @@ class ProfilesScene(BaseScene):
 
     def _close_modal(self) -> None:
         pygame.key.stop_text_input()
+        self.keyboard.cancel_press()
         self.modal = None
         self.target_profile_id = None
         self.target_profile_name = ""
@@ -116,6 +125,18 @@ class ProfilesScene(BaseScene):
         self._close_modal()
         if destination is not None:
             self.app.switch_scene(destination)
+
+    def _apply_keyboard_action(self, action: KeyboardAction | None) -> None:
+        if action is None or action.kind == "shift":
+            return
+        if action.kind == "backspace":
+            self.name_input = self.name_input[:-1]
+            self.error_message = ""
+            return
+        candidate = self.name_input + action.text
+        if len(candidate) <= 20:
+            self.name_input = candidate
+            self.error_message = ""
 
     def _confirm_management(self) -> None:
         target_profile_id = self.target_profile_id
@@ -196,6 +217,7 @@ class ProfilesScene(BaseScene):
     def _handle_mouse_down(self, mouse_pos) -> None:
         if self.modal is not None:
             if self._modal_save_button and self._modal_save_button.collidepoint(mouse_pos):
+                self.keyboard.cancel_press()
                 self.pressed_button = (
                     "modal_save"
                     if self.modal in ("create", "rename")
@@ -206,7 +228,10 @@ class ProfilesScene(BaseScene):
                     )
                 )
             elif self._modal_cancel_button and self._modal_cancel_button.collidepoint(mouse_pos):
+                self.keyboard.cancel_press()
                 self.pressed_button = "modal_cancel"
+            elif self.modal in ("create", "rename"):
+                self.keyboard.handle_mouse_down(mouse_pos)
             if self.pressed_button:
                 play_button_click()
             return
@@ -238,25 +263,31 @@ class ProfilesScene(BaseScene):
                 and self._modal_save_button
                 and self._modal_save_button.collidepoint(mouse_pos)
             ):
+                self.keyboard.cancel_press()
                 self._save_name()
             elif (
                 pressed == "modal_ack"
                 and self._modal_save_button
                 and self._modal_save_button.collidepoint(mouse_pos)
             ):
+                self.keyboard.cancel_press()
                 self._acknowledge_cleanup_warning()
             elif (
                 pressed == "modal_confirm"
                 and self._modal_save_button
                 and self._modal_save_button.collidepoint(mouse_pos)
             ):
+                self.keyboard.cancel_press()
                 self._confirm_management()
             elif (
                 pressed == "modal_cancel"
                 and self._modal_cancel_button
                 and self._modal_cancel_button.collidepoint(mouse_pos)
             ):
+                self.keyboard.cancel_press()
                 self._close_modal()
+            elif self.modal in ("create", "rename"):
+                self._apply_keyboard_action(self.keyboard.handle_mouse_up(mouse_pos))
             return
 
         if (
@@ -501,7 +532,12 @@ class ProfilesScene(BaseScene):
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dialog = pygame.Rect(0, 0, min(600, width - 80), min(340, height - 80))
+        dialog = pygame.Rect(
+            0,
+            0,
+            min(1120, width - 80),
+            min(640, height - 40),
+        )
         dialog.center = (width // 2, height // 2)
 
         pygame.draw.rect(screen, (25, 5, 35), dialog.move(4, 4), border_radius=30)
@@ -524,7 +560,12 @@ class ProfilesScene(BaseScene):
         )
         screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 80))
 
-        input_rect = pygame.Rect(dialog.left + 48, dialog.top + 115, dialog.width - 96, 50)
+        input_rect = pygame.Rect(
+            dialog.left + 80,
+            dialog.top + 100,
+            dialog.width - 160,
+            48,
+        )
         pygame.draw.rect(screen, (60, 25, 75), input_rect, border_radius=12)
         pygame.draw.rect(screen, (127, 63, 151), input_rect, width=3, border_radius=12)
         input_surface = title_font.render(self.name_input, True, (242, 210, 20))
@@ -533,12 +574,8 @@ class ProfilesScene(BaseScene):
             input_surface.get_rect(left=input_rect.left + 15, centery=input_rect.centery),
         )
 
-        if self.error_message:
-            error = self.app.font_small.render(self.error_message, True, (255, 100, 100))
-            screen.blit(error, error.get_rect(centerx=dialog.centerx, top=input_rect.bottom + 8))
-
-        button_width, button_height, gap = 160, 52, 20
-        button_y = dialog.bottom - button_height - 24
+        button_width, button_height, gap = 180, 52, 20
+        button_y = dialog.bottom - button_height - 20
         self._modal_save_button = pygame.Rect(
             dialog.centerx - gap // 2 - button_width,
             button_y,
@@ -551,6 +588,21 @@ class ProfilesScene(BaseScene):
             button_width,
             button_height,
         )
+
+        if self.error_message:
+            error = self.app.font_small.render(self.error_message, True, (255, 100, 100))
+            screen.blit(error, error.get_rect(centerx=dialog.centerx, top=input_rect.bottom + 5))
+
+        keyboard_top = input_rect.bottom + 34
+        keyboard_bottom = button_y - 18
+        keyboard_rect = pygame.Rect(
+            dialog.left + 35,
+            keyboard_top,
+            dialog.width - 70,
+            max(1, keyboard_bottom - keyboard_top),
+        )
+        self.keyboard.draw(screen, keyboard_rect)
+
         btn_save = Button(
             self._modal_save_button,
             label="Create" if is_create else "Save",

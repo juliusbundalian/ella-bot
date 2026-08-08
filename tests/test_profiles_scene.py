@@ -6,6 +6,7 @@ import pygame
 
 from ella_bot.services.profile_store import Profile, ProfileValidationError
 from ella_bot.services.session_checkpoint import SavedSessionSummary
+from ella_bot.ui.pygame_gui.components.on_screen_keyboard import KeyboardAction
 from ella_bot.ui.pygame_gui.scenes.profiles import ProfilesScene, _summary_text
 
 
@@ -28,6 +29,17 @@ def _profile(index: int, name: str | None = None) -> Profile:
         f'{index:032x}',
         name or f'Reader {index}',
         '2026-07-28T12:00:00+08:00',
+    )
+
+
+def _tap_keyboard_key(scene, key_id):
+    scene.render()
+    point = scene.keyboard.key_rects[key_id].center
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=point)
+    )
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=point)
     )
 
 
@@ -359,3 +371,105 @@ def test_confirmation_modals_render_exact_targeted_warning():
     ]
     assert 'Erase all learning progress for Maria? The profile will remain.' in rendered_labels
     assert 'Delete Maria and all saved progress? This cannot be undone.' in rendered_labels
+
+
+def test_create_modal_accepts_touchscreen_keyboard_input():
+    scene = _scene()
+    scene._open_create()
+
+    _tap_keyboard_key(scene, "shift")
+    _tap_keyboard_key(scene, "l")
+    _tap_keyboard_key(scene, "e")
+    _tap_keyboard_key(scene, "o")
+
+    assert scene.name_input == "Leo"
+
+
+def test_rename_modal_accepts_space_and_backspace_from_touchscreen():
+    scene = _scene()
+    profile = _profile(1, "Ana")
+    scene._open_rename(profile)
+
+    _tap_keyboard_key(scene, "space")
+    _tap_keyboard_key(scene, "m")
+    _tap_keyboard_key(scene, "backspace")
+
+    assert scene.name_input == "Ana "
+
+
+def test_touchscreen_input_respects_twenty_character_limit():
+    scene = _scene()
+    scene._open_create()
+    scene.name_input = "a" * 20
+
+    _tap_keyboard_key(scene, "b")
+
+    assert scene.name_input == "a" * 20
+
+
+def test_keyboard_action_clears_stale_validation_error():
+    scene = _scene()
+    scene._open_create()
+    scene.error_message = "Name is taken"
+
+    scene._apply_keyboard_action(KeyboardAction("text", "a"))
+
+    assert scene.name_input == "a"
+    assert scene.error_message == ""
+
+
+def test_opening_name_modal_resets_keyboard_case():
+    scene = _scene()
+    scene._open_create()
+    scene.keyboard.uppercase = True
+
+    scene._close_modal()
+    scene._open_create()
+
+    assert scene.keyboard.uppercase is False
+
+
+def test_closing_modal_cancels_pressed_keyboard_key():
+    scene = _scene()
+    scene._open_create()
+    scene.render()
+    point = scene.keyboard.key_rects["q"].center
+    scene.keyboard.handle_mouse_down(point)
+
+    scene._close_modal()
+
+    assert scene.keyboard.handle_mouse_up(point) is None
+
+
+def test_leaving_scene_cancels_pressed_keyboard_key(monkeypatch):
+    scene = _scene()
+    scene._open_create()
+    scene.render()
+    point = scene.keyboard.key_rects["q"].center
+    scene.keyboard.handle_mouse_down(point)
+    monkeypatch.setattr(pygame.key, "stop_text_input", lambda: None)
+
+    scene.on_exit()
+
+    assert scene.keyboard.handle_mouse_up(point) is None
+
+
+def test_name_modal_keyboard_and_actions_fit_inside_screen():
+    scene = _scene()
+    scene._open_create()
+
+    scene.render()
+
+    screen_rect = scene.app.screen.get_rect()
+    assert all(screen_rect.contains(rect) for rect in scene.keyboard.key_rects.values())
+    assert screen_rect.contains(scene._modal_save_button)
+    assert screen_rect.contains(scene._modal_cancel_button)
+
+
+def test_physical_text_input_still_works_with_embedded_keyboard():
+    scene = _scene()
+    scene._open_create()
+
+    scene.handle_event(pygame.event.Event(pygame.TEXTINPUT, text="Mia"))
+
+    assert scene.name_input == "Mia"
