@@ -122,9 +122,9 @@ class PauseModal:
             pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
         else:
             if not is_pressed:
-                pygame.draw.rect(screen, (35, 10, 45), rect.move(3, 3), border_radius=14)
-            pygame.draw.rect(screen, fill_col, rect, border_radius=14)
-            pygame.draw.rect(screen, stroke_col, rect, width=4, border_radius=14)
+                pygame.draw.rect(screen, (35, 10, 45), rect.move(3, 3), border_radius=18)
+            pygame.draw.rect(screen, fill_col, rect, border_radius=18)
+            pygame.draw.rect(screen, stroke_col, rect, width=4, border_radius=18)
 
         if icon:
             surf = icon
