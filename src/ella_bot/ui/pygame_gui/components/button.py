@@ -11,19 +11,22 @@ logger = logging.getLogger(__name__)
 BUTTON_THEMES = {
     "yellow": {
         "fill": (242, 210, 20),      # #F2D214
-        "stroke": (175, 141, 55),    # #AF8D37
+        "outer_stroke": (127, 89, 28),   # #7F591C
+        "inner_stroke": (175, 141, 55),  # #AF8D37
         "text": (87, 39, 108),       # #57276C
         "pressed": (220, 188, 15),
     },
     "violet": {
         "fill": (175, 110, 210),     # #AF6ED2 (light violet fill matching Figma spec)
-        "stroke": (127, 63, 151),    # #7F3F97
+        "outer_stroke": (59, 12, 76),    # #3B0C4C
+        "inner_stroke": (127, 63, 151),  # #7F3F97
         "text": (255, 250, 243),     # #FFFAF3
         "pressed": (150, 90, 185),
     },
     "dark_violet": {
         "fill": (87, 39, 108),       # #57276C
-        "stroke": (127, 63, 151),    # #7F3F97
+        "outer_stroke": (35, 10, 45),    # #230A2D
+        "inner_stroke": (127, 63, 151),  # #7F3F97
         "text": (255, 250, 243),     # #FFFAF3
         "pressed": (70, 30, 90),
     },
@@ -79,7 +82,8 @@ class Button:
         radius = min(self.corner_radius, self.rect.height // 2)
 
         fill_color = theme["pressed"] if self.is_pressed else theme["fill"]
-        stroke_color = theme["stroke"]
+        outer_stroke_color = theme["outer_stroke"]
+        inner_stroke_color = theme["inner_stroke"]
         text_color = theme["text"]
 
         # Drop shadow offset when not pressed
@@ -90,7 +94,7 @@ class Button:
                 self.rect.width,
                 self.rect.height,
             )
-            pygame.draw.rect(screen, stroke_color, shadow_rect, border_radius=radius)
+            pygame.draw.rect(screen, outer_stroke_color, shadow_rect, border_radius=radius)
 
         # Draw main button body
         pygame.draw.rect(screen, fill_color, self.rect, border_radius=radius)
@@ -98,7 +102,7 @@ class Button:
         # Draw thick inner stroke (Figma spec)
         pygame.draw.rect(
             screen,
-            stroke_color,
+            inner_stroke_color,
             self.rect,
             width=self.stroke_weight,
             border_radius=radius,
