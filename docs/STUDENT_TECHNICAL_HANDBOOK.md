@@ -406,7 +406,8 @@ Tier 1 and later tiers intentionally follow different teaching paths.
 
 Tier 1 does not ask Vosk to grade an isolated sound. Speech recognizers are
 often unreliable on a single letter or phoneme, especially with children's
-voices. Instead, `AttemptRunner._run_level1_practice()`:
+voices. When audio feedback is enabled and a TTS object was constructed,
+`AttemptRunner._run_level1_practice()`:
 
 1. selects prerecorded introduction/attention prompts;
 2. plays the target WAV file when one is available;
@@ -417,6 +418,9 @@ voices. Instead, `AttemptRunner._run_level1_practice()`:
 
 Replay repeats the target sound. Advancing updates evaluation and session
 progress, saves a checkpoint, and starts the next demonstration.
+The current outer condition requires both `audio_feedback` and a non-`None` TTS
+object even when a prerecorded WAV exists. With either missing, the screen can
+still advance but the demonstration is silent.
 
 #### Tiers 2–4: listen, recognize, evaluate
 
