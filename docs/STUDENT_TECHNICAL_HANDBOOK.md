@@ -373,6 +373,70 @@ statements. They are architectural space for future shared types, not active
 model or error systems. This handbook does not assign them behavior they do
 not have.
 
+### The complete practice attempt
+
+Tier 1 and later tiers intentionally follow different teaching paths.
+
+#### Tier 1: listen and practise
+
+Tier 1 does not ask Vosk to grade an isolated sound. Speech recognizers are
+often unreliable on a single letter or phoneme, especially with children's
+voices. Instead, `AttemptRunner._run_level1_practice()`:
+
+1. selects prerecorded introduction/attention prompts;
+2. plays the target WAV file when one is available;
+3. falls back to a pronunciation override and TTS when needed;
+4. plays a “your turn” prompt;
+5. returns the screen to idle so the learner can practise;
+6. records a perfect practice attempt only when the learner chooses to advance.
+
+Replay repeats the target sound. Advancing updates evaluation and session
+progress, saves a checkpoint, and starts the next demonstration.
+
+#### Tiers 2–4: listen, recognize, evaluate
+
+For scored reading, the attempt runner works approximately like this:
+
+```mermaid
+sequenceDiagram
+    participant Scene as ReadingPromptScene
+    participant Runner as AttemptRunner worker
+    participant TTS
+    participant ASR
+    participant Rules as Validation + feedback
+    participant Services as Session + evaluation
+    participant App as GUI event queue
+
+    Scene->>Runner: start one worker
+    Runner->>TTS: announce target (first attempt)
+    Runner->>App: StateChanged(listening)
+    Runner->>ASR: transcribe(target, pause callback)
+    ASR-->>Runner: transcript + word confidences
+    Runner->>Rules: validate and build feedback
+    Runner->>App: AttemptReady(view model)
+    Runner->>TTS: speak feedback, if enabled
+    Runner->>Services: record attempt and update progress
+    Runner->>Services: save reading/result checkpoint
+    Runner->>App: next state or completion event
+```
+
+The runner considers an item correct at accuracy `>= 0.95`. A silent transcript
+is still recorded as an attempt with accuracy `0.0` and WER `1.0`; it gets a
+special “I didn't hear you” response instead of pronunciation coaching. Tier 1
+has one attempt per item, while later tiers allow three. After the final failed
+attempt, the item is marked finished and the lesson moves forward without
+pretending it was correct.
+
+`AttemptViewModel` is the bundle sent back for display. It contains expected
+text, heard text, bracket-highlighted expected text, validation details, and
+feedback. “View model” here means data already shaped for a screen, not a
+database model.
+
+When a sublevel ends, the runner asks `EvaluationService` for a result. It can
+then save a results-phase checkpoint and emit `SubLevelCompleted`. At the end
+of a tier it also produces `TierResult`. At the end of Tier 4 it produces
+`SessionCompleted` and clears the active checkpoint.
+
 ## Part III — Understand the Subsystems
 
 ### How ELLA listens: ASR
@@ -593,6 +657,225 @@ to child-friendly sound chunks, or fall back to a basic vowel-based syllable
 split. ARPAbet is a set of text symbols for English speech sounds; for example,
 `CH` maps to “ch.” This coaching is a practical heuristic, not a complete
 phonetics engine.
+
+### Levels, tiers, attempts, passing, and progression
+
+`SessionManager` owns the learner's current position. It receives all lesson
+pools, rejects an unknown start level by falling back to `1a`, and stores an
+index for every canonical level.
+
+Tier 1 uses its complete configured pool in order. Tier 2 and later use the
+entire pool when it has ten or fewer items; otherwise `random.sample()` chooses
+ten distinct items for that session. The selected mini-pool is saved in the
+checkpoint, so resuming does not silently draw a different set.
+
+There are three related but different score ideas:
+
+| Rule | Current value | Meaning |
+|---|---:|---|
+| Item correctness | `0.95` | Attempt runner treats this individual response as correct. |
+| Evaluation pass bar | `0.70` | A finished sublevel or tier passes at 70% aggregate fluency. |
+| `LEVEL_THRESHOLDS` | 0.85–1.01 | Used by `SessionManager.try_level_up()`; it is not the attempt runner's item-correct rule. |
+
+This distinction prevents a common documentation error: there is no single
+score threshold used everywhere.
+
+The session marks an item complete when it is correct or its attempts are
+exhausted. `completed_in_level` never grows beyond `level_goal`. Completion of
+the final item triggers result calculation; it does not automatically erase
+failed history. Retry operations reset in-memory attempts for the chosen
+sublevel or tier and rebuild random session pools where appropriate.
+
+`get_resume_level()` can infer a next level from passed sublevel records in a
+JSONL file, but the current profile-aware GUI resumes exact state from a
+checkpoint. The helper remains useful code, yet it is not the primary resume
+mechanism wired by `EllaGUIApp`.
+
+### Evaluation results and ratings
+
+`EvaluationService` has no Pygame dependency. It accumulates `ItemAttempt`
+records by level, calculates summaries, and appends history to JSONL.
+
+For each distinct item, aggregation remembers:
+
+- whether the **first** attempt was correct;
+- the **best accuracy** across attempts;
+- the total number of attempts.
+
+Fluency is the arithmetic mean of each item's best accuracy. Letter ratings
+use familiar bands: A at 90%+, B at 80%+, C at 70%+, D at 60%+, otherwise F.
+The default pass bar is 70%. This is an application scoring scheme, not a
+clinical measure of reading fluency.
+
+Result types build on one another:
+
+```text
+ItemAttempt → SubLevelResult → TierResult → CumulativeResult
+```
+
+Sublevel history includes every item attempt. Tier history contains the
+aggregate. Session history contains the overall summary, completed tier
+results, start/end times, and duration. JSONL means “JSON Lines”: every line is
+one complete JSON object, making append-only history practical.
+
+Example history line (fabricated and shortened):
+
+```json
+{"type":"sublevel","session_id":"2026-08-08T10:30:00","tier":2,"level":"2a","items_total":10,"first_try_correct":8,"attempts":12,"fluency":0.91,"rating":"A","passed":true}
+```
+
+Retry clears matching in-memory scoring state. Written history is normally
+append-only and is not rewritten by a retry. `reset_all()` is different: it
+clears all in-memory state and attempts to delete or empty the current history
+file. The GUI's profile reset feature reaches progress through the profile
+store rather than asking students to edit these files manually.
+
+### Profiles and per-student storage
+
+`ProfileStore` keeps at most five local learner profiles in
+`data/profiles.json`. A name must contain 1–20 printable characters and be
+unique without regard to letter case. A profile receives a random 32-character
+lowercase hexadecimal identifier and a timezone-aware creation time.
+
+Fabricated registry example:
+
+```json
+{
+  "schema_version": 1,
+  "active_profile_id": "0123456789abcdef0123456789abcdef",
+  "profiles": [
+    {
+      "id": "0123456789abcdef0123456789abcdef",
+      "name": "Example Student",
+      "created_at": "2026-08-08T10:30:00+08:00"
+    }
+  ]
+}
+```
+
+Each profile gets separate progress paths:
+
+```text
+data/profiles/<profile-id>/active_session.json
+data/profiles/<profile-id>/sessions.jsonl
+```
+
+Names and progress stay on the device, but “local” does not mean “public.”
+Profile names, recognized words, expected text, scores, and timestamps can be
+personal educational data. Do not commit real runtime data or paste it into
+bug reports without permission.
+
+Registry writes use a temporary file, flush it to storage, call `fsync()`, and
+replace the old registry with `os.replace()`. This **atomic replacement** means
+readers normally see the complete old file or complete new file, not half a
+JSON document after a power loss.
+
+Invalid registries are renamed with `.invalid-<timestamp>` and the store starts
+empty. Resetting progress first renames the profile directory, creates a clean
+replacement, and then removes the staged old data; if creation fails, it moves
+the old directory back. Deletion removes the registry entry even if cleaning
+the directory later fails, and reports that cleanup result to the caller.
+
+### Saving, restoring, and recovering sessions
+
+`SessionCheckpointStore` saves the latest stable screen state to
+`active_session.json`. It supports two phases:
+
+- `reading`: session and evaluation state, with no result payload;
+- `results`: the same state plus a validated sublevel or tier result.
+
+The document includes schema version, timezone-aware save time, selected start
+level, exact session pool and indices, current expected text, scoring state,
+and optional result. Restore validates exact field sets, known levels, pool
+membership, numeric types, finite scores, result shape, and phase/result
+consistency.
+
+```mermaid
+flowchart TD
+    AppState[Stable app state] --> Encode[Session + evaluation to dictionaries]
+    Encode --> Temp[Write temporary file]
+    Temp --> Flush[flush + fsync]
+    Flush --> Replace[Atomic os.replace]
+    Replace --> Active[active_session.json]
+    Active --> Validate{Schema and values valid?}
+    Validate -- yes --> Restore[Resume exact item or results]
+    Validate -- no --> Archive[Rename .invalid-timestamp]
+```
+
+Saving is guarded by a thread lock so two saves cannot replace the same file
+simultaneously. Corrupt or incompatible checkpoints are archived rather than
+trusted. That recovery preserves evidence for debugging while keeping the app
+from loading unsafe state.
+
+### Threads, events, cancellation, and safe shutdown
+
+Pygame expects window events and drawing on the main thread. Microphone capture,
+recognition, and spoken feedback can take seconds, so a reading attempt runs in
+a worker thread. The worker places immutable events in `app.event_queue`; the
+main thread later drains and applies them.
+
+The safe-direction rule is:
+
+```text
+worker does slow audio/validation work
+       ↓ puts messages in queue
+main thread changes visible GUI state
+```
+
+`AttemptRunner.abort()` sets a flag. Pause/cancel checks occur before and after
+speech, while waiting, in the ASR callback path, and between audio chunks. The
+runner also asks TTS to stop. A scene transition or application shutdown must
+wait for the worker to finish before replacing session state or writing a final
+checkpoint. Otherwise an old worker could save over a new session.
+
+The code uses both queue events and a few shared app fields such as
+`prompt_active`. This is a pragmatic design rather than perfect isolation.
+Tests specifically exercise refusal to navigate or save when a worker will not
+stop, because preserving learner data is more important than forcing a screen
+change.
+
+### Sound effects and prerecorded Level 1 practice
+
+`services/sound_effects.py` handles short interface sounds and prerecorded WAV
+lesson audio through Pygame's mixer. Loaded sounds are cached by path, volume,
+gain, and target peak; the cache clears after it grows past 200 entries.
+
+Quiet WAV data is processed in three stages:
+
+1. Find the largest absolute PCM sample.
+2. Normalize toward 95% of the format's maximum, scaled by volume.
+3. Apply default gain `1.8`, then a hyperbolic-tangent soft limiter above 85%
+   of the maximum to avoid hard clipping.
+
+**PCM** (pulse-code modulation) represents sound as a sequence of numeric
+samples. Hard clipping cuts peaks off abruptly and sounds harsh. A soft limiter
+curves them toward the maximum more gradually. If NumPy/Pygame conversion
+fails, the function returns the original sound instead of breaking the lesson.
+
+For Tier 1, item resolution first looks for an exact WAV such as `b.wav`, then
+for the longest filename stem contained in an item. Prompt pools provide start,
+transition, attention, action, and praise phrases. Sequence selection avoids
+recent repetition when possible. Missing item audio falls back to TTS; missing
+prompt audio simply reduces the prerecorded sequence.
+
+### Error paths and existing safeguards
+
+| Failure | Current response |
+|---|---|
+| Missing Vosk model | Raise a detailed runtime error with the checked path and setup guidance. |
+| Microphone stream cannot start | Log the problem and retry starting on transcription. |
+| TTS intro/feedback fails | Post an error or fall back to a simpler feedback line where possible. |
+| Attempt worker crashes | Keep the latest five error strings, post retry/message/error events, and clear `prompt_active`. |
+| Empty transcript | Record a failed attempt and use dedicated no-input feedback. |
+| Missing prerecorded WAV | Use TTS for the target or continue without the missing prompt. |
+| Sound amplification fails | Return and play the unmodified Pygame sound. |
+| Invalid profile registry/checkpoint | Archive it with an invalid timestamp suffix and ignore it. |
+| Atomic checkpoint write fails | Remove the temporary file and leave the previous checkpoint in place. |
+| Worker refuses to stop | Refuse unsafe navigation/final saving rather than race the worker. |
+
+The shared logger is configured by `utils/logging.py` at `INFO` level with time,
+severity, module name, and message. Some older paths still use `print()`, so
+runtime output is not yet completely centralized.
 
 ## Part IV — Work With the Project
 
