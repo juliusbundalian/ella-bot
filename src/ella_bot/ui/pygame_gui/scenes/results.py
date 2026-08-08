@@ -1,31 +1,32 @@
 from __future__ import annotations
 
+import logging
 import time
 import pygame
+
 from ella_bot.ui.pygame_gui.scene import BaseScene
-from ella_bot.utils.file_utils import resolve_asset_path
-from ella_bot.services.sound_effects import play_level_sound
+from ella_bot.ui.pygame_gui.lottie_bg import load_animated_background
+from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.ui.pygame_gui.components.confetti import ConfettiAnimation
+from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_level_sound, play_button_click
+
+logger = logging.getLogger(__name__)
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
 _OUTER_BORDER = (94, 42, 59)
 _INNER_BORDER = (255, 185, 207)
-_BTN_FILL = (255, 182, 193)
-_BTN_OUTLINE = (94, 42, 59)
-_BTN_PRESSED = (251, 165, 193)
-_BTN_DISABLED = (210, 210, 210)
-_TEXT_DARK = (56, 56, 56)
-_VALUE_PINK = (255, 155, 185)
-_RATING_STROKE = (246, 162, 188)
+_TEXT_DARK = (87, 39, 108)      # #57276C Dark Violet
+_RATING_GOLD = (242, 210, 20)    # #F2D214 Gold
 
 
 def _fmt_duration(seconds: float) -> str:
     s = max(0, int(seconds))
     m, sec = divmod(s, 60)
     if m:
-        return f"{m}min {sec}secs"
-    return f"{sec}secs"
+        return f"{m}min {sec} secs"
+    return f"{sec} secs"
 
 
 class ResultsScene(BaseScene):
@@ -33,6 +34,8 @@ class ResultsScene(BaseScene):
         super().__init__(app)
         self.pressed_button = None
         self._ribbon_img = None
+        self._lottie_bg = None
+        self._main_menu_svg = None
         self._font_letter = None
         self._font_stats = None
         self._font_complete = None
@@ -57,21 +60,54 @@ class ResultsScene(BaseScene):
             if passed:
                 self.confetti.trigger(duration=4.0)
 
-
     def _load_assets(self) -> None:
+        if self._lottie_bg is None:
+            self._lottie_bg = load_animated_background(
+                [
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._lottie_bg is None:
+                self._lottie_bg = False
+
+        if self._main_menu_svg is None:
+            try:
+                svg2_bg_path = resolve_asset_path("assets/BG/Main Menu (2).svg")
+                svg2_path = resolve_asset_path("assets/Main Menu (2).svg")
+                p1080_trans = resolve_asset_path("assets/Main Menu 1080p Transparent.png")
+                svg1_path = resolve_asset_path("assets/Main Menu (1).svg")
+                if svg2_bg_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_bg_path)).convert_alpha()
+                elif svg2_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_path)).convert_alpha()
+                elif p1080_trans.exists():
+                    self._main_menu_svg = pygame.image.load(str(p1080_trans)).convert_alpha()
+                elif svg1_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg1_path)).convert_alpha()
+            except Exception:
+                self._main_menu_svg = False
+
         if self._ribbon_img is None:
             try:
-                self._ribbon_img = pygame.image.load(
-                    str(resolve_asset_path("assets/img_ribbon_banner.png"))
-                ).convert_alpha()
+                r_png = resolve_asset_path("assets/ribbon_s_2.png")
+                r_svg = resolve_asset_path("assets/ribbon s 2.svg")
+                if r_png.exists():
+                    self._ribbon_img = pygame.image.load(str(r_png)).convert_alpha()
+                elif r_svg.exists():
+                    self._ribbon_img = pygame.image.load(str(r_svg)).convert_alpha()
             except Exception:
                 self._ribbon_img = False
+
         if self._font_letter is None:
-            self._font_letter = self.app._get_sys_font(250)
+            self._font_letter = self.app._get_sys_font(170)
         if self._font_stats is None:
-            self._font_stats = self.app._get_sys_font(40)
+            self._font_stats = self.app._get_sys_font(32)
         if self._font_complete is None:
-            self._font_complete = self.app._get_sys_font(82)
+            self._font_complete = self.app._get_sys_font(48)
 
     # --- actions ---
 
@@ -83,9 +119,10 @@ class ResultsScene(BaseScene):
 
     def _do_next(self) -> None:
         result = self.app.latest_result
-        if not getattr(result, "passed", False):
+        if result and not getattr(result, "passed", False):
             return
-        self.app.session.advance_to_higher_stage()
+        if hasattr(self.app, "session") and self.app.session:
+            self.app.session.advance_to_higher_stage()
         if not self._save_reading_transition_or_restore():
             return
         self.app.switch_scene("reading_prompt")
@@ -93,7 +130,9 @@ class ResultsScene(BaseScene):
 
     def _reset_for_retry(self) -> None:
         result = self.app.latest_result
-        if self.app.latest_result_kind == "tier":
+        if not result:
+            return
+        if getattr(self.app, "latest_result_kind", "") == "tier":
             self.app.session.retry_tier(result.tier)
             self.app.evaluation.reset_tier(result.tier)
         else:
@@ -108,234 +147,142 @@ class ResultsScene(BaseScene):
         self.app.active_scene._start_attempt()
 
     def _do_main_menu(self) -> None:
-        result = self.app.latest_result
-        if not getattr(result, "passed", True):
-            self._reset_for_retry()
-            if not self._save_reading_transition_or_restore():
-                return
-            self.app.switch_scene("main_menu")
-        else:
-            self._show_menu_confirm = True
-
-    def _do_continue_to_menu(self) -> None:
-        self.app.session.advance_to_higher_stage()
-        if not self._save_reading_transition_or_restore():
-            return
         self.app.switch_scene("main_menu")
 
-    def _do_restart_to_menu(self) -> None:
-        if self.app.start_new_session("1a"):
-            self.app.switch_scene("main_menu")
-
-    # --- input ---
-
     def handle_event(self, event) -> None:
-        if self._show_menu_confirm:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for key, rect in (
-                    ("confirm_continue", self._confirm_continue_button),
-                    ("confirm_restart", self._confirm_restart_button),
-                ):
-                    if rect and rect.collidepoint(event.pos):
-                        self.pressed_button = key
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                key = self.pressed_button
-                self.pressed_button = None
-                if key == "confirm_continue" and self._confirm_continue_button and self._confirm_continue_button.collidepoint(event.pos):
-                    self._do_continue_to_menu()
-                elif key == "confirm_restart" and self._confirm_restart_button and self._confirm_restart_button.collidepoint(event.pos):
-                    self._do_restart_to_menu()
-            return
-
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for key, rect in (("next", self.next_button), ("menu", self.menu_button)):
                 if rect and rect.collidepoint(event.pos):
                     self.pressed_button = key
+                    play_button_click()
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             key = self.pressed_button
             self.pressed_button = None
             if key == "next" and self.next_button and self.next_button.collidepoint(event.pos):
-                if getattr(self.app.latest_result, "passed", True):
+                result = getattr(self.app, "latest_result", None)
+                passed = getattr(result, "passed", True) if result else True
+                if passed:
                     self._do_next()
                 else:
                     self._do_retry()
             elif key == "menu" and self.menu_button and self.menu_button.collidepoint(event.pos):
                 self._do_main_menu()
 
-    # --- rendering helpers ---
-
-    def _draw_outlined_letter(self, screen, x, y) -> None:
-        result = self.app.latest_result
-        letter = result.rating
-        sh = self._font_letter.render(letter, True, _TEXT_DARK)
-        screen.blit(sh, (x + 8, y + 8))
-        # stroke (pink outline)
-        stroke_surf = self._font_letter.render(letter, True, _RATING_STROKE)
-        for off in ((4, 0), (-4, 0), (0, 4), (0, -4), (4, 4), (4, -4), (-4, 4), (-4, -4)):
-            screen.blit(stroke_surf, (x + off[0], y + off[1]))
-        # white fill
-        screen.blit(self._font_letter.render(letter, True, _WHITE), (x, y))
-
-    def _draw_button(self, screen, rect, label, key, enabled=True) -> None:
-        if not enabled:
-            pygame.draw.rect(screen, _BTN_DISABLED, rect, border_radius=20)
-            pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=20)
-            surf = self.app.font_body.render(label, True, _WHITE)
-            screen.blit(surf, surf.get_rect(center=rect.center))
-            return
-        is_pressed = self.pressed_button == key
-        bg = _BTN_PRESSED if is_pressed else _BTN_FILL
-        if not is_pressed:
-            pygame.draw.rect(screen, _BTN_OUTLINE,
-                             pygame.Rect(rect.left + 4, rect.top + 4, rect.width, rect.height),
-                             border_radius=20)
-        pygame.draw.rect(screen, bg, rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=20)
-        surf = self.app.font_body.render(label, True, _WHITE)
-        screen.blit(surf, surf.get_rect(center=rect.center))
-
-    def _draw_confirm_overlay(self, screen) -> None:
-        width, height = screen.get_size()
-        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        screen.blit(overlay, (0, 0))
-
-        dlg_w = int(width * 0.62)
-        dlg_h = int(height * 0.36)
-        dlg_x = (width - dlg_w) // 2
-        dlg_y = (height - dlg_h) // 2
-        dlg_rect = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
-
-        msg = self.app.font_body.render("Where would you like to go?", True, _TEXT_DARK)
-        screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.30))))
-
-        btn_w, btn_h = 190, 62
-        gap = 20
-        total_w = btn_w * 2 + gap
-        btn_y = dlg_y + dlg_h - btn_h - 24
-        self._confirm_continue_button = pygame.Rect(
-            width // 2 - total_w // 2, btn_y, btn_w, btn_h
-        )
-        self._confirm_restart_button = pygame.Rect(
-            width // 2 - total_w // 2 + btn_w + gap, btn_y, btn_w, btn_h
-        )
-        self._draw_button(screen, self._confirm_continue_button, "Continue", "confirm_continue")
-        self._draw_button(screen, self._confirm_restart_button, "Restart", "confirm_restart")
-
     def render(self) -> None:
         self._load_assets()
         screen = self.app.screen
         width, height = screen.get_size()
-        result = self.app.latest_result
-        kind = self.app.latest_result_kind
+        now_ms = pygame.time.get_ticks()
 
-        # --- card frame (identical to all other scenes) ---
-        prompt_rect = pygame.Rect(0, 0, width, height)
-        pygame.draw.rect(screen, _CARD_BG, prompt_rect, border_radius=0)
-        pygame.draw.rect(screen, _WHITE, prompt_rect.inflate(-24, -24), border_radius=56)
-        inner_rect = prompt_rect.inflate(-64, -64)
-        pygame.draw.rect(screen, _WHITE, inner_rect, border_radius=36)
+        result = getattr(self.app, "latest_result", None)
+        kind = getattr(self.app, "latest_result_kind", "sublevel")
 
-        ix, iy = inner_rect.x, inner_rect.y   # 32, 32
-
-        # --- Ribbon banner (centered horizontally) ---
-        ribbon_w, ribbon_h = 760, 190
-        ribbon_x = inner_rect.centerx - ribbon_w // 2
-        ribbon_y = iy + 50
-
-        if self._ribbon_img:
-            scaled = pygame.transform.smoothscale(self._ribbon_img, (ribbon_w, ribbon_h))
-            screen.blit(scaled, (ribbon_x, ribbon_y))
+        # 1. Render Lottie Background (same as Main Menu)
+        if self._lottie_bg:
+            vf = self._lottie_bg.get_frame(now_ms, (width, height))
+            if vf:
+                screen.blit(vf, (0, 0))
+            else:
+                screen.fill(_CARD_BG)
         else:
-            pygame.draw.rect(screen, _INNER_BORDER,
-                             pygame.Rect(ribbon_x, ribbon_y, ribbon_w, ribbon_h), border_radius=20)
+            screen.fill(_CARD_BG)
 
-        ribbon_cx = inner_rect.centerx
+        cx = width // 2
 
-        # "LEVEL X" — small, dark, centered on ribbon
-        if kind == "tier":
-            level_text = f"LEVEL {result.tier}"
+        # --- LEVEL TITLE ("LEVEL 4" / "LEVEL 1A") ---
+        if result:
+            level_str = f"LEVEL {result.tier}" if kind == "tier" else f"LEVEL {result.level.upper()}"
         else:
-            level_text = f"LEVEL {result.level.upper()}"
-        lv_surf = self.app.font_body.render(level_text, True, _TEXT_DARK)
-        lv_rect = lv_surf.get_rect(centerx=ribbon_cx, top=ribbon_y + 20)
+            level_str = "LEVEL 4"
+
+        lv_font = getattr(self.app, "font_button", self.app.font_title)
+        lv_surf = lv_font.render(level_str, True, (87, 39, 108))
+        lv_rect = lv_surf.get_rect(centerx=cx, top=45)
         screen.blit(lv_surf, lv_rect)
 
-        # "COMPLETE!" / "LEVEL UP!" — large, white, shadow, centered on ribbon
-        if kind == "tier" and getattr(result, "passed", True):
-            complete_text = "LEVEL UP!"
-        else:
-            complete_text = "COMPLETE!"
-        cmp_surf = self._font_complete.render(complete_text, True, _WHITE)
-        cmp_shadow = self._font_complete.render(complete_text, True, _TEXT_DARK)
-        cmp_rect = cmp_surf.get_rect(centerx=ribbon_cx, top=ribbon_y + 45)
-        screen.blit(cmp_shadow, (cmp_rect.x + 2, cmp_rect.y + 3))
-        screen.blit(cmp_surf, cmp_rect)
+        # --- YELLOW RIBBON ("Complete") ---
+        ribbon_w, ribbon_h = 460, 128
+        ribbon_x = cx - ribbon_w // 2
+        ribbon_y = lv_rect.bottom + 4
 
-        # --- Large outlined rating letter + "Rating" label (left section) ---
-        # Center the group horizontally in the left half and vertically between ribbon and buttons
-        btn_h_ref = 70
-        btn_y_ref = inner_rect.bottom - btn_h_ref - 48
-        ribbon_bottom = ribbon_y + ribbon_h
-        content_cy = (ribbon_bottom + btn_y_ref) // 2
+        if self._ribbon_img:
+            scaled_ribbon = pygame.transform.smoothscale(self._ribbon_img, (ribbon_w, ribbon_h))
+            screen.blit(scaled_ribbon, (ribbon_x, ribbon_y))
 
-        letter_surf = self._font_letter.render(result.rating, True, _WHITE)
-        rating_lbl = self._font_stats.render("Rating", True, _TEXT_DARK)
-        lbl_gap = 18
+        # --- RATING LETTER ("A") ---
+        rating_str = result.rating if result else "A"
+        letter_surf = self._font_letter.render(rating_str, True, (242, 210, 20))
+        letter_shadow = self._font_letter.render(rating_str, True, (175, 141, 55))
 
-        group_w = rating_lbl.get_width() + lbl_gap + letter_surf.get_width()
-        left_section_cx = ix + inner_rect.width * 3 // 8   # 3/8 across = right of left-quarter
-        group_left = left_section_cx - group_w // 2
+        letter_rect = letter_surf.get_rect(centerx=cx, centery=ribbon_y + ribbon_h + 35)
+        for off_x, off_y in ((-3, 0), (3, 0), (0, -3), (0, 3), (3, 3)):
+            screen.blit(letter_shadow, letter_rect.move(off_x, off_y))
+        screen.blit(letter_surf, letter_rect)
 
-        letter_x = group_left + rating_lbl.get_width() + lbl_gap
-        letter_y = content_cy - letter_surf.get_height() // 2 - 23
-        self._draw_outlined_letter(screen, letter_x, letter_y)
+        # --- "RATINGS" PILL BADGE (#7F3F97 without outline) ---
+        badge_w, badge_h = 220, 48
+        badge_rect = pygame.Rect(cx - badge_w // 2, letter_rect.bottom + 6, badge_w, badge_h)
+        pygame.draw.rect(screen, (127, 63, 151), badge_rect, border_radius=24)
 
-        rating_rect = rating_lbl.get_rect(
-            left=group_left,
-            centery=content_cy - 23,
-        )
-        screen.blit(rating_lbl, rating_rect)
+        rat_surf = self.app.font_body.render("RATINGS", True, (242, 210, 20))
+        screen.blit(rat_surf, rat_surf.get_rect(center=badge_rect.center))
 
-        # --- Stats grid (right section, vertically centered around content_cy) ---
-        label_x = inner_rect.centerx + 30
-        row_spacing = 68
-        rows = [
-            ("Score:", f"{result.first_try_correct}/{result.items_total}", content_cy - row_spacing - 30),
-            ("Fluency:", f"{round(result.fluency * 100)}%", content_cy - 30),
-            ("Time:", _fmt_duration(self._elapsed) if self._elapsed is not None else "--", content_cy + row_spacing - 30),
-        ]
-        for lbl_text, val_text, row_y in rows:
-            lbl_surf = self._font_stats.render(lbl_text, True, _TEXT_DARK)
-            val_surf = self._font_stats.render(val_text, True, _VALUE_PINK)
-            screen.blit(lbl_surf, (label_x, row_y))
-            screen.blit(val_surf, (label_x + lbl_surf.get_width() + 14, row_y))
+        # --- SCORE & FLUENCY CIRCLES (#7F3F97 fill without outlines) ---
+        circ_size = 116
+        circ_cy = letter_rect.centery + 24
+        font_circ_val = getattr(self, "_font_circ_val", None) or self.app._get_sys_font(28)
 
-        # --- Buttons (centered, matching Figma positions) ---
-        btn_w, btn_h = 297, 70
-        total_btn_w = btn_w * 2 + 50
-        btn_x0 = inner_rect.centerx - total_btn_w // 2
-        btn_y = inner_rect.bottom - btn_h - 48
+        # LEFT CIRCLE: SCORE ("10/10 SCORE" or "5/5 SCORE")
+        score_cx = cx - 210
+        pygame.draw.circle(screen, (127, 63, 151), (score_cx, circ_cy), circ_size // 2)
 
-        self.menu_button = pygame.Rect(btn_x0, btn_y, btn_w, btn_h)
-        self.next_button = pygame.Rect(btn_x0 + btn_w + 50, btn_y, btn_w, btn_h)
+        score_val = f"{result.first_try_correct}/{result.items_total}" if result else "10/10"
+        s1 = font_circ_val.render(score_val, True, (255, 250, 243))
+        s2 = self.app.font_small.render("SCORE", True, (242, 210, 20))
+        screen.blit(s1, s1.get_rect(center=(score_cx, circ_cy - 12)))
+        screen.blit(s2, s2.get_rect(center=(score_cx, circ_cy + 18)))
 
-        if getattr(result, "passed", True):
-            next_label = "Next Level" if kind == "tier" else "Continue"
-        else:
-            next_label = "Retry"
-        self._draw_button(screen, self.menu_button, "Main Menu", "menu")
-        self._draw_button(screen, self.next_button, next_label, "next")
+        # RIGHT CIRCLE: FLUENCY ("100% FLUENCY" or "90% FLUENCY")
+        fluency_cx = cx + 210
+        pygame.draw.circle(screen, (127, 63, 151), (fluency_cx, circ_cy), circ_size // 2)
 
-        # --- Borders drawn last (on top of all content) ---
-        pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
-        pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
+        fl_val = f"{round(result.fluency * 100)}%" if result else "100%"
+        f1 = font_circ_val.render(fl_val, True, (255, 250, 243))
+        f2 = self.app.font_small.render("FLUENCY", True, (242, 210, 20))
+        screen.blit(f1, f1.get_rect(center=(fluency_cx, circ_cy - 12)))
+        screen.blit(f2, f2.get_rect(center=(fluency_cx, circ_cy + 18)))
 
-        # --- Render celebratory confetti animation on pass ---
+        # --- TIME ROW ("TIME 1min 20 secs") (#7F3F97 badge without outline) ---
+        time_y = badge_rect.bottom + 18
+        time_badge_w, time_badge_h = 120, 34
+        time_badge = pygame.Rect(cx - 150, time_y, time_badge_w, time_badge_h)
+        pygame.draw.rect(screen, (127, 63, 151), time_badge, border_radius=17)
+
+        t_lbl = self.app.font_small.render("TIME", True, (242, 210, 20))
+        screen.blit(t_lbl, t_lbl.get_rect(center=time_badge.center))
+
+        t_val_str = _fmt_duration(self._elapsed) if self._elapsed is not None else "1min 20 secs"
+        t_val = self.app.font_body.render(t_val_str, True, (87, 39, 108))
+        screen.blit(t_val, (time_badge.right + 16, time_y + (time_badge_h - t_val.get_height()) // 2))
+
+        # --- BOTTOM BUTTONS: MAIN MENU (Violet) & CONTINUE/RETRY (Yellow) ---
+        btn_w, btn_h = 285, 64
+        btn_gap = 30
+        btn_y = height - btn_h - 45
+
+        self.menu_button = pygame.Rect(cx - btn_w - btn_gap // 2, btn_y, btn_w, btn_h)
+        self.next_button = pygame.Rect(cx + btn_gap // 2, btn_y, btn_w, btn_h)
+
+        menu_btn = Button(self.menu_button, label="Main Menu", variant="violet", font=self.app.font_button, stroke_weight=8)
+        menu_btn.is_pressed = (self.pressed_button == "menu")
+        menu_btn.draw(screen)
+
+        passed = getattr(result, "passed", True) if result else True
+        next_label = "Continue" if passed else "Retry"
+
+        cont_btn = Button(self.next_button, label=next_label, variant="yellow", font=self.app.font_button, stroke_weight=8)
+        cont_btn.is_pressed = (self.pressed_button == "next")
+        cont_btn.draw(screen)
+
+        # Celebratory confetti animation on pass
         self.confetti.update_and_render(pygame, screen)
-
-        if self._show_menu_confirm:
-            self._draw_confirm_overlay(screen)
-

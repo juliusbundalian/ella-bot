@@ -1,0 +1,109 @@
+{
+  "evaluation": {
+    "attempts": {
+      "1b": [
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "b",
+          "heard": "b",
+          "item": 1,
+          "ts": "2026-08-07T22:52:13",
+          "wer": 0.0
+        },
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "c",
+          "heard": "c",
+          "item": 2,
+          "ts": "2026-08-07T22:52:19",
+          "wer": 0.0
+        },
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "d",
+          "heard": "d",
+          "item": 3,
+          "ts": "2026-08-07T22:52:25",
+          "wer": 0.0
+        },
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "f",
+          "heard": "f",
+          "item": 4,
+          "ts": "2026-08-07T22:52:30",
+          "wer": 0.0
+        },
+        {
+          "accuracy": 1.0,
+          "correct": true,
+          "expected": "g",
+          "heard": "g",
+          "item": 5,
+          "ts": "2026-08-07T22:52:35",
+          "wer": 0.0
+        }
+      ]
+    },
+    "session_id": "2026-08-07T22:52:03",
+    "started_at": "2026-08-07T22:52:03.226624",
+    "tier_results": {}
+  },
+  "latest_result": null,
+  "latest_result_kind": null,
+  "phase": "reading",
+  "saved_at": "2026-08-07T22:52:40+08:00",
+  "schema_version": 1,
+  "selected_start_level": "1b",
+  "session": {
+    "completed_in_level": 5,
+    "current_level": "1b",
+    "expected_sentence": "h",
+    "last_announced_sentence": "h",
+    "level_goal": 21,
+    "level_indices": {
+      "1a": 0,
+      "1b": 5,
+      "1c": 0,
+      "1d": 0,
+      "1e": 0,
+      "1f": 0,
+      "1g": 0,
+      "2a": 0,
+      "2b": 0,
+      "2c": 0,
+      "2d": 0,
+      "3": 0,
+      "4": 0
+    },
+    "session_pools": {
+      "1b": [
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "h",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z"
+      ]
+    }
+  }
+}

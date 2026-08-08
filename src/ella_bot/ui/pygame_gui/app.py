@@ -328,6 +328,8 @@ class EllaGUIApp:
             self.message = "Saved progress could not be restored."
             return None
         self.session = restored.session
+        if hasattr(self.session, "last_announced_sentence"):
+            self.session.last_announced_sentence = ""
         self.evaluation = restored.evaluation
         self.selected_start_level = restored.selected_start_level
         self.latest_result_kind = restored.latest_result_kind

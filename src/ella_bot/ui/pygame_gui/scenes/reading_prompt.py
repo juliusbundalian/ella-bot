@@ -11,6 +11,9 @@ from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
+from ella_bot.ui.pygame_gui.components.button import Button
+from ella_bot.services.sound_effects import play_button_click
+from ella_bot.core.constants import tier_of
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 from ella_bot.validation.validators import (
@@ -33,13 +36,43 @@ class ReadingPromptScene(BaseScene):
         self.modal = PauseModal(self.app)
         self.is_paused = False
         self.menu_button_rect: Optional[pygame.Rect] = None
+        self.replay_button_rect: Optional[pygame.Rect] = None
+        self.next_button_rect: Optional[pygame.Rect] = None
         self._icon_menu = None
         self.bot = BotSprite()
         self.runner = AttemptRunner(self.app, lambda: self.is_paused)
         self._auto_start_at: float | None = None
         self.pre_pause_state = "idle"
+        self._lottie_bg = None
+
+    def _load_assets(self) -> None:
+        if getattr(self, "_lottie_bg", None) is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_config_path
+                from pathlib import Path
+                from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+                lottie_file = resolve_config_path("assets/Reading_bg.lottie")
+                if not lottie_file.exists():
+                    lottie_file = Path("assets/Reading_bg.lottie")
+                self._lottie_bg = LottieBackground(lottie_file)
+            except Exception:
+                self._lottie_bg = None
+
+        if getattr(self, "_settings_icon", None) is None:
+            try:
+                from ella_bot.utils.file_utils import resolve_asset_path
+                svg_text = resolve_asset_path("assets/ic_settings.svg").read_text(encoding="utf-8")
+                svg_tinted = (
+                    svg_text.replace('fill="#FFFFFF"', 'fill="#FFFAF3"')
+                    .replace('height="24px"', 'height="44px"')
+                    .replace('width="24px"', 'width="44px"')
+                )
+                self._settings_icon = pygame.image.load(io.BytesIO(svg_tinted.encode("utf-8"))).convert_alpha()
+            except Exception:
+                self._settings_icon = False
 
     def on_enter(self) -> None:
+        self._load_assets()
         self.app.state = "idle"
         self.app.message = ""
         self.app.prompt_active = False
@@ -48,6 +81,8 @@ class ReadingPromptScene(BaseScene):
         self._touch_activity()
         self.app.animator.set_state("idle", reset=True)
         self.app.sublevel_start_time = time.monotonic()
+        if hasattr(self.app, "session") and hasattr(self.app.session, "last_announced_sentence"):
+            self.app.session.last_announced_sentence = ""
 
         # Drain and clear the event queue to prevent any stale background thread events from leaking
         self._drain_event_queue()
@@ -88,9 +123,15 @@ class ReadingPromptScene(BaseScene):
         self.last_activity_monotonic = time.monotonic()
 
     def handle_event(self, event) -> None:
+        is_level_1 = False
+        if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.modal.visible:
                 action = self.modal.hit_test(event.pos)
+                if action and action != "consumed":
+                    play_button_click()
                 if action == "close":
                     if self.modal.show_confirm:
                         self.modal.show_confirm = False
@@ -123,10 +164,21 @@ class ReadingPromptScene(BaseScene):
                 return  # "consumed" — click inside modal but no button hit
 
             if self.menu_button_rect and self.menu_button_rect.collidepoint(event.pos):
+                play_button_click()
                 self._set_paused(True)
                 return
 
-            self._start_attempt()
+            if is_level_1:
+                if self.replay_button_rect and self.replay_button_rect.collidepoint(event.pos):
+                    play_button_click()
+                    self._replay_level1_audio()
+                    return
+                if self.next_button_rect and self.next_button_rect.collidepoint(event.pos):
+                    play_button_click()
+                    self._advance_level1_item()
+                    return
+            else:
+                self._start_attempt()
         elif event.type == pygame.KEYDOWN:
             if self.modal.visible:
                 return
@@ -134,15 +186,25 @@ class ReadingPromptScene(BaseScene):
                 self.app.switch_scene("main_menu")
             elif event.key == pygame.K_SPACE:
                 self._touch_activity()
-                self._start_attempt()
+                if is_level_1:
+                    self._advance_level1_item()
+                else:
+                    self._start_attempt()
+            elif event.key in (pygame.K_n, pygame.K_RETURN):
+                if is_level_1:
+                    self._touch_activity()
+                    self._advance_level1_item()
             elif event.key == pygame.K_r:
                 self._touch_activity()
-                self._speak_last_feedback()
+                if is_level_1:
+                    self._replay_level1_audio()
+                else:
+                    self._speak_last_feedback()
             elif event.key == pygame.K_o:
                 self._touch_activity()
-                if self.app.asr is not None:
+                if not is_level_1 and self.app.asr is not None:
                     self.app.asr.bypass_transcription = self.app.expected_sentence
-                self._start_attempt()
+                    self._start_attempt()
 
     def _abort_paused_attempt(self) -> bool:
         self._auto_start_at = None
@@ -175,7 +237,8 @@ class ReadingPromptScene(BaseScene):
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
         if not self.modal.visible:
-            self.bot.update(now_ms, self.app.state)
+            tts_amp = getattr(self.app.tts, "current_amplitude", 0.0) if getattr(self.app, "tts", None) else 0.0
+            self.bot.update(now_ms, self.app.state, tts_amplitude=tts_amp)
 
         if self.modal.visible:
             return
@@ -193,9 +256,20 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.put(MessageChanged(""))
 
     def render(self) -> None:
+        self._load_assets()
         screen = self.app.screen
         width, height = screen.get_size()
-        draw_gradient(screen, self.app.config, pygame)
+        now_ms = pygame.time.get_ticks()
+
+        # Render Lottie Reading Background (Reading_bg.lottie)
+        if self._lottie_bg:
+            vf = self._lottie_bg.get_frame(now_ms, (width, height))
+            if vf:
+                screen.blit(vf, (0, 0))
+            else:
+                draw_gradient(screen, self.app.config, pygame)
+        else:
+            draw_gradient(screen, self.app.config, pygame)
 
         prompt_padding = 0
         prompt_rect = pygame.Rect(
@@ -205,56 +279,45 @@ class ReadingPromptScene(BaseScene):
             height - prompt_padding * 2,
         )
 
-        card_color = (0, 0, 0)
-        inner_card_color = (255, 255, 255)
+        inner_rect = prompt_rect.inflate(-64, -64)
         outer_border = (94, 42, 59)
         inner_border = (255, 185, 207)
-        pygame.draw.rect(screen, card_color, prompt_rect, border_radius=0)
 
-        middle_rect = prompt_rect.inflate(-24, -24)
-        pygame.draw.rect(screen, inner_card_color, middle_rect, border_radius=56)
-
-        inner_rect = prompt_rect.inflate(-64, -64)
-        pygame.draw.rect(screen, inner_card_color, inner_rect, border_radius=36)
-
-        label_text = f"Level {self.app._display_level_name()} | Item {self.app._current_item_number()}"
-        label_bg = (230, 127, 159)
-        label_fg = (255, 255, 255)
+        # 1. Level Indicator (Top-Centered Pill matching Figma spec)
+        level_str = str(self.app._display_level_name()).upper()
+        item_num = self.app._current_item_number()
+        label_text = f"LEVEL {level_str} | Item {item_num}"
+        label_bg = (216, 150, 216)   # Pink/violet pill fill
+        label_fg = (87, 39, 108)     # Dark violet text
         label_surf = self.app.font_subtitle.render(label_text, True, label_fg)
-        label_pad_x = 24
+        label_pad_x = 28
         label_pad_y = 12
-        label_rect = label_surf.get_rect()
-        label_rect.topleft = (inner_rect.left + 48, inner_rect.top + 36)
+        label_rect = label_surf.get_rect(centerx=width // 2, top=28)
         pill_rect = pygame.Rect(
             label_rect.left - label_pad_x,
             label_rect.top - label_pad_y,
             label_rect.width + label_pad_x * 2,
             label_rect.height + label_pad_y * 2,
         )
-        pygame.draw.rect(screen, label_bg, pill_rect, border_radius=12)
+        pygame.draw.rect(screen, label_bg, pill_rect, border_radius=24)
+        pygame.draw.rect(screen, (127, 63, 151), pill_rect, width=3, border_radius=24)
         screen.blit(label_surf, label_rect)
 
-        menu_rect = pygame.Rect(inner_rect.right - 84, inner_rect.top + 24, 56, 56)
-        self.menu_button_rect = menu_rect
-        if self._icon_menu is None:
-            try:
-                from ella_bot.utils.file_utils import resolve_asset_path
-                svg_text = resolve_asset_path("assets/ic_menu.svg").read_text()
-                svg_sized = (svg_text
-                             .replace('height="24px"', 'height="32px"')
-                             .replace('width="24px"', 'width="32px"'))
-                self._icon_menu = pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha()
-            except Exception:
-                self._icon_menu = False
-        btn_fill = (255, 182, 193)
-        btn_outline = (94, 42, 59)
-        pygame.draw.rect(screen, btn_outline,
-                         pygame.Rect(menu_rect.left + 4, menu_rect.top + 4, menu_rect.width, menu_rect.height),
-                         border_radius=12)
-        pygame.draw.rect(screen, btn_fill, menu_rect, border_radius=12)
-        pygame.draw.rect(screen, btn_outline, menu_rect, width=2, border_radius=12)
-        if self._icon_menu not in (None, False):
-            screen.blit(self._icon_menu, self._icon_menu.get_rect(center=menu_rect.center))
+        # 2. Settings / Pause Button (Left-Centered circular gear button matching Main Menu)
+        gear_size = 80
+        gear_x = 40
+        gear_y = height // 2 - gear_size // 2
+        self.menu_button_rect = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
+
+        pause_btn = Button(
+            self.menu_button_rect,
+            icon=self._settings_icon if self._settings_icon else None,
+            variant="violet",
+            stroke_weight=8,
+            corner_radius=50,
+        )
+        pause_btn.is_pressed = (self.is_paused or self.modal.visible)
+        pause_btn.draw(screen)
 
         prompt_font, prompt_text_rect = self._prompt_layout(inner_rect, pygame)
         if prompt_font is not None:
@@ -271,8 +334,38 @@ class ReadingPromptScene(BaseScene):
 
         self.bot.draw(screen, inner_rect)
 
-        pygame.draw.rect(screen, outer_border, prompt_rect, width=12, border_radius=68)
-        pygame.draw.rect(screen, inner_border, inner_rect, width=12, border_radius=36)
+        is_level_1 = False
+        if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
+
+        if is_level_1:
+            btn_w, btn_h = 180, 56
+            gap = 24
+            center_x = width // 2
+            btn_y = height - 90
+
+            self.replay_button_rect = pygame.Rect(center_x - btn_w - gap // 2, btn_y, btn_w, btn_h)
+            self.next_button_rect = pygame.Rect(center_x + gap // 2, btn_y, btn_w, btn_h)
+
+            replay_btn = Button(
+                self.replay_button_rect,
+                label="Replay",
+                variant="violet",
+                font=self.app.font_button,
+                stroke_weight=6,
+            )
+            next_btn = Button(
+                self.next_button_rect,
+                label="Next",
+                variant="yellow",
+                font=self.app.font_button,
+                stroke_weight=6,
+            )
+            replay_btn.draw(screen)
+            next_btn.draw(screen)
+        else:
+            self.replay_button_rect = None
+            self.next_button_rect = None
 
         self.modal.render(screen, inner_rect)
 
@@ -325,6 +418,7 @@ class ReadingPromptScene(BaseScene):
         return None, text_rect
 
     def _start_attempt(self) -> None:
+        self._auto_start_at = None
         if self.worker_thread and self.worker_thread.is_alive():
             return
         if self.is_paused:
@@ -594,3 +688,20 @@ class ReadingPromptScene(BaseScene):
                 self.app.event_queue.put(MessageChanged(""))
             else:
                 self.app.event_queue.put(StateChanged(self.pre_pause_state))
+
+    def _replay_level1_audio(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        if self.is_paused:
+            return
+        self.worker_thread = threading.Thread(target=self.runner.replay_level1, daemon=True)
+        self.worker_thread.start()
+
+    def _advance_level1_item(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        if self.is_paused:
+            return
+        self.worker_thread = threading.Thread(target=self.runner.advance_level1, daemon=True)
+        self.worker_thread.start()
+

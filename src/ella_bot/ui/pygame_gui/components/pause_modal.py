@@ -1,29 +1,15 @@
 from __future__ import annotations
 
-import io
 from typing import Optional
-
 import pygame
 
-_WHITE = (255, 255, 255)
-_BTN_FILL = (255, 182, 193)
-_BTN_OUTLINE = (94, 42, 59)
-_BTN_PRESSED = (251, 165, 193)
-_DANGER = (255, 99, 122)
-_TITLE_COLOR = (230, 127, 159)
-_SEG_ACTIVE_FILL = (255, 185, 210)
-_SEG_INACTIVE_BORDER = (56, 56, 56)
+from ella_bot.ui.pygame_gui.components.button import Button
 
-_MODAL_W = 520
-_HEADER_H = 72
-_FOOTER_H = 36        # pink decorative strip — change only this
-_MODAL_H = 542        # total height — fixed regardless of footer size
-_BODY_H = _MODAL_H - _HEADER_H - _FOOTER_H   # auto-computed
-_MODAL_H_CONFIRM = _HEADER_H + 200   # 232 — header + message + yes/no buttons with margin
+_VOLUME_MAX = 6
 
 
 class PauseModal:
-    """Options overlay with volume/listen steppers and a nested confirm dialog."""
+    """Options / Pause overlay during reading level matching Figma design specs."""
 
     def __init__(self, app) -> None:
         self.app = app
@@ -33,11 +19,6 @@ class PauseModal:
         self._pressed_button: Optional[str] = None
         self.volume_level: int = 6
         self.listen_seconds: int = 5
-
-        self._icon_add = None
-        self._icon_remove = None
-        self._icon_close = None
-        self._modal_title_font = None
 
         self.restart_rect: Optional[pygame.Rect] = None
         self.main_menu_rect: Optional[pygame.Rect] = None
@@ -77,32 +58,6 @@ class PauseModal:
         self.confirm_action = None
         self._pressed_button = None
 
-    def _load_assets(self) -> None:
-        from ella_bot.utils.file_utils import resolve_asset_path
-        for attr, filename, size in [
-            ("_icon_add", "assets/ic_add.svg", 32),
-            ("_icon_remove", "assets/ic_remove.svg", 32),
-            ("_icon_close", "assets/ic_close.svg", 28),
-        ]:
-            if getattr(self, attr) is None:
-                try:
-                    svg_text = resolve_asset_path(filename).read_text()
-                    svg_sized = (svg_text
-                                 .replace('height="24px"', f'height="{size}px"')
-                                 .replace('width="24px"', f'width="{size}px"'))
-                    setattr(self, attr, pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha())
-                except Exception:
-                    setattr(self, attr, False)
-
-        if self._modal_title_font is None:
-            try:
-                self._modal_title_font = pygame.font.SysFont(
-                    ["Changa One", "Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"],
-                    36
-                )
-            except Exception:
-                self._modal_title_font = self.app.font_body
-
     def _tap_volume(self, delta: int) -> None:
         from ella_bot.config.app_config import save_setting
         self.volume_level = max(1, min(6, self.volume_level + delta))
@@ -112,25 +67,28 @@ class PauseModal:
 
     def _tap_listen(self, delta: int) -> None:
         from ella_bot.config.app_config import save_setting
-        self.listen_seconds = max(5, min(10, self.listen_seconds + delta))
+        self.listen_seconds = max(5, min(12, self.listen_seconds + delta))
         if self.app.asr is not None:
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_button(self, screen, rect, label, key, radius=18, icon=None) -> None:
-        is_pressed = self._pressed_button == key
-        bg = _BTN_PRESSED if is_pressed else _BTN_FILL
+    def _draw_circular_button(self, screen: pygame.Surface, rect: pygame.Rect, symbol: str, is_pressed: bool) -> None:
+        cx, cy = rect.center
+        r = rect.width // 2
+
         if not is_pressed:
-            pygame.draw.rect(screen, _BTN_OUTLINE,
-                             pygame.Rect(rect.left + 4, rect.top + 4, rect.width, rect.height),
-                             border_radius=radius)
-        pygame.draw.rect(screen, bg, rect, border_radius=radius)
-        pygame.draw.rect(screen, _BTN_OUTLINE, rect, width=2, border_radius=radius)
-        if icon:
-            screen.blit(icon, icon.get_rect(center=rect.center))
-        else:
-            surf = self.app.font_body.render(label, True, _WHITE)
-            screen.blit(surf, surf.get_rect(center=rect.center))
+            pygame.draw.circle(screen, (35, 10, 45), (cx + 3, cy + 3), r)
+
+        fill_col = (70, 30, 90) if is_pressed else (87, 39, 108)  # #57276C
+        stroke_col = (127, 63, 151)  # #7F3F97
+
+        pygame.draw.circle(screen, fill_col, (cx, cy), r)
+        pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
+
+        font = getattr(self.app, "font_button", self.app.font_title)
+        symbol_text = "X" if symbol.lower() == "x" else symbol
+        surf = font.render(symbol_text, True, (255, 250, 243))
+        screen.blit(surf, surf.get_rect(center=(cx, cy)))
 
     def hit_test(self, pos) -> Optional[str]:
         if self.show_confirm:
@@ -165,181 +123,137 @@ class PauseModal:
 
         return None
 
-    def render(self, screen, prompt_rect) -> None:
+    def render(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
         if not self.visible:
             return
 
-        self._load_assets()
-
-        # Dark overlay
+        # Semi-transparent dark backdrop
         overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        # Modal rect — width 520, height responsive, centered on prompt_rect
-        modal_h = _MODAL_H_CONFIRM if self.show_confirm else _MODAL_H
-        modal_x = prompt_rect.centerx - _MODAL_W // 2
-        modal_y = prompt_rect.centery - modal_h // 2
-        modal_rect = pygame.Rect(modal_x, modal_y, _MODAL_W, modal_h)
+        # Main Dialog Card (Figma spec 720x540)
+        card_w, card_h = 720, 540
+        card_x = prompt_rect.centerx - card_w // 2
+        card_y = prompt_rect.centery - card_h // 2 + 10
+        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
 
-        header_rect = pygame.Rect(modal_rect.left, modal_rect.top, modal_rect.width, _HEADER_H)
+        # Drop shadow
+        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(5, 5), border_radius=140)
+        # Main body (#57276C) & Border (#7F3F97)
+        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=140)
+        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=140)
 
-        if not self.show_confirm:
-            footer_rect = pygame.Rect(
-                modal_rect.left, modal_rect.bottom - _FOOTER_H,
-                modal_rect.width, _FOOTER_H
-            )
-            body_rect = pygame.Rect(
-                modal_rect.left, modal_rect.top + _HEADER_H,
-                modal_rect.width, _BODY_H
-            )
-        else:
-            footer_rect = None
-            body_rect = pygame.Rect(
-                modal_rect.left, modal_rect.top + _HEADER_H,
-                modal_rect.width, modal_h - _HEADER_H
-            )
+        cx = card_rect.centerx
 
-        # Draw modal base (white, fully rounded)
-        pygame.draw.rect(screen, _WHITE, modal_rect, border_radius=24)
-        # Header (pink, top corners only)
-        pygame.draw.rect(screen, _BTN_FILL, header_rect,
-                         border_top_left_radius=24, border_top_right_radius=24,
-                         border_bottom_left_radius=0, border_bottom_right_radius=0)
-        # Footer (pink, bottom corners only) — normal mode only
-        if footer_rect is not None:
-            pygame.draw.rect(screen, _BTN_FILL, footer_rect,
-                             border_top_left_radius=0, border_top_right_radius=0,
-                             border_bottom_left_radius=24, border_bottom_right_radius=24)
-        # Outer border on top
-        pygame.draw.rect(screen, _BTN_OUTLINE, modal_rect, width=4, border_radius=24)
+        # Top Banner "Options"
+        banner_w, banner_h = 280, 58
+        banner_rect = pygame.Rect(cx - banner_w // 2, card_rect.top - 18, banner_w, banner_h)
+        banner_btn = Button(banner_rect, label="Options", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        banner_btn.draw(screen)
 
-        # --- Header content ---
-        title_surf = self._modal_title_font.render("Options", True, _WHITE)
-        title_cy = modal_rect.top + _HEADER_H // 2
-        screen.blit(title_surf, title_surf.get_rect(left=modal_rect.left + 24, centery=title_cy))
+        # Top-Right Close "X" Button
+        close_sz = 56
+        self.close_rect = pygame.Rect(card_rect.right - close_sz - 24, card_rect.top + 16, close_sz, close_sz)
+        self._draw_circular_button(screen, self.close_rect, "X", self._pressed_button == "close")
 
-        close_w, close_h = 44, 44
-        close_rect = pygame.Rect(modal_rect.right - 16 - close_w, modal_rect.top + 14, close_w, close_h)
-        self.close_rect = close_rect
-        # Shadow-rect style with danger fill
-        pygame.draw.rect(screen, _BTN_OUTLINE,
-                         pygame.Rect(close_rect.left + 4, close_rect.top + 4, close_w, close_h),
-                         border_radius=12)
-        pygame.draw.rect(screen, _DANGER, close_rect, border_radius=12)
-        pygame.draw.rect(screen, _BTN_OUTLINE, close_rect, width=2, border_radius=12)
-        if self._icon_close not in (None, False):
-            screen.blit(self._icon_close, self._icon_close.get_rect(center=close_rect.center))
+        if self.show_confirm:
+            self._draw_confirm(screen, card_rect)
+            return
 
-        # --- Body ---
-        if not self.show_confirm:
-            self._draw_body(screen, modal_rect, body_rect)
-        else:
-            self._draw_confirm(screen, modal_rect, body_rect)
+        title_font = getattr(self.app, "font_button", self.app.font_title)
 
-    def _draw_body(self, screen, modal_rect, body_rect) -> None:
-        seg_w, seg_h, seg_gap = 48, 24, 8
-        total_seg_w = 6 * seg_w + 5 * seg_gap
-        btn_sz = 56
-        btn_radius = 14
-        btn_gap = 16  # gap between button edge and segment group
+        # 1. VOLUME SECTION
+        vol_y = card_rect.top + 75
+        vol_lbl = title_font.render("Volume", True, (227, 198, 236))
+        screen.blit(vol_lbl, vol_lbl.get_rect(centerx=cx, top=vol_y))
 
-        body_top = body_rect.top
-        body_cx = modal_rect.centerx
+        vol_row_cy = vol_y + vol_lbl.get_height() + 22
+        btn_sz = 54
+        seg_w, seg_h, seg_gap = 44, 26, 12
+        total_seg_w = _VOLUME_MAX * seg_w + (_VOLUME_MAX - 1) * seg_gap
+        seg_x0 = cx - total_seg_w // 2
 
-        # --- Volume section ---
-        vol_label_y = body_top + 24
-        vol_lbl = self.app.font_body.render("Volume", True, (50, 50, 50))
-        screen.blit(vol_lbl, vol_lbl.get_rect(centerx=body_cx, top=vol_label_y))
-
-        vol_row_cy = vol_label_y + vol_lbl.get_height() + 16 + btn_sz // 2
-        seg_x0 = body_cx - total_seg_w // 2
-        seg_y = vol_row_cy - seg_h // 2
-
-        for i in range(6):
+        for i in range(_VOLUME_MAX):
             rx = seg_x0 + i * (seg_w + seg_gap)
+            ry = vol_row_cy - seg_h // 2
+            pill_r = pygame.Rect(rx, ry, seg_w, seg_h)
             if (i + 1) <= self.volume_level:
-                pygame.draw.rect(screen, _BTN_OUTLINE,
-                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
-                pygame.draw.rect(screen, _SEG_ACTIVE_FILL, (rx, seg_y, seg_w, seg_h), border_radius=8)
-                pygame.draw.rect(screen, _BTN_OUTLINE, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
+                pygame.draw.rect(screen, (242, 210, 20), pill_r, border_radius=13)  # Gold fill
+                pygame.draw.rect(screen, (175, 141, 55), pill_r, width=3, border_radius=13)
             else:
-                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER,
-                                 pygame.Rect(rx + 4, seg_y + 2, seg_w, seg_h), border_radius=8)
-                pygame.draw.rect(screen, _WHITE, (rx, seg_y, seg_w, seg_h), border_radius=8)
-                pygame.draw.rect(screen, _SEG_INACTIVE_BORDER, (rx, seg_y, seg_w, seg_h), width=1, border_radius=8)
+                pygame.draw.rect(screen, (70, 30, 90), pill_r, border_radius=13)
+                pygame.draw.rect(screen, (127, 63, 151), pill_r, width=3, border_radius=13)
 
-        self._vol_minus_rect = pygame.Rect(seg_x0 - btn_gap - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + btn_gap, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_button(screen, self._vol_minus_rect, "-", "vol_minus", radius=btn_radius,
-                          icon=self._icon_remove)
-        self._draw_button(screen, self._vol_plus_rect, "+", "vol_plus", radius=btn_radius,
-                          icon=self._icon_add)
+        self._vol_minus_rect = pygame.Rect(seg_x0 - 30 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + 30, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self._draw_circular_button(screen, self._vol_minus_rect, "-", self._pressed_button == "vol_minus")
+        self._draw_circular_button(screen, self._vol_plus_rect, "+", self._pressed_button == "vol_plus")
 
-        # --- Listening Time section ---
-        listen_label_y = vol_row_cy + btn_sz // 2 + 20
-        listen_lbl = self.app.font_body.render("Listening Time", True, (50, 50, 50))
-        screen.blit(listen_lbl, listen_lbl.get_rect(centerx=body_cx, top=listen_label_y))
+        # 2. LISTENING TIME SECTION
+        listen_y = vol_row_cy + 38
+        listen_lbl = title_font.render("Listening Time", True, (227, 198, 236))
+        screen.blit(listen_lbl, listen_lbl.get_rect(centerx=cx, top=listen_y))
 
-        val_surf = self.app.font_body.render(f"{self.listen_seconds} seconds", True, _TITLE_COLOR)
-        listen_row_cy = listen_label_y + listen_lbl.get_height() + 16 + btn_sz // 2
-        val_rect = val_surf.get_rect(centerx=body_cx, centery=listen_row_cy)
+        listen_row_cy = listen_y + listen_lbl.get_height() + 22
+        val_surf = title_font.render(f"{self.listen_seconds} seconds", True, (242, 210, 20))
+        val_rect = val_surf.get_rect(centerx=cx, centery=listen_row_cy)
         screen.blit(val_surf, val_rect)
 
-        listen_btn_offset = max(total_seg_w // 2 + btn_gap, val_rect.width // 2 + btn_gap + 8)
-        self._listen_minus_rect = pygame.Rect(body_cx - listen_btn_offset - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._listen_plus_rect = pygame.Rect(body_cx + listen_btn_offset, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_button(screen, self._listen_minus_rect, "-", "listen_minus", radius=btn_radius,
-                          icon=self._icon_remove)
-        self._draw_button(screen, self._listen_plus_rect, "+", "listen_plus", radius=btn_radius,
-                          icon=self._icon_add)
+        self._listen_minus_rect = pygame.Rect(cx - 180 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self._listen_plus_rect = pygame.Rect(cx + 180, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
+        self._draw_circular_button(screen, self._listen_minus_rect, "-", self._pressed_button == "listen_minus")
+        self._draw_circular_button(screen, self._listen_plus_rect, "+", self._pressed_button == "listen_plus")
 
-        # --- Action buttons (anchored below listen section) ---
-        btn_w = int(modal_rect.width * 0.90)
-        btn_h = 56
-        stack_gap = 16
-        btn_x = modal_rect.centerx - btn_w // 2
-        btn_y = listen_row_cy + btn_sz // 2 + 28
+        # 3. ACTION BUTTONS ("Restart Level" & "Back to Menu")
+        btn_w, btn_h = 325, 58
+        stack_gap = 14
+        btn_start_y = card_rect.bottom - (btn_h * 2 + stack_gap + 35)
 
-        # Divider just above action buttons
-        div_y = btn_y - 12
-        div_margin = int(modal_rect.width * 0.90)
-        pygame.draw.line(screen, _SEG_INACTIVE_BORDER,
-                         (modal_rect.left + div_margin, div_y),
-                         (modal_rect.right - div_margin, div_y), width=2)
+        # Restart Level (Violet variant)
+        self.restart_rect = pygame.Rect(cx - btn_w // 2, btn_start_y, btn_w, btn_h)
+        restart_btn = Button(self.restart_rect, label="Restart Level", variant="violet", font=self.app.font_button, stroke_weight=6)
+        restart_btn.is_pressed = (self._pressed_button == "restart")
+        restart_btn.draw(screen)
 
-        self.restart_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
-        self._draw_button(screen, self.restart_rect, "Restart Level", "restart", radius=18)
-
-        self.main_menu_rect = pygame.Rect(btn_x, btn_y + btn_h + stack_gap, btn_w, btn_h)
-        self._draw_button(screen, self.main_menu_rect, "Back to Menu", "main_menu", radius=18)
+        # Back to Menu (Yellow variant)
+        self.main_menu_rect = pygame.Rect(cx - btn_w // 2, btn_start_y + btn_h + stack_gap, btn_w, btn_h)
+        menu_btn = Button(self.main_menu_rect, label="Back to Menu", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        menu_btn.is_pressed = (self._pressed_button == "main_menu")
+        menu_btn.draw(screen)
 
         # Clear confirm rects
         self.confirm_yes_rect = None
         self.confirm_no_rect = None
 
-    def _draw_confirm(self, screen, modal_rect, body_rect) -> None:
-        body_cx = modal_rect.centerx
-        body_cy = body_rect.top + body_rect.height // 2
+    def _draw_confirm(self, screen: pygame.Surface, card_rect: pygame.Rect) -> None:
+        cx = card_rect.centerx
+        title_font = getattr(self.app, "font_button", self.app.font_title)
 
         if self.confirm_action == "restart":
             msg_text = "Restart this level?"
         else:
             msg_text = "Return to main menu?"
-        msg_surf = self.app.font_body.render(msg_text, True, (50, 50, 50))
-        screen.blit(msg_surf, msg_surf.get_rect(centerx=body_cx, centery=body_cy - 30))
 
-        btn_w = int(modal_rect.width * 0.38)
-        btn_h = 52
-        gap = 16
-        yes_x = body_cx - btn_w - gap // 2
-        no_x = body_cx + gap // 2
-        btn_y = body_cy + 14
+        msg_surf = title_font.render(msg_text, True, (255, 250, 243))
+        screen.blit(msg_surf, msg_surf.get_rect(centerx=cx, centery=card_rect.centery - 40))
+
+        btn_w, btn_h = 180, 56
+        gap = 24
+        yes_x = cx - btn_w - gap // 2
+        no_x = cx + gap // 2
+        btn_y = card_rect.centery + 30
 
         self.confirm_yes_rect = pygame.Rect(yes_x, btn_y, btn_w, btn_h)
         self.confirm_no_rect = pygame.Rect(no_x, btn_y, btn_w, btn_h)
-        self._draw_button(screen, self.confirm_yes_rect, "Yes", "confirm_yes", radius=18)
-        self._draw_button(screen, self.confirm_no_rect, "No", "confirm_no", radius=18)
+
+        btn_yes = Button(self.confirm_yes_rect, label="Yes", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        btn_yes.is_pressed = (self._pressed_button == "confirm_yes")
+        btn_yes.draw(screen)
+
+        btn_no = Button(self.confirm_no_rect, label="No", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        btn_no.is_pressed = (self._pressed_button == "confirm_no")
+        btn_no.draw(screen)
 
         # Clear action rects
         self.restart_rect = None

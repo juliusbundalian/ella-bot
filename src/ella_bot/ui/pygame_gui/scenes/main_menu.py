@@ -7,7 +7,11 @@ import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
+from ella_bot.ui.pygame_gui.video_bg import VideoBackground
+from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.utils.file_utils import resolve_asset_path
+from ella_bot.services.sound_effects import play_button_click
 
 _CARD_BG = (0, 0, 0)
 _WHITE = (255, 255, 255)
@@ -44,6 +48,8 @@ class MainMenuScene(BaseScene):
         self.bot = BotSprite()
         self._title_img = None
         self._settings_icon = None
+        self._video_bg = None
+        self._main_menu_svg = None
 
     def on_enter(self) -> None:
         self.show_exit_confirm = False
@@ -90,13 +96,61 @@ class MainMenuScene(BaseScene):
         self.app.switch_scene("level_selection")
 
     def _load_assets(self) -> None:
+        if self._video_bg is None:
+            try:
+                final_lightray_path = resolve_asset_path("assets/Final_Lightray.lottie")
+                lightray_path = resolve_asset_path("assets/Lightray.lottie")
+                lottie_path = resolve_asset_path("assets/shinebg.lottie")
+                if final_lightray_path.exists():
+                    self._video_bg = LottieBackground(final_lightray_path)
+                elif lightray_path.exists():
+                    self._video_bg = LottieBackground(lightray_path)
+                elif lottie_path.exists():
+                    self._video_bg = LottieBackground(lottie_path)
+                else:
+                    v_path = resolve_asset_path("assets/Comp 1_2.mp4")
+                    self._video_bg = VideoBackground(v_path)
+            except Exception:
+                self._video_bg = False
+
+        if self._main_menu_svg is None:
+            try:
+                svg2_bg_path = resolve_asset_path("assets/BG/Main Menu (2).svg")
+                svg2_path = resolve_asset_path("assets/Main Menu (2).svg")
+                svg1_path = resolve_asset_path("assets/Main Menu (1).svg")
+                svg_path = resolve_asset_path("assets/Main Menu.svg")
+                p1080_trans = resolve_asset_path("assets/Main Menu 1080p Transparent.png")
+                png_path = resolve_asset_path("assets/Main Menu.png")
+
+                if svg2_bg_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_bg_path)).convert_alpha()
+                elif svg2_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg2_path)).convert_alpha()
+                elif p1080_trans.exists():
+                    self._main_menu_svg = pygame.image.load(str(p1080_trans)).convert_alpha()
+                elif svg1_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(svg1_path)).convert_alpha()
+                elif png_path.exists():
+                    self._main_menu_svg = pygame.image.load(str(png_path)).convert_alpha()
+                elif svg_path.exists():
+                    surf = pygame.image.load(str(svg_path)).convert_alpha()
+                    if (pygame.surfarray.pixels_alpha(surf) > 0).sum() > 0:
+                        self._main_menu_svg = surf
+                    else:
+                        import re, base64
+                        svg_text = svg_path.read_text(encoding="utf-8")
+                        match = re.search(r'data:image/png;base64,([A-Za-z0-9+/=]+)', svg_text)
+                        if match:
+                            png_bytes = base64.b64decode(match.group(1))
+                            self._main_menu_svg = pygame.image.load(io.BytesIO(png_bytes)).convert_alpha()
+            except Exception:
+                self._main_menu_svg = False
+
         if self._title_img is None:
             try:
                 raw = pygame.image.load(
                     str(resolve_asset_path("assets/menu-title.png"))
                 ).convert_alpha()
-                # Composite onto white to prevent dark fringing during smoothscale
-                # (transparent pixels have black RGB which bleeds into edges)
                 white = pygame.Surface(raw.get_size())
                 white.fill((255, 255, 255))
                 white.blit(raw, (0, 0))
@@ -106,9 +160,13 @@ class MainMenuScene(BaseScene):
 
         if self._settings_icon is None:
             try:
-                svg_text = resolve_asset_path("assets/ic_settings.svg").read_text()
-                svg_sized = svg_text.replace('height="24px"', 'height="48px"').replace('width="24px"', 'width="48px"')
-                self._settings_icon = pygame.image.load(io.BytesIO(svg_sized.encode())).convert_alpha()
+                svg_text = resolve_asset_path("assets/ic_settings.svg").read_text(encoding="utf-8")
+                svg_tinted = (
+                    svg_text.replace('fill="#FFFFFF"', 'fill="#FFFAF3"')
+                    .replace('height="24px"', 'height="48px"')
+                    .replace('width="24px"', 'width="48px"')
+                )
+                self._settings_icon = pygame.image.load(io.BytesIO(svg_tinted.encode("utf-8"))).convert_alpha()
             except Exception:
                 self._settings_icon = False
 
@@ -133,6 +191,8 @@ class MainMenuScene(BaseScene):
                 and self.profile_required_cancel_button.collidepoint(mouse_pos)
             ):
                 self.pressed_button = 'profile_required_cancel'
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.show_resume_prompt:
@@ -142,6 +202,8 @@ class MainMenuScene(BaseScene):
                 self.pressed_button = "resume_new"
             elif self.resume_cancel_button and self.resume_cancel_button.collidepoint(mouse_pos):
                 self.pressed_button = "resume_cancel"
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.show_exit_confirm:
@@ -149,18 +211,21 @@ class MainMenuScene(BaseScene):
                 self.pressed_button = "confirm_yes"
             elif self.menu_confirm_no_button and self.menu_confirm_no_button.collidepoint(mouse_pos):
                 self.pressed_button = "confirm_no"
+            if self.pressed_button:
+                play_button_click()
             return
 
         if self.menu_profiles_button and self.menu_profiles_button.collidepoint(mouse_pos):
             self.pressed_button = 'profiles'
-            return
-
-        if self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
+        elif self.menu_start_button and self.menu_start_button.collidepoint(mouse_pos):
             self.pressed_button = "start"
         elif self.menu_exit_button and self.menu_exit_button.collidepoint(mouse_pos):
             self.pressed_button = "exit"
         elif self.menu_gear_button and self.menu_gear_button.collidepoint(mouse_pos):
             self.pressed_button = "gear"
+
+        if self.pressed_button:
+            play_button_click()
 
     def _handle_mouse_up(self, mouse_pos) -> None:
         try:
@@ -209,8 +274,6 @@ class MainMenuScene(BaseScene):
         is_pressed = self.pressed_button == key
         bg = _BTN_PRESSED if is_pressed else _BTN_FILL
         if not is_pressed:
-            # Shadow shift creates thick right+bottom (shadow 4px + outline 2px = 6px)
-            # while top+left show only the 2px outline
             pygame.draw.rect(screen, _BTN_OUTLINE,
                              pygame.Rect(rect.left + 4, rect.top + 4, rect.width, rect.height),
                              border_radius=radius)
@@ -219,51 +282,105 @@ class MainMenuScene(BaseScene):
         surf = self.app.font_body.render(label, True, _WHITE)
         screen.blit(surf, surf.get_rect(center=rect.center))
 
+    def _draw_welcome_speech_bubble(
+        self,
+        screen: pygame.Surface,
+        inner_rect: pygame.Rect,
+    ) -> None:
+        profile = self.app.active_profile()
+        name_str = profile.name if profile else "Unique User"
+        text_str = f"Hello, {name_str} !"
+
+        font = self.app.font_body
+        text_surf = font.render(text_str, True, (255, 250, 243))
+
+        # Max allowed width before shrinking font
+        max_bubble_w = int(inner_rect.width * 0.38)
+        if text_surf.get_width() + 48 > max_bubble_w and hasattr(self.app, "font_small"):
+            font = self.app.font_small
+            text_surf = font.render(text_str, True, (255, 250, 243))
+
+            if text_surf.get_width() + 48 > max_bubble_w:
+                truncated_name = name_str[:14] + "..."
+                text_str = f"Hello, {truncated_name} !"
+                text_surf = font.render(text_str, True, (255, 250, 243))
+
+        # Dynamic bubble width (min 287, auto-expands for long text)
+        bubble_w = max(287, text_surf.get_width() + 48)
+        bubble_h = 70
+
+        # Anchor right side relative to robot head
+        bubble_right = inner_rect.right - 45
+        bubble_x = bubble_right - bubble_w
+        bubble_y = inner_rect.top + int(inner_rect.height * 0.31)
+
+        bubble_rect = pygame.Rect(bubble_x, bubble_y, bubble_w, bubble_h)
+
+        # Drop shadow
+        shadow_rect = pygame.Rect(bubble_rect.left + 4, bubble_rect.top + 4, bubble_w, bubble_h)
+        pygame.draw.rect(screen, (25, 5, 35), shadow_rect, border_radius=35)
+
+        # Main pill body (#7F3F97)
+        pygame.draw.rect(screen, (127, 63, 151), bubble_rect, border_radius=35)
+        # Outline stroke (#3B0C4C)
+        pygame.draw.rect(screen, (59, 12, 76), bubble_rect, width=3, border_radius=35)
+
+        # Speech bubble tail pointing DOWNWARDS directly into the top of ELLA's head
+        p1 = (bubble_rect.right - 65, bubble_rect.bottom - 2)
+        p2 = (bubble_rect.right - 35, bubble_rect.bottom - 2)
+        p3 = (bubble_rect.right - 45, bubble_rect.bottom + 38)
+
+        pygame.draw.polygon(screen, (127, 63, 151), [p1, p2, p3])
+        pygame.draw.line(screen, (59, 12, 76), p1, p3, 3)
+        pygame.draw.line(screen, (59, 12, 76), p2, p3, 3)
+        pygame.draw.line(screen, (127, 63, 151), p1, p2, 5)
+
+        # Text render
+        text_rect = text_surf.get_rect(center=bubble_rect.center)
+        screen.blit(text_surf, text_rect)
+
     def render(self) -> None:
         screen = self.app.screen
         width, height = screen.get_size()
         self._load_assets()
 
+        now_ms = pygame.time.get_ticks()
         prompt_rect = pygame.Rect(0, 0, width, height)
-
-        # --- card frame (identical to reading prompt) ---
-        pygame.draw.rect(screen, _CARD_BG, prompt_rect, border_radius=0)
-        middle_rect = prompt_rect.inflate(-24, -24)
-        pygame.draw.rect(screen, _WHITE, middle_rect, border_radius=56)
         inner_rect = prompt_rect.inflate(-64, -64)
-        pygame.draw.rect(screen, _WHITE, inner_rect, border_radius=36)
 
-        # --- title image ---
-        if self._title_img:
-            max_title_w = int(inner_rect.width * 0.58)
-            raw_w, raw_h = self._title_img.get_size()
-            scale = max_title_w / raw_w
-            title_w = max_title_w
-            title_h = int(raw_h * scale)
-            title_surf = pygame.transform.smoothscale(self._title_img, (title_w, title_h))
-            title_rect = title_surf.get_rect(centerx=inner_rect.centerx, top=inner_rect.top + 24)
-            screen.blit(title_surf, title_rect)
-            content_top = title_rect.bottom + 18
+        # 1. Render Video / Lottie Background
+        if self._video_bg:
+            vf = self._video_bg.get_frame(now_ms, (width, height))
+            if vf:
+                screen.blit(vf, (0, 0))
+            else:
+                screen.fill(_CARD_BG)
         else:
-            content_top = inner_rect.top + 80
+            screen.fill(_CARD_BG)
 
-        profile = self.app.active_profile()
-        greeting = 'Welcome!' if profile is None else f'Welcome, {profile.name}!'
-        greeting_surf = self.app.font_body.render(greeting, True, _TEXT)
-        greeting_rect = greeting_surf.get_rect(
-            centerx=inner_rect.centerx,
-            top=content_top,
-        )
-        screen.blit(greeting_surf, greeting_rect)
+        # 2. Render Main Menu SVG/PNG Overlay
+        if self._main_menu_svg:
+            if self._main_menu_svg.get_size() != (width, height):
+                overlay = pygame.transform.smoothscale(self._main_menu_svg, (width, height))
+            else:
+                overlay = self._main_menu_svg
+            screen.blit(overlay, (0, 0))
+
+        # 3. Render Bot Sprite (idle SVG robot in bottom right corner)
+        self.bot.draw(screen, prompt_rect)
+
+        content_top = inner_rect.top + int(inner_rect.height * 0.28)
 
         button_area_bottom = inner_rect.bottom - 36
-        available_height = max(3, button_area_bottom - greeting_rect.bottom)
-        btn_gap = min(16, available_height // 10)
-        btn_h = min(72, max(1, (available_height - 2 * btn_gap) // 3))
+        available_height = max(3, button_area_bottom - content_top)
+        btn_w = 325
+        btn_h = 64
+        btn_gap = 12
         total_height = 3 * btn_h + 2 * btn_gap
-        btn_y = greeting_rect.bottom + (available_height - total_height) // 2
-        btn_w = min(300, max(1, inner_rect.width - 72))
+        # Shift main buttons down by 28px
+        btn_y = content_top + (available_height - total_height) // 2 + 28
         btn_x = inner_rect.centerx - btn_w // 2
+
         self.menu_start_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self.menu_profiles_button = pygame.Rect(
             btn_x,
@@ -277,38 +394,42 @@ class MainMenuScene(BaseScene):
             btn_w,
             btn_h,
         )
-        self._draw_button(screen, self.menu_start_button, 'Start', 'start')
-        self._draw_button(screen, self.menu_profiles_button, 'Profiles', 'profiles')
-        self._draw_button(screen, self.menu_exit_button, 'Exit', 'exit')
 
-        # --- Bot (bottom-right, same as reading prompt) ---
-        self.bot.draw(screen, inner_rect)
+        start_btn = Button(self.menu_start_button, label='Start', variant='yellow', font=self.app.font_button, stroke_weight=8)
+        start_btn.is_pressed = (self.pressed_button == 'start')
+        start_btn.draw(screen)
 
-        # --- Outer/inner pink borders (drawn on top so they frame everything) ---
-        pygame.draw.rect(screen, _OUTER_BORDER, prompt_rect, width=12, border_radius=68)
-        pygame.draw.rect(screen, _INNER_BORDER, inner_rect, width=12, border_radius=36)
+        profile_btn = Button(self.menu_profiles_button, label='Profile', variant='yellow', font=self.app.font_button, stroke_weight=8)
+        profile_btn.is_pressed = (self.pressed_button == 'profiles')
+        profile_btn.draw(screen)
 
-        # --- Gear button (bottom-left of inner_rect) ---
-        gear_size = 72
-        gear_pad = 24
+        exit_btn = Button(self.menu_exit_button, label='Exit', variant='violet', font=self.app.font_button, stroke_weight=8)
+        exit_btn.is_pressed = (self.pressed_button == 'exit')
+        exit_btn.draw(screen)
+
+        # --- Welcome Speech Bubble (positioned right next to pink robot head) ---
+        self._draw_welcome_speech_bubble(screen, inner_rect)
+
+        # --- Gear/Settings button (moved further left next to outer border) ---
+        gear_size = 90
+        gear_x = inner_rect.left + 40
+        gear_y = inner_rect.centery - 45
         self.menu_gear_button = pygame.Rect(
-            inner_rect.left + gear_pad,
-            inner_rect.bottom - gear_pad - gear_size,
-            gear_size, gear_size,
+            gear_x,
+            gear_y,
+            gear_size,
+            gear_size,
         )
-        gear_bg = _BTN_PRESSED if self.pressed_button == "gear" else _BTN_FILL
-        if self.pressed_button != "gear":
-            pygame.draw.rect(screen, _BTN_OUTLINE,
-                             pygame.Rect(self.menu_gear_button.left + 4, self.menu_gear_button.top + 4,
-                                         self.menu_gear_button.width, self.menu_gear_button.height),
-                             border_radius=16)
-        pygame.draw.rect(screen, gear_bg, self.menu_gear_button, border_radius=16)
-        pygame.draw.rect(screen, _BTN_OUTLINE, self.menu_gear_button, width=2, border_radius=16)
-        if self._settings_icon:
-            screen.blit(self._settings_icon, self._settings_icon.get_rect(center=self.menu_gear_button.center))
-        else:
-            gear_surf = self.app.font_body.render("⚙", True, _WHITE)
-            screen.blit(gear_surf, gear_surf.get_rect(center=self.menu_gear_button.center))
+
+        gear_btn = Button(
+            self.menu_gear_button,
+            icon=self._settings_icon if self._settings_icon else None,
+            variant="violet",
+            stroke_weight=8,
+            corner_radius=50,
+        )
+        gear_btn.is_pressed = (self.pressed_button == "gear")
+        gear_btn.draw(screen)
 
         if self.show_profile_required_prompt:
             self._draw_profile_required_prompt(screen, width, height)
@@ -317,36 +438,76 @@ class MainMenuScene(BaseScene):
         elif self.show_resume_prompt:
             self._draw_resume_prompt(screen, width, height)
 
+    def _get_adaptive_font(self, size: int, bold: bool = False):
+        if hasattr(self.app, "_get_sys_font"):
+            try:
+                res = self.app._get_sys_font(size, bold=bold)
+                if isinstance(res, pygame.font.Font):
+                    return res
+            except Exception:
+                pass
+        font = getattr(self.app, "font_body", None)
+        if isinstance(font, pygame.font.Font):
+            return font
+        return pygame.font.SysFont(None, size, bold=bold)
+
+    def _render_adaptive_text(self, text: str, size: int, color: tuple, max_w: int, bold: bool = False):
+        font = self._get_adaptive_font(size, bold=bold)
+        surf = font.render(text, True, color)
+        if isinstance(surf, pygame.Surface):
+            if max_w > 0 and surf.get_width() > max_w:
+                scale_ratio = max_w / surf.get_width()
+                new_w = max_w
+                new_h = max(1, int(surf.get_height() * scale_ratio))
+                surf = pygame.transform.smoothscale(surf, (new_w, new_h))
+            return surf
+        return None
+
     def _draw_profile_required_prompt(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = min(660, int(width * 0.58))
-        dlg_h = min(300, int(height * 0.44))
+        dlg_w = min(660, max(360, int(width * 0.62)))
+        dlg_h = min(300, max(210, int(height * 0.46)))
         dlg_rect = pygame.Rect(
             (width - dlg_w) // 2,
             (height - dlg_h) // 2,
             dlg_w,
             dlg_h,
         )
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
+
+        title_size = max(22, min(38, int(dlg_h * 0.14)))
+        title = self._render_adaptive_text("Profile Required", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if title:
+            screen.blit(
+                title,
+                title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.10)),
+            )
 
         message = self.app.font_body.render(
             self.profile_required_message,
             True,
-            _TEXT,
+            (227, 198, 236),
         )
-        screen.blit(
-            message,
-            message.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 68),
-        )
+        if isinstance(message, pygame.Surface):
+            if message.get_width() > dlg_w - 40:
+                scale = (dlg_w - 40) / message.get_width()
+                message = pygame.transform.smoothscale(message, (dlg_w - 40, max(1, int(message.get_height() * scale))))
+            screen.blit(
+                message,
+                message.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.35)),
+            )
 
-        btn_w, btn_h, btn_gap = 210, 62, 20
+        btn_w = min(190, (dlg_w - 60) // 2)
+        btn_h = min(58, max(42, int(dlg_h * 0.22)))
+        btn_gap = 20
         total_w = 2 * btn_w + btn_gap
         btn_x = dlg_rect.centerx - total_w // 2
-        btn_y = dlg_rect.bottom - btn_h - 32
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.10)
         self.profile_required_open_button = pygame.Rect(
             btn_x,
             btn_y,
@@ -359,63 +520,84 @@ class MainMenuScene(BaseScene):
             btn_w,
             btn_h,
         )
-        self._draw_button(
-            screen,
+
+        button_font_size = max(18, min(28, int(btn_h * 0.50)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_open = Button(
             self.profile_required_open_button,
-            'Profiles',
-            'profile_required_open',
+            label="Profiles",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_open.is_pressed = (self.pressed_button == "profile_required_open")
+        btn_open.draw(screen)
+
+        btn_cancel = Button(
             self.profile_required_cancel_button,
-            'Cancel',
-            'profile_required_cancel',
+            label="Cancel",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
+        btn_cancel.is_pressed = (self.pressed_button == "profile_required_cancel")
+        btn_cancel.draw(screen)
 
     def _draw_resume_prompt(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = min(760, int(width * 0.68))
-        dlg_h = min(390, int(height * 0.58))
+        dlg_w = min(740, max(400, int(width * 0.70)))
+        dlg_h = min(360, max(250, int(height * 0.56)))
         dlg_rect = pygame.Rect(
             (width - dlg_w) // 2,
             (height - dlg_h) // 2,
             dlg_w,
             dlg_h,
         )
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=24)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=24)
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
 
-        title = self.app.font_title.render("Saved Session", True, (50, 50, 50))
-        screen.blit(title, title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 30))
+        title_size = max(24, min(42, int(dlg_h * 0.13)))
+        title = self._render_adaptive_text("Saved Session", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if title:
+            screen.blit(title, title.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.08)))
 
         summary = self.resume_summary
         if summary is not None:
+            details_size = max(20, min(34, int(dlg_h * 0.11)))
             details = f"Level {summary.level.upper()}  •  Item {summary.item_number}"
-            detail_surf = self.app.font_body.render(details, True, (50, 50, 50))
-            screen.blit(
-                detail_surf,
-                detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 120),
-            )
+            detail_surf = self._render_adaptive_text(details, details_size, (242, 210, 20), max_w=dlg_w - 40, bold=True)
+            if detail_surf:
+                screen.blit(
+                    detail_surf,
+                    detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.26)),
+                )
             try:
                 saved = datetime.fromisoformat(summary.saved_at).astimezone()
                 saved_text = saved.strftime("Saved %b %d, %Y at %I:%M %p")
             except (TypeError, ValueError):
                 saved_text = f"Saved {summary.saved_at}"
-            saved_surf = self.app.font_small.render(saved_text, True, (78, 78, 78))
-            screen.blit(
-                saved_surf,
-                saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + 168),
-            )
+            small_size = max(15, min(24, int(dlg_h * 0.08)))
+            saved_surf = self.app.font_small.render(saved_text, True, (227, 198, 236))
+            if isinstance(saved_surf, pygame.Surface):
+                if saved_surf.get_width() > dlg_w - 40:
+                    scale = (dlg_w - 40) / saved_surf.get_width()
+                    saved_surf = pygame.transform.smoothscale(saved_surf, (dlg_w - 40, max(1, int(saved_surf.get_height() * scale))))
+                screen.blit(
+                    saved_surf,
+                    saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.46)),
+                )
 
-        btn_gap = 16
-        btn_w = min(190, (dlg_w - 80 - 2 * btn_gap) // 3)
-        btn_h = 66
+        btn_gap = 14
+        btn_w = min(200, (dlg_w - 40 - 2 * btn_gap) // 3)
+        btn_h = min(58, max(42, int(dlg_h * 0.20)))
         total_w = 3 * btn_w + 2 * btn_gap
         btn_x = dlg_rect.centerx - total_w // 2
-        btn_y = dlg_rect.bottom - btn_h - 34
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.09)
         self.resume_continue_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self.resume_new_button = pygame.Rect(
             btn_x + btn_w + btn_gap,
@@ -429,46 +611,88 @@ class MainMenuScene(BaseScene):
             btn_w,
             btn_h,
         )
-        self._draw_button(
-            screen,
+
+        button_font_size = max(16, min(26, int(btn_h * 0.48)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_cont = Button(
             self.resume_continue_button,
-            "Continue",
-            "resume_continue",
+            label="Continue",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_cont.is_pressed = (self.pressed_button == "resume_continue")
+        btn_cont.draw(screen)
+
+        btn_new = Button(
             self.resume_new_button,
-            "New Session",
-            "resume_new",
+            label="New Session",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
-        self._draw_button(
-            screen,
+        btn_new.is_pressed = (self.pressed_button == "resume_new")
+        btn_new.draw(screen)
+
+        btn_cancel = Button(
             self.resume_cancel_button,
-            "Cancel",
-            "resume_cancel",
+            label="Cancel",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
         )
+        btn_cancel.is_pressed = (self.pressed_button == "resume_cancel")
+        btn_cancel.draw(screen)
 
     def _draw_exit_confirm(self, screen, width, height) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dlg_w = int(width * 0.55)
-        dlg_h = int(height * 0.32)
+        dlg_w = min(640, max(340, int(width * 0.60)))
+        dlg_h = min(280, max(200, int(height * 0.42)))
         dlg_x = (width - dlg_w) // 2
         dlg_y = (height - dlg_h) // 2
         dlg_rect = pygame.Rect(dlg_x, dlg_y, dlg_w, dlg_h)
-        pygame.draw.rect(screen, _WHITE, dlg_rect, border_radius=20)
-        pygame.draw.rect(screen, _BTN_OUTLINE, dlg_rect, width=4, border_radius=20)
 
-        msg = self.app.font_body.render("Are you sure you want to exit?", True, (50, 50, 50))
-        screen.blit(msg, msg.get_rect(center=(width // 2, dlg_y + int(dlg_h * 0.35))))
+        pygame.draw.rect(screen, (25, 5, 35), dlg_rect.move(4, 4), border_radius=30)
+        pygame.draw.rect(screen, (87, 39, 108), dlg_rect, border_radius=30)
+        pygame.draw.rect(screen, (127, 63, 151), dlg_rect, width=6, border_radius=30)
 
-        btn_w, btn_h = 150, 62
-        btn_y = dlg_y + dlg_h - btn_h - 22
-        yes_rect = pygame.Rect(width // 2 - btn_w - 14, btn_y, btn_w, btn_h)
-        no_rect = pygame.Rect(width // 2 + 14, btn_y, btn_w, btn_h)
+        title_size = max(22, min(38, int(dlg_h * 0.15)))
+        msg = self._render_adaptive_text("Are you sure you want to exit?", title_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+        if msg:
+            screen.blit(msg, msg.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.18)))
+
+        btn_w = min(170, (dlg_w - 60) // 2)
+        btn_h = min(58, max(42, int(dlg_h * 0.24)))
+        gap = 20
+        btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.10)
+        yes_rect = pygame.Rect(dlg_rect.centerx - btn_w - gap // 2, btn_y, btn_w, btn_h)
+        no_rect = pygame.Rect(dlg_rect.centerx + gap // 2, btn_y, btn_w, btn_h)
         self.menu_confirm_yes_button = yes_rect
         self.menu_confirm_no_button = no_rect
-        self._draw_button(screen, yes_rect, "Yes", "confirm_yes")
-        self._draw_button(screen, no_rect, "No", "confirm_no")
+
+        button_font_size = max(18, min(28, int(btn_h * 0.50)))
+        button_font = self._get_adaptive_font(button_font_size, bold=True)
+
+        btn_yes = Button(
+            yes_rect,
+            label="Yes",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
+        )
+        btn_yes.is_pressed = (self.pressed_button == "confirm_yes")
+        btn_yes.draw(screen)
+
+        btn_no = Button(
+            no_rect,
+            label="No",
+            variant="yellow",
+            font=button_font,
+            stroke_weight=5,
+        )
+        btn_no.is_pressed = (self.pressed_button == "confirm_no")
+        btn_no.draw(screen)

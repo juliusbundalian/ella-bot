@@ -133,21 +133,27 @@ class PiperTTS(BaseTTS):
                         stream.start()
 
                     import time
-                    chunk_samples = int(sample_rate * 0.1)
+                    chunk_samples = int(sample_rate * 0.05)
                     for i in range(0, len(pcm_warm), chunk_samples):
                         while self._pause_event.is_set() and not stop_event.is_set():
+                            self.current_amplitude = 0.0
                             time.sleep(0.1)
                         if stop_event.is_set():
                             break
-                        stream.write(pcm_warm[i:i+chunk_samples].tobytes())
+                        sub_chunk = pcm_warm[i:i+chunk_samples]
+                        if sub_chunk.size > 0:
+                            self.current_amplitude = float(np.max(np.abs(sub_chunk.astype(np.float32))) / 32768.0)
+                        else:
+                            self.current_amplitude = 0.0
+                        stream.write(sub_chunk.tobytes())
 
                     # Wait for the phoneme audio to finish playing before closing
                     duration = len(pcm_warm) / sample_rate
-                    # Sleep in small responsive chunks to remain highly responsive to stop events
                     chunk_time = 0.05
                     elapsed = 0.0
                     while elapsed < duration and not stop_event.is_set():
                         while self._pause_event.is_set() and not stop_event.is_set():
+                            self.current_amplitude = 0.0
                             time.sleep(0.1)
                         if stop_event.is_set():
                             break
@@ -176,15 +182,21 @@ class PiperTTS(BaseTTS):
                                 stream.start()
                                 start_time = time.monotonic()
 
-                        chunk_samples = int(chunk.sample_rate * 0.1)
+                        chunk_samples = int(chunk.sample_rate * 0.05)
                         for i in range(0, len(pcm_warm), chunk_samples):
                             while self._pause_event.is_set() and not stop_event.is_set():
+                                self.current_amplitude = 0.0
                                 time.sleep(0.1)
                                 if start_time is not None:
                                     start_time += 0.1
                             if stop_event.is_set():
                                 break
-                            stream.write(pcm_warm[i:i+chunk_samples].tobytes())
+                            sub_chunk = pcm_warm[i:i+chunk_samples]
+                            if sub_chunk.size > 0:
+                                self.current_amplitude = float(np.max(np.abs(sub_chunk.astype(np.float32))) / 32768.0)
+                            else:
+                                self.current_amplitude = 0.0
+                            stream.write(sub_chunk.tobytes())
 
                         total_samples += len(pcm_warm)
                         sample_rate = chunk.sample_rate
@@ -195,6 +207,7 @@ class PiperTTS(BaseTTS):
                         chunk_time = 0.05
                         while not stop_event.is_set():
                             while self._pause_event.is_set() and not stop_event.is_set():
+                                self.current_amplitude = 0.0
                                 time.sleep(0.1)
                                 start_time += 0.1
                             if stop_event.is_set():
@@ -207,6 +220,7 @@ class PiperTTS(BaseTTS):
             except Exception as exc:
                 logger.error("PiperTTS error: %s", exc)
             finally:
+                self.current_amplitude = 0.0
                 with self._lock:
                     self._active_stream = None
                     if stream is not None:
