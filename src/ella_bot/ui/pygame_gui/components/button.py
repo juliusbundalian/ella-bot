@@ -95,15 +95,6 @@ class Button:
         # Draw main button body
         pygame.draw.rect(screen, fill_color, self.rect, border_radius=radius)
 
-        # Draw thick outer stroke (Figma spec)
-        pygame.draw.rect(
-            screen,
-            stroke_color,
-            self.rect,
-            width=self.stroke_weight,
-            border_radius=radius,
-        )
-
         # Draw icon centered if provided
         if self.icon:
             icon_rect = self.icon.get_rect(center=self.rect.center)
