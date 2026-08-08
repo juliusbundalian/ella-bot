@@ -48,6 +48,9 @@ class ResultsScene(BaseScene):
         self.confetti = ConfettiAnimation()
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self.pressed_button = None
         self._show_menu_confirm = False
         start = getattr(self.app, "sublevel_start_time", None)

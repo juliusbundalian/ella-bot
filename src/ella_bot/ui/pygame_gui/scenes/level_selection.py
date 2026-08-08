@@ -63,6 +63,9 @@ class LevelSelectionScene(BaseScene):
         self._lottie_bg = None
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self.pending_level = None
         self.show_confirmation = False
         self.pressed_button = None

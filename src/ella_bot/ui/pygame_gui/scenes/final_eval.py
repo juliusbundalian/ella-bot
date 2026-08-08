@@ -34,6 +34,9 @@ class FinalEvaluationScene(BaseScene):
         self.confetti = ConfettiAnimation()
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self.pressed_button = None
         result = getattr(self.app, "latest_result", None)
         if result is not None:

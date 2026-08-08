@@ -52,6 +52,9 @@ class MainMenuScene(BaseScene):
         self._main_menu_svg = None
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self.show_exit_confirm = False
         self.show_resume_prompt = False
         self.show_profile_required_prompt = False

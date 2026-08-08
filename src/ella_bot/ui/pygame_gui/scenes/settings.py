@@ -39,6 +39,9 @@ class SettingsScene(BaseScene):
         self.btn_back: pygame.Rect | None = None
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self.pressed_button = None
         try:
             from ella_bot.config.app_config import load_settings
@@ -127,8 +130,11 @@ class SettingsScene(BaseScene):
 
     def _tap_volume(self, delta: int) -> None:
         self.volume_level = max(_VOLUME_MIN, min(_VOLUME_MAX, self.volume_level + delta))
+        vol_scale = self.volume_level / _VOLUME_MAX
         if getattr(self.app, "tts", None) is not None:
-            self.app.tts.set_volume(self.volume_level / _VOLUME_MAX)
+            self.app.tts.set_volume(vol_scale)
+        from ella_bot.services.bgm_service import set_bgm_volume
+        set_bgm_volume(vol_scale)
         save_setting("TTS", "volume", str(self.volume_level))
 
     def _tap_listen(self, delta: int) -> None:

@@ -73,6 +73,9 @@ class ProfilesScene(BaseScene):
                 self._lottie_bg = False
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import play_menu_bgm
+
+        play_menu_bgm()
         self._load_assets()
         self._close_modal()
         self.error_message = ""
