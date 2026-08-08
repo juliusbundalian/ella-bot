@@ -175,7 +175,7 @@ class SettingsScene(BaseScene):
         title_font = getattr(self.app, "font_button", self.app.font_title)
 
         # 4. VOLUME SECTION
-        vol_y = banner_rect.bottom + 53
+        vol_y = banner_rect.bottom + 37
         vol_lbl = title_font.render("Volume", True, (227, 198, 236))
         screen.blit(vol_lbl, vol_lbl.get_rect(centerx=cx, top=vol_y))
 
