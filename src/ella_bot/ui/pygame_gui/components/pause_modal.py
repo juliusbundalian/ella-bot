@@ -178,8 +178,8 @@ class PauseModal:
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        # Main Dialog Card (Figma spec 720x540)
-        card_w, card_h = 720, 540
+        # Main Dialog Card
+        card_w, card_h = 720, 524
         card_x = prompt_rect.centerx - card_w // 2
         card_y = prompt_rect.centery - card_h // 2 + 10
         card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
