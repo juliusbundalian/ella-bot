@@ -877,6 +877,240 @@ The shared logger is configured by `utils/logging.py` at `INFO` level with time,
 severity, module name, and message. Some older paths still use `print()`, so
 runtime output is not yet completely centralized.
 
+### Pygame's event–update–render loop
+
+Pygame programs redraw many times per second. `EllaGUIApp.run()` uses the
+standard event–update–render pattern:
+
+```python
+# Simplified pseudocode, not a copy-paste replacement for app.py
+while running:
+    for event in pygame.event.get():
+        active_scene.handle_event(event)
+    animator.update(current_time)
+    active_scene.update(current_time)
+    active_scene.render()
+    pygame.display.flip()
+    clock.tick(configured_frames_per_second)
+```
+
+An **event** is input such as a mouse press, mouse release, key press, or window
+close. **Update** advances logic and animation. **Render** draws the next frame.
+`flip()` shows the completed frame, and `clock.tick(60)` limits the loop to the
+configured 60 frames per second (FPS).
+
+Startup initializes Pygame and its font module, creates a fullscreen display or
+a configured-size window, caches common fonts, constructs an `AvatarAnimator`,
+constructs every scene once, and activates the intro.
+
+The event loop and the attempt event queue serve different purposes:
+
+- `pygame.event.get()` carries operating-system and user input.
+- `app.event_queue` carries ELLA's typed worker results back to the main thread.
+
+### Scene lifecycle and screen transitions
+
+A **scene** is one complete screen. `BaseScene` defines five lifecycle hooks:
+`on_enter`, `on_exit`, `handle_event`, `update`, and `render`. Its methods are
+empty defaults, so a concrete scene overrides only what it needs.
+
+`switch_scene(name)` first asks the current scene to exit. If `on_exit()`
+returns `False`, the transition is cancelled. That behavior is crucial in the
+reading scene: it refuses to leave while an attempt worker remains alive.
+
+```mermaid
+flowchart TD
+    Intro[Intro] --> Menu[Main menu]
+    Menu --> Profiles[Profiles]
+    Profiles --> Menu
+    Profiles --> Select[Level selection after first profile]
+    Menu --> Select
+    Menu --> Settings[Settings]
+    Settings --> Menu
+    Menu --> Reading[Reading prompt: resume]
+    Select --> Reading
+    Reading --> Results[Sublevel or tier results]
+    Results --> Reading
+    Results --> Menu
+    Reading --> Final[Final evaluation]
+    Final --> Reading
+    Final --> Menu
+    Reading --> Menu
+```
+
+Some arrows require conditions. Starting needs an active profile. Continuing a
+saved checkpoint goes to the reading or results screen according to its saved
+phase. Results advance only after a pass; the same button starts a retry after
+a failed result. “Play again” on the final screen transactionally starts at
+level 1A.
+
+### The application's scenes
+
+| Scene | Main responsibility |
+|---|---|
+| `IntroScene` | Play or skip a startup video, with synchronized extracted WAV audio when available. |
+| `MainMenuScene` | Show the active learner, require a profile, start/resume/new-session choices, settings, profiles, and exit confirmation. |
+| `ProfilesScene` | Create, rename, select, reset, or delete up to five profiles. |
+| `LevelSelectionScene` | Display every canonical level and confirm before replacing live session state. |
+| `ReadingPromptScene` | Display the target, start/drain attempt workers, pause safely, replay, and move through Tier 1. |
+| `ResultsScene` | Show sublevel/tier results, play pass/fail sound, celebrate passes, advance or retry transactionally. |
+| `FinalEvaluationScene` | Show cumulative results, celebrate, play again, or return to the menu. |
+| `SettingsScene` | Change six-step volume and a 5–12 second listening window, applying and saving the values. |
+
+The main menu deliberately checks three cases: no profiles means “create one,”
+profiles but no selection means “choose one,” and an active profile may start.
+If a checkpoint exists, the menu asks whether to continue or select a new
+session. Choosing “new” does not destroy the old checkpoint until the new
+level is confirmed and saved successfully.
+
+The level selection scene similarly creates candidate session/evaluation
+objects and saves them before replacing the active objects. This is a
+**transactional** screen action: either the save succeeds and the app changes,
+or it stays with the earlier valid state.
+
+#### An important legacy section
+
+`ReadingPromptScene` still contains an older `_attempt_worker()` method that
+uses tuple events and directly duplicates validation/progression logic. The
+live `_start_attempt()` target is `self.runner.run`, so the service-based
+`AttemptRunner` described earlier is the active path. The queue drain handles
+typed dataclass events, not those old tuples. Students should not use the
+legacy method as the architectural source of truth.
+
+### Buttons, the on-screen keyboard, modals, and confetti
+
+`components/button.py` provides a pill-shaped `Button` with yellow, violet, and
+dark-violet themes. It records a press only when the pointer goes down inside;
+it activates only when release also occurs inside. This prevents a drag away
+from becoming an accidental action. Oversized label surfaces are scaled into
+the button, then optically centered using their visible pixel bounds.
+
+The profile keyboard has three letter rows plus Shift, apostrophe, Space,
+hyphen, and Back. Keys have weights, so Space is wider. Shift affects only the
+next letter and then resets. Releasing outside the key cancels the action.
+Physical `TEXTINPUT`, Backspace, Enter, and Escape continue to work, so the
+touch keyboard supplements rather than removes laptop input.
+
+`PauseModal` overlays the reading screen and provides:
+
+- resume/close;
+- the same volume and listening-time controls;
+- restart-level and back-to-menu actions;
+- an extra confirmation screen for destructive-in-context actions.
+
+Restart and menu operations first abort and join the worker, then save. If
+saving fails, the scene restores the checkpoint and remains paused.
+
+`ConfettiAnimation` prefers vector frames from the USA confetti Lottie file and
+also runs a particle fallback. Particle position changes through velocity,
+gravity, rotation, and a sine-wave flutter. It stops and clears particles after
+its duration. This is decorative feedback only; pass/fail decisions come from
+`EvaluationService`.
+
+### Robot animation and application state
+
+There are two animation abstractions:
+
+- `AvatarAnimator` is owned by `EllaGUIApp`. It loads the `faces/` state
+  folders (or an older `assets/avatars/ella_default` layout) and can generate
+  simple drawn fallback faces.
+- `BotSprite` is owned by the main-menu and reading scenes. It prefers talking
+  PNG frames for speech, Robot SVG frames for idle, and `bot/` state folders as
+  fallbacks. It caches scaled frames for the current target size.
+
+Worker states map to visuals: `processing` becomes BotSprite's `thinking`, and
+`success`/`retry` return its pose to idle. During Piper speech, nonzero
+`current_amplitude` directly selects a mouth frame; otherwise the frame changes
+on a timer. This makes speech animation react to actual output level.
+
+The global `AvatarAnimator` is still updated every frame even though prominent
+screens also own `BotSprite`. This is overlapping historical architecture,
+not one unified sprite system.
+
+### Lottie, video, images, fonts, and fallbacks
+
+ELLA uses a fallback chain because Raspberry Pi graphics/library support can
+vary:
+
+```text
+working Lottie candidate
+        ↓ otherwise
+streaming MP4 VideoBackground
+        ↓ otherwise
+scene-specific static image or solid fill
+```
+
+`LottieBackground` uses `rlottie-python`. It prefers already extracted JSON;
+otherwise it can extract JSON from a `.lottie` ZIP archive. It supports loop,
+ping-pong, and crossfade indexing, caches the current frame and scaled version,
+and returns `None` on render failure.
+
+`VideoBackground` uses OpenCV. It decodes the desired MP4 frame on demand,
+seeks when playback is no longer sequential, converts BGR pixels to RGB, and
+caches scaling. This avoids loading an entire background video into memory.
+
+The intro is different: `IntroScene` decodes all video frames into Pygame
+surfaces once. It tries `assets/SS_ELLA.mp4` first and falls back through older
+intro filenames. If a matching WAV is absent, it may invoke FFmpeg to extract
+stereo 44.1 kHz PCM audio. Missing video immediately advances to the menu, and
+any mouse/key press skips playback.
+
+Fonts prefer the bundled Changa One TTF for interface text, then common system
+families. Reading prompts intentionally request Arial. Icons and backgrounds
+have scene-specific SVG/PNG alternatives; failure usually produces a simpler
+screen rather than terminating the app.
+
+One current path issue is worth noticing: the reading scene first calls
+`resolve_config_path("assets/Reading_bg.lottie")`, which points under
+`config/assets/`; it then falls back to the process-relative
+`assets/Reading_bg.lottie`. Launching from the project root makes that fallback
+work, but the first resolution is inconsistent with other asset helpers.
+
+### Responsive layout and touch input
+
+Most scenes read `screen.get_size()` each render and calculate rectangles from
+the actual width and height. Reusable techniques include:
+
+- scaling text surfaces when labels exceed a maximum box;
+- wrapping long prompt text;
+- trying reading-prompt font sizes from 82 down to 12 until text fits above
+  the robot's safe boundary;
+- computing profile keyboard rows inside a supplied bounds rectangle;
+- sizing modal cards within available screen margins;
+- scaling media while preserving or covering aspect ratio.
+
+`left_padding` is a global calibration offset. After a scene finishes drawing,
+the app scrolls the frame to the right and fills the new left strip black. It
+subtracts the same amount from mouse-event x coordinates. Moving both pixels
+and pointer coordinates together keeps taps aligned with visible buttons.
+
+Pygame mouse events also represent touchscreen taps on supported systems. The
+code generally uses press-and-release tracking rather than acting on press
+alone. The Settings and profile scenes demonstrate how this supports safe touch
+interaction.
+
+Accessibility limitations remain. The interface is heavily visual, custom
+buttons are not exposed as semantic controls to a screen reader, many colors
+are fixed, and the primary flow assumes speech/hearing. Large controls,
+adaptive text, replay, adjustable listening time, keyboard alternatives, and
+offline privacy help, but they do not make the app universally accessible.
+
+### GUI failure handling and shutdown
+
+`run()` uses nested `finally` blocks: it calls `shutdown()` and then
+`pygame.quit()` even after a runtime exception. `shutdown()` asks the active
+scene to quiesce first, then saves an active, started profile session.
+
+The reading scene gives a worker two seconds to join. If it remains alive,
+`on_exit()`/`prepare_shutdown()` return `False`. Normal `switch_scene()` honors
+that result. A process-level window close sets `running = False`; the finalizer
+still invokes the shutdown attempt before quitting Pygame.
+
+Media helpers catch missing libraries/files and report falsey/`None` objects.
+Scenes test those objects and use fallback drawing. Button and text renderers
+also check that mocked or real font calls produced actual Pygame surfaces,
+which makes both runtime degradation and headless testing safer.
+
 ## Part IV — Work With the Project
 
 ## Part V — Repository Reference
