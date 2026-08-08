@@ -6,11 +6,13 @@ from typing import Dict, List, Optional
 
 from ella_bot.core.constants import LEVEL_ORDER
 from ella_bot.services.attempt_runner import AttemptViewModel
+from ella_bot.services.battery_service import BatteryService
 from ella_bot.services.evaluation import EvaluationService
 from ella_bot.services.profile_store import Profile, ProfileStore
 from ella_bot.services.session_checkpoint import SessionCheckpointStore
 from ella_bot.services.session_manager import SessionManager
 from ella_bot.ui.pygame_gui.animator import AvatarAnimator
+from ella_bot.ui.pygame_gui.components.low_battery_modal import LowBatteryModal
 from ella_bot.ui.pygame_gui.config import GUIConfig
 from ella_bot.ui.pygame_gui.scenes.final_eval import FinalEvaluationScene
 from ella_bot.ui.pygame_gui.scenes.intro import IntroScene
@@ -63,6 +65,10 @@ class EllaGUIApp:
         self.screen = None
         self.clock = None
         self.animator = None
+        
+        # Battery monitoring & low-battery uninterruptable modal
+        self.battery_service = BatteryService()
+        self.low_battery_modal = LowBatteryModal(self)
         
         # Scenes will be initialized after pygame init
         self.scenes = {}
@@ -461,9 +467,19 @@ class EllaGUIApp:
             self.running = True
             while self.running:
                 now_ms = pygame.time.get_ticks()
+
+                # Poll battery service & manage low battery uninterruptable modal state
+                battery_status = self.battery_service.get_status()
+                self.low_battery_modal.update_status(battery_status)
+                if battery_status.is_low_battery:
+                    self.low_battery_modal.open(battery_status)
+
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         self.running = False
+                    elif self.low_battery_modal.visible:
+                        # Low battery modal active: consume events & block interaction with scene
+                        self.low_battery_modal.handle_event(event)
                     else:
                         self.active_scene.handle_event(
                             self._translate_pointer_event(pygame, event)
@@ -472,6 +488,7 @@ class EllaGUIApp:
                 self.animator.update(now_ms)
                 self.active_scene.update(now_ms)
                 self.active_scene.render()
+                self.low_battery_modal.render(self.screen)
                 self._apply_render_padding(pygame)
 
                 pygame.display.flip()

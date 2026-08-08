@@ -44,3 +44,20 @@ def tier_of(level: str) -> int:
 def max_attempts_for_level(level: str) -> int:
     """Return the maximum attempts allowed per item for the given level."""
     return 1 if tier_of(level) == 1 else 3
+
+
+def get_level1_sound_and_word(item: str) -> tuple[str, str]:
+    """Return (sound_target, display_word) for a Level 1 item.
+
+    If item is formatted as 'sound (word)' e.g. 'ai (main)', returns ('ai', 'main').
+    Otherwise returns (item, item).
+    """
+    item_clean = item.strip()
+    if "(" in item_clean and ")" in item_clean:
+        sound = item_clean.split("(")[0].strip()
+        open_idx = item_clean.find("(")
+        close_idx = item_clean.find(")", open_idx)
+        word = item_clean[open_idx + 1 : close_idx].strip()
+        return sound, word if word else sound
+    return item_clean, item_clean
+

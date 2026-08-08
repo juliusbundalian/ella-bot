@@ -568,14 +568,26 @@ class MainMenuScene(BaseScene):
 
         summary = self.resume_summary
         if summary is not None:
-            details_size = max(20, min(34, int(dlg_h * 0.11)))
+            profile = self.app.active_profile()
+            user_name = profile.name if profile else "User"
+
+            name_size = max(22, min(36, int(dlg_h * 0.12)))
+            name_surf = self._render_adaptive_text(f"User: {user_name}", name_size, (255, 250, 243), max_w=dlg_w - 40, bold=True)
+            if name_surf:
+                screen.blit(
+                    name_surf,
+                    name_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.23)),
+                )
+
+            details_size = max(18, min(30, int(dlg_h * 0.10)))
             details = f"Level {summary.level.upper()}  •  Item {summary.item_number}"
             detail_surf = self._render_adaptive_text(details, details_size, (242, 210, 20), max_w=dlg_w - 40, bold=True)
             if detail_surf:
                 screen.blit(
                     detail_surf,
-                    detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.26)),
+                    detail_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.38)),
                 )
+
             try:
                 saved = datetime.fromisoformat(summary.saved_at).astimezone()
                 saved_text = saved.strftime("Saved %b %d, %Y at %I:%M %p")
@@ -589,7 +601,7 @@ class MainMenuScene(BaseScene):
                     saved_surf = pygame.transform.smoothscale(saved_surf, (dlg_w - 40, max(1, int(saved_surf.get_height() * scale))))
                 screen.blit(
                     saved_surf,
-                    saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.46)),
+                    saved_surf.get_rect(centerx=dlg_rect.centerx, top=dlg_rect.top + int(dlg_h * 0.52)),
                 )
 
         btn_gap = 14

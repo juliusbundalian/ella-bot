@@ -155,7 +155,13 @@ def resolve_level1_playback(level: str, item: str) -> Optional[Path]:
     if exact_wav.exists():
         return exact_wav
 
-    # 2. Match sound substring in item (e.g. ch.wav for 'chip', dge.wav for 'bridge', bl.wav for 'blue')
+    # 2. Sound prefix match for "sound (word)" format (e.g. "ch (chip)" -> "ch.wav")
+    sound_prefix = item_clean.split("(")[0].strip() if "(" in item_clean else item_clean
+    prefix_wav = sub_dir / f"{sound_prefix}.wav"
+    if prefix_wav.exists():
+        return prefix_wav
+
+    # 3. Match sound substring in item (e.g. ch.wav for 'chip', dge.wav for 'bridge', bl.wav for 'blue')
     if sub_dir.exists():
         wav_files = sorted(sub_dir.glob("*.wav"), key=lambda p: len(p.stem), reverse=True)
         for wav_file in wav_files:

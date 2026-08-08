@@ -6,7 +6,7 @@ import time
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from ella_bot.core.constants import max_attempts_for_level, tier_of
+from ella_bot.core.constants import get_level1_sound_and_word, max_attempts_for_level, tier_of
 from ella_bot.core.events import (
     StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
     SubLevelCompleted, SessionCompleted,
@@ -352,6 +352,29 @@ class AttemptRunner:
         if session.current_sublevel_complete():
             tier = session.tier_of(level)
             sub_result = self.app.evaluation.finish_sublevel(level)
+
+            if tier == 1:
+                # Level 1 is practice only — bypass completion screen.
+                # Speak level transition announcement and advance directly to the next level.
+                phrase = random.choice([
+                    "You finished this activity! Now onto the next level.",
+                    "Well done! Let's move to the next level.",
+                ])
+                if self.app.audio_feedback and self.app.tts is not None:
+                    if self._speak(phrase):
+                        return True
+
+                if session.is_last_sublevel_of_tier(level):
+                    self.app.evaluation.finish_tier(tier)
+
+                has_next = session.advance_to_higher_stage()
+                if has_next:
+                    self.app.save_active_session("reading")
+                    if session.tier_of(session.current_level) == 1:
+                        self._run_level1_practice()
+                    return True
+                return True
+
             if session.is_last_sublevel_of_tier(level):
                 tier_result = self.app.evaluation.finish_tier(tier)
                 if session.is_last_tier(tier):
@@ -482,14 +505,15 @@ class AttemptRunner:
 
         Returns True if aborted during playback, False otherwise.
         """
-        wav_path = resolve_level1_playback(level, target_item)
+        sound_target, _ = get_level1_sound_and_word(target_item)
+        wav_path = resolve_level1_playback(level, sound_target)
         if wav_path and wav_path.exists():
             return play_audio_file(wav_path, is_paused=self._is_paused, app=self.app)
         else:
             level_overrides = overrides_for_level(
                 level, self.app.pronunciation_overrides
             )
-            target_override = level_overrides.get(target_item.lower(), target_item)
+            target_override = level_overrides.get(sound_target.lower(), sound_target)
             return self._speak(target_override)
 
     def _run_level1_practice(self) -> None:
@@ -498,6 +522,7 @@ class AttemptRunner:
 
         level = self.app.session.current_level
         target_item = self.app.session.expected_sentence.strip()
+        sound_target, _ = get_level1_sound_and_word(target_item)
         item_num = self.app.session.current_item_number()
 
         if hasattr(self.app.session, "last_announced_sentence"):
@@ -511,12 +536,12 @@ class AttemptRunner:
                 level_overrides = overrides_for_level(
                     level, self.app.pronunciation_overrides
                 )
-                target_override = level_overrides.get(target_item.lower(), target_item)
-                sound_wav = resolve_level1_playback(level, target_item)
+                target_override = level_overrides.get(sound_target.lower(), sound_target)
+                sound_wav = resolve_level1_playback(level, sound_target)
 
                 pre_paths, post_paths, keys_used = build_level1_audio_sequence(
                     level=level,
-                    item=target_item,
+                    item=sound_target,
                     item_number=item_num,
                     recent_keys=self._recent_prompt_keys,
                 )

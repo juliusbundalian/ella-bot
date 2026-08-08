@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional
 
 from ella_bot.validation.validators import ValidationResult
+from ella_bot.core.constants import get_level1_sound_and_word
 
 try:
     import pronouncing
@@ -80,6 +81,9 @@ def get_target_type(expected_sentence: str) -> str:
     text = expected_sentence.strip().lower()
     if not text:
         return "sentence"
+
+    if "(" in text and ")" in text:
+        return "sound"
 
     words = text.split()
 
@@ -173,13 +177,15 @@ def pronunciation_hints(
         conf = spoken_confidence_by_word.get(spoken, 0.0)
         similarity = SequenceMatcher(None, expected, spoken).ratio()
 
+        sound_target, _ = get_level1_sound_and_word(expected)
         if conf < 0.65 or similarity < 0.7:
             template = random.choice(_INCORRECT_HINTS)
-            hints.append(template.format(word=expected))
+            hints.append(template.format(word=sound_target))
 
     for missing in validation.missing_words:
         template = random.choice(_MISSING_HINTS)
-        hints.append(template.format(word=missing))
+        sound_target, _ = get_level1_sound_and_word(missing)
+        hints.append(template.format(word=sound_target))
 
     # Keep feedback brief for children.
     return hints[:4]
@@ -344,18 +350,21 @@ def build_spoken_feedback_with_coaching(
 
     if t_type in ("sound", "word"):
         # For single sounds or single words:
+        sound_target, _ = get_level1_sound_and_word(expected_sentence)
         if t_type == "sound":
             lines.append("Alright, let me make the sound for you.")
         else:
             lines.append("Alright, let me read the word for you.")
 
-        sentence_line = _sanitize_for_tts(expected_sentence)
-        targeted_overrides = build_targeted_overrides(expected_sentence, overrides)
-        overridden_sentence = apply_pronunciation_overrides(sentence_line, targeted_overrides)
-        if overridden_sentence.endswith((".", "!", "?")):
-            lines.append(overridden_sentence)
+        target_override = overrides.get(sound_target.lower(), sound_target)
+        if target_override.startswith("phonemes:"):
+            lines.append(target_override)
         else:
-            lines.append(overridden_sentence + ".")
+            sentence_line = _sanitize_for_tts(sound_target)
+            if sentence_line.endswith((".", "!", "?")):
+                lines.append(sentence_line)
+            else:
+                lines.append(sentence_line + ".")
         lines.append("Now you try!")
 
     else:

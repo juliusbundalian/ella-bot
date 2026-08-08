@@ -343,22 +343,28 @@ def validate_spoken_text(
     spoken = normalize(spoken_lower)
 
     # Special extremely child-friendly rule for single-word / single-sound lessons (Level 1 & 2):
-    # If the lesson is a single item, and that item (or any of its homophones) is detected
-    # anywhere in the spoken words, we treat it as 100% correct, ignoring surrounding static/noise.
-    is_single_item_lesson = len(expected) == 1
+    # If the lesson is a single item or a sound (word) item, and any target token (or its homophones)
+    # is detected anywhere in the spoken words, we treat it as 100% correct, ignoring surrounding static/noise.
+    is_parenthesized_item = "(" in expected_sentence and ")" in expected_sentence
+    is_single_item_lesson = len(expected) == 1 or is_parenthesized_item
     if is_single_item_lesson:
-        target = expected[0]
-        homophones = ASR_HOMOPHONES.get(target, set())
         has_matching_spoken_word = False
         matching_word = ""
-        for sp in spoken:
-            if sp == target or sp in homophones:
-                has_matching_spoken_word = True
-                matching_word = sp
+        matching_target = expected[0] if expected else expected_sentence
+
+        for target in expected:
+            homophones = ASR_HOMOPHONES.get(target, set())
+            for sp in spoken:
+                if sp == target or sp in homophones:
+                    has_matching_spoken_word = True
+                    matching_word = sp
+                    matching_target = target
+                    break
+            if has_matching_spoken_word:
                 break
 
         if has_matching_spoken_word:
-            alignment = [AlignmentToken(expected=target, spoken=matching_word, op="equal")]
+            alignment = [AlignmentToken(expected=matching_target, spoken=matching_word, op="equal")]
             return ValidationResult(
                 wer=0.0,
                 accuracy=1.0,

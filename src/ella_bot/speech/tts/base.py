@@ -30,6 +30,10 @@ class TTSConfig:
 class BaseTTS:
     current_amplitude: float = 0.0
 
+    @property
+    def is_speaking(self) -> bool:
+        return False
+
     def speak(self, text: str, rate: Optional[int] = None) -> None:
         raise NotImplementedError
 

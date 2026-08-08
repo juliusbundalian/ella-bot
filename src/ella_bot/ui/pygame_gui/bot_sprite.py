@@ -17,6 +17,66 @@ def bot_state_for_app(app_state: str) -> str:
     return "idle"
 
 
+import math
+
+
+def draw_thought_bubble(
+    screen: pygame.Surface,
+    prompt_rect: pygame.Rect,
+    now_ms: int,
+    font: pygame.font.Font | None = None,
+) -> None:
+    """Draw speech bubble matching exact Main Menu design and placement displaying 'Waiting...'."""
+    if prompt_rect is None or prompt_rect.width <= 0:
+        return
+
+    if font is None:
+        try:
+            font = pygame.font.Font(None, 28)
+        except Exception:
+            font = pygame.font.SysFont(None, 28, bold=True)
+
+    # Animate dot count: "Waiting.", "Waiting..", "Waiting..."
+    dot_count = (now_ms // 400) % 3 + 1
+    text_str = "Waiting" + "." * dot_count
+    text_surf = font.render(text_str, True, (255, 250, 243))
+
+    inner_rect = prompt_rect.inflate(-64, -64)
+
+    bubble_w = max(180, text_surf.get_width() + 48)
+    bubble_h = 70
+
+    bubble_right = inner_rect.right - 45
+    bubble_x = bubble_right - bubble_w
+    bubble_y = inner_rect.top + int(inner_rect.height * 0.31)
+
+    bubble_rect = pygame.Rect(bubble_x, bubble_y, bubble_w, bubble_h)
+
+    # 1. Drop shadow
+    shadow_rect = pygame.Rect(bubble_rect.left + 4, bubble_rect.top + 4, bubble_w, bubble_h)
+    pygame.draw.rect(screen, (25, 5, 35), shadow_rect, border_radius=35)
+
+    # 2. Main pill body (#7F3F97)
+    pygame.draw.rect(screen, (127, 63, 151), bubble_rect, border_radius=35)
+
+    # 3. Outline stroke (#3B0C4C)
+    pygame.draw.rect(screen, (59, 12, 76), bubble_rect, width=3, border_radius=35)
+
+    # 4. Speech bubble tail pointing DOWNWARDS directly into the top of ELLA's head
+    p1 = (bubble_rect.right - 65, bubble_rect.bottom - 2)
+    p2 = (bubble_rect.right - 35, bubble_rect.bottom - 2)
+    p3 = (bubble_rect.right - 45, bubble_rect.bottom + 38)
+
+    pygame.draw.polygon(screen, (127, 63, 151), [p1, p2, p3])
+    pygame.draw.line(screen, (59, 12, 76), p1, p3, 3)
+    pygame.draw.line(screen, (59, 12, 76), p2, p3, 3)
+    pygame.draw.line(screen, (127, 63, 151), p1, p2, 5)
+
+    # 5. Text render
+    text_rect = text_surf.get_rect(center=bubble_rect.center)
+    screen.blit(text_surf, text_rect)
+
+
 class BotSprite:
     """Owns the reading-prompt bot frames, animation ticking, and rendering."""
 
@@ -156,7 +216,14 @@ class BotSprite:
             self.frame_index = (self.frame_index + 1) % len(frames)
             self.last_tick_ms = now_ms
 
-    def draw(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> pygame.Rect | None:
+    def draw(
+        self,
+        screen: pygame.Surface,
+        prompt_rect: pygame.Rect,
+        show_thought_bubble: bool = False,
+        now_ms: int = 0,
+        font: pygame.font.Font | None = None,
+    ) -> pygame.Rect | None:
         max_width = int(prompt_rect.width * 0.50)
         max_height = int(prompt_rect.height * 0.90)
 
@@ -171,4 +238,8 @@ class BotSprite:
         )
 
         screen.blit(rendered, target_rect)
+
+        if show_thought_bubble:
+            draw_thought_bubble(screen, prompt_rect, now_ms if now_ms > 0 else pygame.time.get_ticks(), font=font)
+
         return target_rect

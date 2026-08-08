@@ -17,6 +17,8 @@ dependencies = [
     "pronouncing",
     "numpy",
     "piper-tts>=1.4,<2",
+    "smbus2",
+    "psutil",
 ]
 
 [project.optional-dependencies]

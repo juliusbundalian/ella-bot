@@ -62,10 +62,9 @@ def test_level1_advance_progresses_items_and_completes_sublevel(tmp_path):
     assert app.session.expected_sentence == "b"
     assert app.session.completed_in_level == 1
 
-    # Advance to complete sublevel 1a
+    # Advance to complete sublevel 1a (bypasses completion screen and advances directly to 1b)
     runner.advance_level1()
-    events = _drain_events(app)
-    assert any(isinstance(e, SubLevelCompleted) and e.kind == "sublevel" for e in events)
+    assert app.session.current_level == "1b"
 
 
 def test_level2_uses_asr_validation(tmp_path):

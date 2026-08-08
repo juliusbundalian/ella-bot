@@ -149,16 +149,16 @@ class LevelSelectionScene(BaseScene):
         else:
             screen.fill(_CARD_BG)
 
-        # 2. Title & Subtitle directly over background in high-contrast dark maroon
+        # 2. Title & Subtitle directly over background matching word color in levels
         cx = width // 2
-        title = self.app.font_title.render("Choose a Level", True, (94, 42, 59))
+        title = self.app.font_title.render("Choose a Level", True, (56, 56, 56))
         if isinstance(title, pygame.Surface):
             screen.blit(title, title.get_rect(centerx=cx, top=45))
 
         subtitle = self.app.font_body.render(
             "All levels are available. Pick where you would like to begin.",
             True,
-            (94, 42, 59),
+            (56, 56, 56),
         )
         if isinstance(subtitle, pygame.Surface):
             screen.blit(
@@ -166,7 +166,7 @@ class LevelSelectionScene(BaseScene):
                 subtitle.get_rect(centerx=cx, top=115),
             )
 
-        # 3. Level Groups & Reverted Pink 3D Buttons
+        # 3. Level Groups & Yellow 3D Buttons
         self.level_buttons = {}
         groups = [
             ("Level 1", LEVEL_ORDER[:7]),
@@ -180,7 +180,7 @@ class LevelSelectionScene(BaseScene):
         available_w = width - 128
 
         for (group_label, levels), row_top in zip(groups, row_tops):
-            label = self.app.font_small.render(group_label, True, (94, 42, 59))
+            label = self.app.font_small.render(group_label, True, (56, 56, 56))
             if isinstance(label, pygame.Surface):
                 screen.blit(label, label.get_rect(centerx=cx, top=row_top))
             button_w = min(
@@ -193,17 +193,20 @@ class LevelSelectionScene(BaseScene):
             for level in levels:
                 rect = pygame.Rect(x, y, button_w, button_h)
                 self.level_buttons[level] = rect
-                self._draw_button(
-                    screen,
+                btn = Button(
                     rect,
-                    level.upper(),
-                    f"level:{level}",
+                    label=level.upper(),
+                    variant="yellow",
                     font=self.app.font_body,
+                    stroke_weight=5,
+                    corner_radius=20,
                 )
+                btn.is_pressed = (self.pressed_button == f"level:{level}")
+                btn.draw(screen)
                 x += button_w + gap
 
-        # 4. Violet Back Button
-        self.back_button = pygame.Rect(68, height - 90, 160, 58)
+        # 4. Violet Back Button (shifted further right for optimal alignment)
+        self.back_button = pygame.Rect(160, height - 90, 160, 58)
         font_btn = getattr(self.app, "font_button", None)
         btn_font = font_btn if isinstance(font_btn, pygame.font.Font) else self.app.font_body
         back_btn = Button(

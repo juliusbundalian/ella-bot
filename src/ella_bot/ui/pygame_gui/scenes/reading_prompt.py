@@ -13,7 +13,7 @@ from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
 from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.services.sound_effects import play_button_click
-from ella_bot.core.constants import tier_of
+from ella_bot.core.constants import get_level1_sound_and_word, tier_of
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 from ella_bot.validation.validators import (
@@ -332,7 +332,28 @@ class ReadingPromptScene(BaseScene):
                 valign="center",
             )
 
-        self.bot.draw(screen, inner_rect)
+        tts_obj = getattr(self.app, "tts", None)
+        is_speaking = False
+        if tts_obj is not None:
+            val = getattr(tts_obj, "is_speaking", False)
+            is_speaking = bool(val() if callable(val) else val)
+            if not is_speaking and hasattr(tts_obj, "_active_stream"):
+                is_speaking = tts_obj._active_stream is not None
+
+        show_bubble = False
+        if not self.modal.visible and not is_speaking:
+            if self.app.state == "listening":
+                show_bubble = True
+            elif self.app.state == "idle" and not getattr(self.app, "prompt_active", False):
+                show_bubble = True
+
+        self.bot.draw(
+            screen,
+            inner_rect,
+            show_thought_bubble=show_bubble,
+            now_ms=now_ms,
+            font=self.app.font_body,
+        )
 
         is_level_1 = False
         if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
@@ -487,17 +508,16 @@ class ReadingPromptScene(BaseScene):
                 if self.is_paused:
                     return
                 intro, sentence = self.app._build_start_announcement()
-                target_override = self.app.pronunciation_overrides.get(sentence.lower(), sentence)
-
-                # Speak intro phrase at normal speed
-                self.app.tts.speak(intro)
-
+                sound_target, display_word = get_level1_sound_and_word(sentence)
                 is_level_1 = str(self.app.current_level).startswith("1")
+
                 if is_level_1:
-                    # Speak target at normal speed on Level 1
+                    target_override = self.app.pronunciation_overrides.get(sound_target.lower(), sound_target)
+                    self.app.tts.speak(intro)
                     self.app.tts.speak(target_override)
                 else:
-                    # Speak target at slower speed on Levels 2-4
+                    target_override = self.app.pronunciation_overrides.get(sentence.lower(), sentence)
+                    self.app.tts.speak(intro)
                     slow_rate = int(self.app.tts.config.rate * 0.8)
                     self.app.tts.speak(target_override, rate=slow_rate)
             except Exception as exc:
