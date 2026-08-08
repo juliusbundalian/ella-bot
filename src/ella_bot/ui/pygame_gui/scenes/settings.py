@@ -156,10 +156,10 @@ class SettingsScene(BaseScene):
         card_rect = self._get_card_rect(width, height)
 
         # Drop shadow
-        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(4, 4), border_radius=60)
+        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(4, 4), border_radius=140)
         # Main body (#57276C) & Border (#7F3F97)
-        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=60)
-        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=60)
+        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=140)
+        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=140)
 
         cx = card_rect.centerx
 
