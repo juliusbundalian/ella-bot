@@ -29,6 +29,8 @@ class SettingsScene(BaseScene):
         self._lottie_bg = None
         self._volume_down_icon = None
         self._volume_up_icon = None
+        self._decrease_icon = None
+        self._increase_icon = None
         self.btn_vol_minus: pygame.Rect | None = None
         self.btn_vol_plus: pygame.Rect | None = None
         self.btn_listen_minus: pygame.Rect | None = None
@@ -64,14 +66,21 @@ class SettingsScene(BaseScene):
             if self._lottie_bg is None:
                 self._lottie_bg = False
 
-        for attr, asset in (
-            ("_volume_down_icon", "assets/ic_volume_down.svg"),
-            ("_volume_up_icon", "assets/ic_volume_up.svg"),
+        for attr, asset, source_size, target_size in (
+            ("_volume_down_icon", "assets/ic_volume_down.svg", (23, 24), (31, 32)),
+            ("_volume_up_icon", "assets/ic_volume_up.svg", (23, 24), (31, 32)),
+            ("_decrease_icon", "assets/ic_decrease.svg", (24, 10), (24, 10)),
+            ("_increase_icon", "assets/ic_increase.svg", (25, 25), (25, 25)),
         ):
             if getattr(self, attr) is None:
                 try:
                     svg = resolve_asset_path(asset).read_text(encoding="utf-8")
-                    svg = svg.replace('width="23" height="24"', 'width="31" height="32"')
+                    source_w, source_h = source_size
+                    target_w, target_h = target_size
+                    svg = svg.replace(
+                        f'width="{source_w}" height="{source_h}"',
+                        f'width="{target_w}" height="{target_h}"',
+                    )
                     icon = pygame.image.load(io.BytesIO(svg.encode("utf-8"))).convert_alpha()
                     setattr(self, attr, icon)
                 except Exception:
@@ -128,26 +137,32 @@ class SettingsScene(BaseScene):
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_circular_button(
+    def _draw_control_button(
         self,
         screen: pygame.Surface,
         rect: pygame.Rect,
         symbol: str,
         is_pressed: bool,
         icon=None,
+        *,
+        circular: bool = False,
     ) -> None:
         cx, cy = rect.center
-        r = rect.width // 2
-
-        # Shadow
-        if not is_pressed:
-            pygame.draw.circle(screen, (35, 10, 45), (cx + 3, cy + 3), r)
 
         fill_col = (70, 30, 90) if is_pressed else (87, 39, 108)  # #57276C
         stroke_col = (127, 63, 151)  # #7F3F97
 
-        pygame.draw.circle(screen, fill_col, (cx, cy), r)
-        pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
+        if circular:
+            r = rect.width // 2
+            if not is_pressed:
+                pygame.draw.circle(screen, (35, 10, 45), (cx + 3, cy + 3), r)
+            pygame.draw.circle(screen, fill_col, (cx, cy), r)
+            pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
+        else:
+            if not is_pressed:
+                pygame.draw.rect(screen, (35, 10, 45), rect.move(3, 3), border_radius=14)
+            pygame.draw.rect(screen, fill_col, rect, border_radius=14)
+            pygame.draw.rect(screen, stroke_col, rect, width=4, border_radius=14)
 
         if icon:
             surf = icon
@@ -225,14 +240,14 @@ class SettingsScene(BaseScene):
 
         self.btn_vol_minus = pygame.Rect(seg_x0 - 40 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 40, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(
+        self._draw_control_button(
             screen,
             self.btn_vol_minus,
             "-",
             self.pressed_button == "vol_minus",
             self._volume_down_icon,
         )
-        self._draw_circular_button(
+        self._draw_control_button(
             screen,
             self.btn_vol_plus,
             "+",
@@ -252,8 +267,20 @@ class SettingsScene(BaseScene):
 
         self.btn_listen_minus = pygame.Rect(cx - 210 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self.btn_listen_plus = pygame.Rect(cx + 210, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(screen, self.btn_listen_minus, "-", self.pressed_button == "listen_minus")
-        self._draw_circular_button(screen, self.btn_listen_plus, "+", self.pressed_button == "listen_plus")
+        self._draw_control_button(
+            screen,
+            self.btn_listen_minus,
+            "-",
+            self.pressed_button == "listen_minus",
+            self._decrease_icon,
+        )
+        self._draw_control_button(
+            screen,
+            self.btn_listen_plus,
+            "+",
+            self.pressed_button == "listen_plus",
+            self._increase_icon,
+        )
 
         # 6. BOTTOM ACTION BUTTON ("Back to Menu")
         btn_w, btn_h = 325, 64

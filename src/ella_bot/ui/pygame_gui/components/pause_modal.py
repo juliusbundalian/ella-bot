@@ -23,6 +23,8 @@ class PauseModal:
         self.listen_seconds: int = 5
         self._volume_down_icon = None
         self._volume_up_icon = None
+        self._decrease_icon = None
+        self._increase_icon = None
 
         self.restart_rect: Optional[pygame.Rect] = None
         self.main_menu_rect: Optional[pygame.Rect] = None
@@ -77,38 +79,52 @@ class PauseModal:
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
     def _load_assets(self) -> None:
-        for attr, asset in (
-            ("_volume_down_icon", "assets/ic_volume_down.svg"),
-            ("_volume_up_icon", "assets/ic_volume_up.svg"),
+        for attr, asset, source_size, target_size in (
+            ("_volume_down_icon", "assets/ic_volume_down.svg", (23, 24), (31, 32)),
+            ("_volume_up_icon", "assets/ic_volume_up.svg", (23, 24), (31, 32)),
+            ("_decrease_icon", "assets/ic_decrease.svg", (24, 10), (24, 10)),
+            ("_increase_icon", "assets/ic_increase.svg", (25, 25), (25, 25)),
         ):
             if getattr(self, attr) is None:
                 try:
                     svg = resolve_asset_path(asset).read_text(encoding="utf-8")
-                    svg = svg.replace('width="23" height="24"', 'width="31" height="32"')
+                    source_w, source_h = source_size
+                    target_w, target_h = target_size
+                    svg = svg.replace(
+                        f'width="{source_w}" height="{source_h}"',
+                        f'width="{target_w}" height="{target_h}"',
+                    )
                     icon = pygame.image.load(io.BytesIO(svg.encode("utf-8"))).convert_alpha()
                     setattr(self, attr, icon)
                 except Exception:
                     setattr(self, attr, False)
 
-    def _draw_circular_button(
+    def _draw_control_button(
         self,
         screen: pygame.Surface,
         rect: pygame.Rect,
         symbol: str,
         is_pressed: bool,
         icon=None,
+        *,
+        circular: bool = False,
     ) -> None:
         cx, cy = rect.center
-        r = rect.width // 2
-
-        if not is_pressed:
-            pygame.draw.circle(screen, (35, 10, 45), (cx + 3, cy + 3), r)
 
         fill_col = (70, 30, 90) if is_pressed else (87, 39, 108)  # #57276C
         stroke_col = (127, 63, 151)  # #7F3F97
 
-        pygame.draw.circle(screen, fill_col, (cx, cy), r)
-        pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
+        if circular:
+            r = rect.width // 2
+            if not is_pressed:
+                pygame.draw.circle(screen, (35, 10, 45), (cx + 3, cy + 3), r)
+            pygame.draw.circle(screen, fill_col, (cx, cy), r)
+            pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
+        else:
+            if not is_pressed:
+                pygame.draw.rect(screen, (35, 10, 45), rect.move(3, 3), border_radius=14)
+            pygame.draw.rect(screen, fill_col, rect, border_radius=14)
+            pygame.draw.rect(screen, stroke_col, rect, width=4, border_radius=14)
 
         if icon:
             surf = icon
@@ -185,7 +201,13 @@ class PauseModal:
         # Top-Right Close "X" Button
         close_sz = 56
         self.close_rect = pygame.Rect(card_rect.right - close_sz - 24, card_rect.top + 16, close_sz, close_sz)
-        self._draw_circular_button(screen, self.close_rect, "X", self._pressed_button == "close")
+        self._draw_control_button(
+            screen,
+            self.close_rect,
+            "X",
+            self._pressed_button == "close",
+            circular=True,
+        )
 
         if self.show_confirm:
             self._draw_confirm(screen, card_rect)
@@ -217,14 +239,14 @@ class PauseModal:
 
         self._vol_minus_rect = pygame.Rect(seg_x0 - 30 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + 30, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(
+        self._draw_control_button(
             screen,
             self._vol_minus_rect,
             "-",
             self._pressed_button == "vol_minus",
             self._volume_down_icon,
         )
-        self._draw_circular_button(
+        self._draw_control_button(
             screen,
             self._vol_plus_rect,
             "+",
@@ -244,8 +266,20 @@ class PauseModal:
 
         self._listen_minus_rect = pygame.Rect(cx - 180 - btn_sz, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._listen_plus_rect = pygame.Rect(cx + 180, listen_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(screen, self._listen_minus_rect, "-", self._pressed_button == "listen_minus")
-        self._draw_circular_button(screen, self._listen_plus_rect, "+", self._pressed_button == "listen_plus")
+        self._draw_control_button(
+            screen,
+            self._listen_minus_rect,
+            "-",
+            self._pressed_button == "listen_minus",
+            self._decrease_icon,
+        )
+        self._draw_control_button(
+            screen,
+            self._listen_plus_rect,
+            "+",
+            self._pressed_button == "listen_plus",
+            self._increase_icon,
+        )
 
         # 3. ACTION BUTTONS ("Restart Level" & "Back to Menu")
         btn_w, btn_h = 325, 58
