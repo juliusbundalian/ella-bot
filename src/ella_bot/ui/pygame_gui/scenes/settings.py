@@ -162,6 +162,7 @@ class SettingsScene(BaseScene):
             if not is_pressed:
                 pygame.draw.rect(screen, (35, 10, 45), rect.move(3, 3), border_radius=18)
             pygame.draw.rect(screen, fill_col, rect, border_radius=18)
+            pygame.draw.rect(screen, stroke_col, rect, width=4, border_radius=18)
 
         if icon:
             surf = icon

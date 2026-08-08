@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 BUTTON_THEMES = {
     "yellow": {
         "fill": (242, 210, 20),      # #F2D214
-        "stroke": (127, 89, 28),     # #7F591C
+        "stroke": (175, 141, 55),    # #AF8D37
         "text": (87, 39, 108),       # #57276C
         "pressed": (220, 188, 15),
     },
     "violet": {
         "fill": (175, 110, 210),     # #AF6ED2 (light violet fill matching Figma spec)
-        "stroke": (59, 12, 76),      # #3B0C4C
+        "stroke": (127, 63, 151),    # #7F3F97
         "text": (255, 250, 243),     # #FFFAF3
         "pressed": (150, 90, 185),
     },
@@ -94,6 +94,15 @@ class Button:
 
         # Draw main button body
         pygame.draw.rect(screen, fill_color, self.rect, border_radius=radius)
+
+        # Draw thick inner stroke (Figma spec)
+        pygame.draw.rect(
+            screen,
+            stroke_color,
+            self.rect,
+            width=self.stroke_weight,
+            border_radius=radius,
+        )
 
         # Draw icon centered if provided
         if self.icon:
