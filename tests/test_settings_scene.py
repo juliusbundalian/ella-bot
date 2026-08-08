@@ -91,3 +91,15 @@ def test_settings_has_no_profile_reset_state():
     assert not hasattr(scene, "show_reset_confirm")
     assert not hasattr(scene, "btn_reset")
     assert not hasattr(scene, "_reset_progress")
+
+
+def test_options_card_is_120_pixels_narrower_and_centered():
+    import pygame
+
+    from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
+
+    screen_width, screen_height = 1024, 768
+    card = SettingsScene._get_card_rect(screen_width, screen_height)
+
+    assert card == pygame.Rect(92, 32, screen_width - 184, screen_height - 64)
+    assert card.centerx == screen_width // 2

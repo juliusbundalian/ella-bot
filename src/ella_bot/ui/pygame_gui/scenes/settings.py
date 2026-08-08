@@ -131,6 +131,11 @@ class SettingsScene(BaseScene):
         surf = font.render(symbol_text, True, (255, 250, 243))
         screen.blit(surf, surf.get_rect(center=(cx, cy)))
 
+    @staticmethod
+    def _get_card_rect(width: int, height: int) -> pygame.Rect:
+        card_width = width - 184
+        return pygame.Rect((width - card_width) // 2, 32, card_width, height - 64)
+
     def render(self) -> None:
         self._load_assets()
         screen = self.app.screen
@@ -147,8 +152,8 @@ class SettingsScene(BaseScene):
         else:
             screen.fill((0, 0, 0))
 
-        # 2. Full-Screen Purple Card Container (#57276C fill, #7F3F97 stroke)
-        card_rect = pygame.Rect(32, 32, width - 64, height - 64)
+        # 2. Centered Purple Card Container (#57276C fill, #7F3F97 stroke)
+        card_rect = self._get_card_rect(width, height)
 
         # Drop shadow
         pygame.draw.rect(screen, (25, 5, 35), card_rect.move(4, 4), border_radius=60)
