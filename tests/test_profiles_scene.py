@@ -43,6 +43,40 @@ def _tap_keyboard_key(scene, key_id):
     )
 
 
+def test_profile_container_matches_options_container_geometry():
+    from ella_bot.ui.pygame_gui.scenes.profiles import (
+        _PROFILE_CONTAINER_RADIUS,
+    )
+
+    scene = _scene()
+    rect = scene._get_container_rect(1280, 720)
+
+    assert rect == pygame.Rect(280, 32, 720, 656)
+    assert rect.centerx == 640
+    assert _PROFILE_CONTAINER_RADIUS == 140
+
+
+def test_profile_pages_contain_two_profiles():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(5))
+
+    assert scene._page_count(len(profiles)) == 3
+    scene.carousel_page = 1
+    assert scene._visible_profiles(profiles) == profiles[2:4]
+
+
+def test_on_enter_opens_page_containing_active_profile():
+    scene = _scene()
+    scene._lottie_bg = False
+    profiles = tuple(_profile(index) for index in range(5))
+    scene.app.profiles.return_value = profiles
+    scene.app.active_profile.return_value = profiles[3]
+
+    scene.on_enter()
+
+    assert scene.carousel_page == 1
+
+
 def test_empty_page_exposes_create_card():
     scene = _scene()
 
@@ -494,4 +528,3 @@ def test_button_auto_scales_overflowing_label():
 
     # Should draw scaled text without raising an error
     btn.draw(surface)
-

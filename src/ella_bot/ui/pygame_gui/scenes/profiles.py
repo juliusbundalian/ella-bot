@@ -23,6 +23,11 @@ def _summary_text(summary) -> str:
     return f"Level {level} - Item {summary.item_number}"
 
 
+_PROFILE_PAGE_SIZE = 2
+_PROFILE_CONTAINER_WIDTH = 720
+_PROFILE_CONTAINER_RADIUS = 140
+
+
 class ProfilesScene(BaseScene):
     """Browse learner profiles and create, select, or manage them."""
 
@@ -38,6 +43,7 @@ class ProfilesScene(BaseScene):
         self.name_input = ""
         self.error_message = ""
         self.pressed_button: str | None = None
+        self.carousel_page = 0
 
         self._profile_card_rects: dict[str, pygame.Rect] = {}
         self._management_profiles: dict[str, object] = {}
@@ -65,6 +71,12 @@ class ProfilesScene(BaseScene):
         self._close_modal()
         self.error_message = ""
         self.pressed_button = None
+        profiles = tuple(self.app.profiles())[:MAX_PROFILES]
+        active = self.app.active_profile()
+        self._show_active_profile_page(
+            profiles,
+            active.id if active is not None else None,
+        )
 
     def on_exit(self) -> None:
         pygame.key.stop_text_input()
@@ -346,6 +358,43 @@ class ProfilesScene(BaseScene):
             return surf
         return None
 
+    @staticmethod
+    def _get_container_rect(width: int, height: int) -> pygame.Rect:
+        return pygame.Rect(
+            (width - _PROFILE_CONTAINER_WIDTH) // 2,
+            32,
+            _PROFILE_CONTAINER_WIDTH,
+            height - 64,
+        )
+
+    @staticmethod
+    def _page_count(profile_count: int) -> int:
+        if profile_count <= 0:
+            return 0
+        return (profile_count + _PROFILE_PAGE_SIZE - 1) // _PROFILE_PAGE_SIZE
+
+    def _clamp_carousel_page(self, profiles: tuple) -> None:
+        last_page = max(0, self._page_count(len(profiles)) - 1)
+        self.carousel_page = max(0, min(self.carousel_page, last_page))
+
+    def _visible_profiles(self, profiles: tuple) -> tuple:
+        self._clamp_carousel_page(profiles)
+        start = self.carousel_page * _PROFILE_PAGE_SIZE
+        return profiles[start : start + _PROFILE_PAGE_SIZE]
+
+    def _show_active_profile_page(
+        self,
+        profiles: tuple,
+        active_profile_id: str | None,
+    ) -> None:
+        self.carousel_page = 0
+        if active_profile_id is None:
+            return
+        for index, profile in enumerate(profiles):
+            if profile.id == active_profile_id:
+                self.carousel_page = index // _PROFILE_PAGE_SIZE
+                return
+
     def render(self) -> None:
         self._load_assets()
         screen = self.app.screen
@@ -363,10 +412,26 @@ class ProfilesScene(BaseScene):
             screen.fill((0, 0, 0))
 
         # 2. Main Full-Screen Purple Container (#57276C fill, #7F3F97 stroke)
-        card_rect = pygame.Rect(32, 32, width - 64, height - 64)
-        pygame.draw.rect(screen, (25, 5, 35), card_rect.move(4, 4), border_radius=60)
-        pygame.draw.rect(screen, (87, 39, 108), card_rect, border_radius=60)
-        pygame.draw.rect(screen, (127, 63, 151), card_rect, width=8, border_radius=60)
+        card_rect = self._get_container_rect(width, height)
+        pygame.draw.rect(
+            screen,
+            (25, 5, 35),
+            card_rect.move(4, 4),
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
+        pygame.draw.rect(
+            screen,
+            (87, 39, 108),
+            card_rect,
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
+        pygame.draw.rect(
+            screen,
+            (127, 63, 151),
+            card_rect,
+            width=8,
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
 
         cx = card_rect.centerx
 
@@ -545,7 +610,8 @@ class ProfilesScene(BaseScene):
 
         button_gap = 8
         button_left = rect.left + 16
-        button_width = (rect.width - 32 - 2 * button_gap) // 3
+        button_widths = (70, 125, 70)
+        button_x = button_left
         for index, (action, label) in enumerate(
             (
                 ("rename", "Rename"),
@@ -554,13 +620,14 @@ class ProfilesScene(BaseScene):
             )
         ):
             btn_r = pygame.Rect(
-                button_left + index * (button_width + button_gap),
+                button_x,
                 divider_y + 6,
-                button_width,
+                button_widths[index],
                 30,
             )
             self.manage_buttons[(action, profile.id)] = btn_r
             self._draw_management_button(screen, btn_r, label, f"{action}:{profile.id}")
+            button_x += button_widths[index] + button_gap
 
     def _draw_management_button(
         self,
