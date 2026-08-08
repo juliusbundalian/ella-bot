@@ -18,6 +18,29 @@ _BTN_FILL = (255, 182, 193)
 _BTN_PRESSED = (251, 165, 193)
 _BTN_OUTLINE = (94, 42, 59)
 
+LEVEL_NAMES = {
+    "1a": "Vowel Sounds",
+    "1b": "Consonant Sounds",
+    "1c": "Consonant Vowels - CV Pattern",
+    "1d": "Vowel Diagraphs",
+    "1e": "Consonant Digraphs",
+    "1f": "Trigraphs and Quadgraphs",
+    "1g": "Consonant Blends",
+    "2a": "Sight Words",
+    "2b": "Easy",
+    "2c": "Average",
+    "2d": "Difficult",
+    "3": "Phrases",
+    "4": "Full Sentences",
+}
+
+LEVEL_CAROUSEL_PAGES = (
+    ("Level 1 - Practice Levels", ("1a", "1b", "1c", "1d")),
+    ("Level 1 - Practice Levels", ("1e", "1f", "1g")),
+    ("Level 2", ("2a", "2b", "2c", "2d")),
+    ("Levels 3 and 4", ("3", "4")),
+)
+
 
 class LevelSelectionScene(BaseScene):
     """Present every curriculum level as an enabled starting point."""
@@ -25,7 +48,13 @@ class LevelSelectionScene(BaseScene):
     def __init__(self, app):
         super().__init__(app)
         self.level_buttons: Dict[str, pygame.Rect] = {}
+        self.level_labels: Dict[str, str] = {}
         self.back_button = None
+        self.carousel_page = 0
+        self.carousel_previous_button: pygame.Rect | None = None
+        self.carousel_next_button: pygame.Rect | None = None
+        self.page_indicator_rects: list[pygame.Rect] = []
+        self.page_indicator_states: list[bool] = []
         self.confirm_button = None
         self.cancel_button = None
         self.pending_level: str | None = None
@@ -37,6 +66,7 @@ class LevelSelectionScene(BaseScene):
         self.pending_level = None
         self.show_confirmation = False
         self.pressed_button = None
+        self.carousel_page = 0
 
     def _load_assets(self) -> None:
         if self._lottie_bg is None:
@@ -88,6 +118,20 @@ class LevelSelectionScene(BaseScene):
             if self.pressed_button:
                 play_button_click()
             return
+        if (
+            self.carousel_previous_button
+            and self.carousel_previous_button.collidepoint(mouse_pos)
+        ):
+            self.pressed_button = "carousel_previous"
+            play_button_click()
+            return
+        if (
+            self.carousel_next_button
+            and self.carousel_next_button.collidepoint(mouse_pos)
+        ):
+            self.pressed_button = "carousel_next"
+            play_button_click()
+            return
         for level, rect in self.level_buttons.items():
             if rect.collidepoint(mouse_pos):
                 self.pressed_button = f"level:{level}"
@@ -104,6 +148,18 @@ class LevelSelectionScene(BaseScene):
             self._confirm_level()
         elif pressed == "cancel" and self.cancel_button and self.cancel_button.collidepoint(mouse_pos):
             self._cancel_confirmation()
+        elif (
+            pressed == "carousel_previous"
+            and self.carousel_previous_button
+            and self.carousel_previous_button.collidepoint(mouse_pos)
+        ):
+            self._change_carousel_page(-1)
+        elif (
+            pressed == "carousel_next"
+            and self.carousel_next_button
+            and self.carousel_next_button.collidepoint(mouse_pos)
+        ):
+            self._change_carousel_page(1)
         elif pressed == "back" and self.back_button and self.back_button.collidepoint(mouse_pos):
             self._go_back()
         elif pressed and pressed.startswith("level:"):
@@ -111,6 +167,79 @@ class LevelSelectionScene(BaseScene):
             rect = self.level_buttons.get(level)
             if rect and rect.collidepoint(mouse_pos):
                 self._select_level(level)
+
+    def _change_carousel_page(self, delta: int) -> None:
+        last_page = len(LEVEL_CAROUSEL_PAGES) - 1
+        self.carousel_page = max(0, min(self.carousel_page + delta, last_page))
+        self.level_buttons = {}
+        self.level_labels = {}
+
+    def _draw_carousel_arrow(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        direction: int,
+        enabled: bool,
+        pressed: bool,
+    ) -> None:
+        fill = (70, 30, 90) if enabled else (65, 42, 73)
+        if pressed and enabled:
+            fill = (60, 24, 78)
+        stroke = (127, 63, 151) if enabled else (91, 70, 98)
+        icon = (255, 250, 243) if enabled else (145, 127, 151)
+        if enabled and not pressed:
+            pygame.draw.rect(
+                screen,
+                (35, 10, 45),
+                rect.move(3, 3),
+                border_radius=18,
+            )
+        pygame.draw.rect(screen, fill, rect, border_radius=18)
+        pygame.draw.rect(screen, stroke, rect, width=4, border_radius=18)
+        cx, cy = rect.center
+        offset = 6 * direction
+        pygame.draw.lines(
+            screen,
+            icon,
+            False,
+            [(cx - offset, cy - 12), (cx + offset, cy), (cx - offset, cy + 12)],
+            width=5,
+        )
+
+    def _draw_level_card(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        level: str,
+        level_name: str,
+    ) -> None:
+        card = Button(
+            rect,
+            label="",
+            variant="yellow",
+            corner_radius=20,
+            stroke_weight=5,
+        )
+        card.is_pressed = self.pressed_button == f"level:{level}"
+        card.draw(screen)
+
+        code = self._render_adaptive_text(
+            f"LEVEL {level.upper()}",
+            27,
+            (87, 39, 108),
+            max_w=rect.width - 32,
+            bold=True,
+        )
+        name = self._render_adaptive_text(
+            level_name,
+            21,
+            (87, 39, 108),
+            max_w=rect.width - 32,
+        )
+        if code:
+            screen.blit(code, code.get_rect(centerx=rect.centerx, top=rect.top + 13))
+        if name:
+            screen.blit(name, name.get_rect(centerx=rect.centerx, bottom=rect.bottom - 15))
 
     def _draw_button(
         self,
@@ -166,47 +295,105 @@ class LevelSelectionScene(BaseScene):
                 subtitle.get_rect(centerx=cx, top=115),
             )
 
-        # 3. Level Groups & Yellow 3D Buttons
+        # 3. Level carousel with named yellow cards
         self.level_buttons = {}
-        groups = [
-            ("Level 1", LEVEL_ORDER[:7]),
-            ("Level 2", LEVEL_ORDER[7:11]),
-            ("Levels 3 and 4", LEVEL_ORDER[11:]),
-        ]
-        row_tops = [175, 305, 435]
-        button_h = 62
-        gap = 16
-        max_button_w = 118
-        available_w = width - 128
+        self.level_labels = {}
+        self.page_indicator_rects = []
+        self.page_indicator_states = []
+        self.carousel_page = max(
+            0,
+            min(self.carousel_page, len(LEVEL_CAROUSEL_PAGES) - 1),
+        )
+        group_label, levels = LEVEL_CAROUSEL_PAGES[self.carousel_page]
 
-        for (group_label, levels), row_top in zip(groups, row_tops):
-            label = self.app.font_small.render(group_label, True, (56, 56, 56))
-            if isinstance(label, pygame.Surface):
-                screen.blit(label, label.get_rect(centerx=cx, top=row_top))
-            button_w = min(
-                max_button_w,
-                (available_w - gap * (len(levels) - 1)) // len(levels),
+        group = self._render_adaptive_text(
+            group_label,
+            28,
+            (56, 56, 56),
+            max_w=width - 320,
+            bold=True,
+        )
+        if group:
+            screen.blit(group, group.get_rect(centerx=cx, top=166))
+
+        card_gap = 18
+        row_gap = 16
+        grid_w = min(880, width - 360)
+        card_w = (grid_w - card_gap) // 2
+        card_h = 100
+        cards_top = 207
+        cards_area_h = card_h * 2 + row_gap
+
+        arrow_w, arrow_h = 48, 72
+        previous_rect = pygame.Rect(
+            88,
+            cards_top + (cards_area_h - arrow_h) // 2,
+            arrow_w,
+            arrow_h,
+        )
+        next_rect = pygame.Rect(
+            width - 88 - arrow_w,
+            previous_rect.top,
+            arrow_w,
+            arrow_h,
+        )
+        previous_enabled = self.carousel_page > 0
+        next_enabled = self.carousel_page < len(LEVEL_CAROUSEL_PAGES) - 1
+        self.carousel_previous_button = previous_rect if previous_enabled else None
+        self.carousel_next_button = next_rect if next_enabled else None
+        self._draw_carousel_arrow(
+            screen,
+            previous_rect,
+            -1,
+            previous_enabled,
+            self.pressed_button == "carousel_previous",
+        )
+        self._draw_carousel_arrow(
+            screen,
+            next_rect,
+            1,
+            next_enabled,
+            self.pressed_button == "carousel_next",
+        )
+
+        for index, level in enumerate(levels):
+            row = index // 2
+            row_start = row * 2
+            row_count = min(2, len(levels) - row_start)
+            row_width = row_count * card_w + (row_count - 1) * card_gap
+            row_left = cx - row_width // 2
+            column = index - row_start
+            rect = pygame.Rect(
+                row_left + column * (card_w + card_gap),
+                cards_top + row * (card_h + row_gap),
+                card_w,
+                card_h,
             )
-            total_w = len(levels) * button_w + (len(levels) - 1) * gap
-            x = cx - total_w // 2
-            y = row_top + 32
-            for level in levels:
-                rect = pygame.Rect(x, y, button_w, button_h)
-                self.level_buttons[level] = rect
-                btn = Button(
-                    rect,
-                    label=level.upper(),
-                    variant="yellow",
-                    font=self.app.font_body,
-                    stroke_weight=5,
-                    corner_radius=20,
-                )
-                btn.is_pressed = (self.pressed_button == f"level:{level}")
-                btn.draw(screen)
-                x += button_w + gap
+            self.level_buttons[level] = rect
+            self.level_labels[level] = LEVEL_NAMES[level]
+            self._draw_level_card(screen, rect, level, LEVEL_NAMES[level])
 
-        # 4. Violet Back Button (shifted further right for optimal alignment)
-        self.back_button = pygame.Rect(160, height - 90, 160, 58)
+        dot_radius = 6
+        dot_gap = 18
+        indicators_y = cards_top + cards_area_h + 22
+        page_count = len(LEVEL_CAROUSEL_PAGES)
+        total_dot_w = page_count * dot_radius * 2 + (page_count - 1) * dot_gap
+        dot_x = cx - total_dot_w // 2
+        for index in range(page_count):
+            dot_rect = pygame.Rect(
+                dot_x + index * (dot_radius * 2 + dot_gap),
+                indicators_y - dot_radius,
+                dot_radius * 2,
+                dot_radius * 2,
+            )
+            self.page_indicator_rects.append(dot_rect)
+            is_current = index == self.carousel_page
+            self.page_indicator_states.append(is_current)
+            color = (242, 210, 20) if is_current else (127, 63, 151)
+            pygame.draw.circle(screen, color, dot_rect.center, dot_radius)
+
+        # 4. Centered Violet Back Button
+        self.back_button = pygame.Rect(cx - 80, height - 90, 160, 58)
         font_btn = getattr(self.app, "font_button", None)
         btn_font = font_btn if isinstance(font_btn, pygame.font.Font) else self.app.font_body
         back_btn = Button(

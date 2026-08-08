@@ -3,7 +3,11 @@ from unittest.mock import MagicMock
 import pygame
 
 from ella_bot.core.constants import LEVEL_ORDER
-from ella_bot.ui.pygame_gui.scenes.level_selection import LevelSelectionScene
+from ella_bot.ui.pygame_gui.scenes.level_selection import (
+    LEVEL_CAROUSEL_PAGES,
+    LEVEL_NAMES,
+    LevelSelectionScene,
+)
 
 
 def _scene():
@@ -17,11 +21,80 @@ def _scene():
     return LevelSelectionScene(app)
 
 
-def test_render_exposes_every_level_as_enabled_button():
+def _click(scene, point):
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=point)
+    )
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=point)
+    )
+
+
+def test_carousel_pages_cover_every_level_in_curriculum_order():
+    carousel_levels = [
+        level
+        for _, levels in LEVEL_CAROUSEL_PAGES
+        for level in levels
+    ]
+
+    assert carousel_levels == LEVEL_ORDER
+    assert LEVEL_CAROUSEL_PAGES[0][0] == "Level 1 - Practice Levels"
+    assert LEVEL_CAROUSEL_PAGES[1][0] == "Level 1 - Practice Levels"
+
+
+def test_first_page_shows_four_named_level_1_cards_and_indicators():
     scene = _scene()
     scene.render()
-    assert list(scene.level_buttons) == LEVEL_ORDER
+
+    assert list(scene.level_buttons) == ["1a", "1b", "1c", "1d"]
+    assert scene.level_labels == {
+        level: LEVEL_NAMES[level] for level in ("1a", "1b", "1c", "1d")
+    }
     assert all(rect.width > 0 and rect.height > 0 for rect in scene.level_buttons.values())
+    assert scene.carousel_previous_button is None
+    assert scene.carousel_next_button is not None
+    assert scene.page_indicator_states == [True, False, False, False]
+    assert scene.back_button.centerx == scene.app.screen.get_rect().centerx
+
+
+def test_each_carousel_page_shows_its_expected_named_levels():
+    scene = _scene()
+
+    for page, (_, expected_levels) in enumerate(LEVEL_CAROUSEL_PAGES):
+        scene.carousel_page = page
+        scene.render()
+
+        assert tuple(scene.level_buttons) == expected_levels
+        assert scene.level_labels == {
+            level: LEVEL_NAMES[level] for level in expected_levels
+        }
+        assert scene.page_indicator_states == [
+            index == page for index in range(len(LEVEL_CAROUSEL_PAGES))
+        ]
+
+
+def test_carousel_arrows_navigate_and_disabled_ends_do_not_wrap():
+    scene = _scene()
+    scene.render()
+
+    disabled_previous_point = (112, 315)
+    _click(scene, disabled_previous_point)
+    assert scene.carousel_page == 0
+
+    for expected_page in (1, 2, 3):
+        next_point = scene.carousel_next_button.center
+        _click(scene, next_point)
+        assert scene.carousel_page == expected_page
+        scene.render()
+
+    assert scene.carousel_next_button is None
+    disabled_next_point = (1168, 315)
+    _click(scene, disabled_next_point)
+    assert scene.carousel_page == 3
+
+    previous_point = scene.carousel_previous_button.center
+    _click(scene, previous_point)
+    assert scene.carousel_page == 2
 
 
 def test_selecting_level_opens_confirmation_without_replacing_checkpoint():
