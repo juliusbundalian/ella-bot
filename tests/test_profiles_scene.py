@@ -473,3 +473,25 @@ def test_physical_text_input_still_works_with_embedded_keyboard():
     scene.handle_event(pygame.event.Event(pygame.TEXTINPUT, text="Mia"))
 
     assert scene.name_input == "Mia"
+
+
+def test_long_profile_name_scales_adaptively_to_fit():
+    scene = _scene()
+    profile = _profile(1, "A" * 20)
+    scene.app.profiles.return_value = (profile,)
+
+    # Should render cleanly without raising an error
+    scene.render()
+    assert profile.id in scene.profile_cards
+
+
+def test_button_auto_scales_overflowing_label():
+    from ella_bot.ui.pygame_gui.components.button import Button
+    font = pygame.font.SysFont(None, 40)
+    rect = pygame.Rect(0, 0, 80, 30)
+    btn = Button(rect, label="Extremely Long Button Text", font=font)
+    surface = pygame.Surface((100, 100))
+
+    # Should draw scaled text without raising an error
+    btn.draw(surface)
+

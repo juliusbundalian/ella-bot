@@ -8,8 +8,93 @@ from ella_bot.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def play_sound_effect(filename: str) -> None:
-    """Play a sound effect file from assets/audio/sfx/ asynchronously via Pygame mixer."""
+_SOUND_CACHE: dict[tuple, object] = {}
+DEFAULT_GAIN_FACTOR: float = 1.8
+DEFAULT_TARGET_PEAK_FRACTION: float = 0.95
+
+
+def boost_sound_volume(
+    sound: "pygame.mixer.Sound",
+    gain_factor: Optional[float] = None,
+    target_peak_fraction: Optional[float] = None,
+    volume_scale: float = 1.0,
+) -> "pygame.mixer.Sound":
+    """Boost PCM volume of a Pygame Sound by normalizing its peak amplitude and applying gain_factor.
+
+    Applies RMS gain expansion and a tanh soft-limiter to prevent clipping while maximizing output volume.
+    """
+    gf = gain_factor if gain_factor is not None else DEFAULT_GAIN_FACTOR
+    tpf = target_peak_fraction if target_peak_fraction is not None else DEFAULT_TARGET_PEAK_FRACTION
+
+    try:
+        import numpy as np
+        import pygame
+
+        arr = pygame.sndarray.array(sound)
+        if arr.size == 0:
+            return sound
+        dtype = arr.dtype
+        arr_float = arr.astype(np.float32)
+        peak = np.max(np.abs(arr_float))
+        if peak < 1e-5:
+            return sound
+
+        max_int = 32767.0 if dtype == np.int16 else (127.0 if dtype == np.int8 else 32767.0)
+        vol = max(0.1, min(1.0, volume_scale))
+
+        target_peak = max_int * tpf * vol
+        norm_gain = target_peak / peak
+        total_gain = norm_gain * max(0.1, gf)
+        boosted = arr_float * total_gain
+
+        # Soft limiter (tanh compression) to boost RMS loudness without hard digital clipping
+        threshold = max_int * 0.85
+        over = np.abs(boosted) > threshold
+        if np.any(over):
+            sign = np.sign(boosted)
+            abs_val = np.abs(boosted)
+            compressed = threshold + (max_int - threshold) * np.tanh((abs_val - threshold) / (max_int - threshold))
+            boosted = np.where(over, sign * compressed, boosted)
+
+        boosted_arr = np.clip(boosted, -max_int, max_int).astype(dtype)
+        return pygame.sndarray.make_sound(boosted_arr)
+    except Exception as exc:
+        logger.debug("Sound volume boost fallback: %s", exc)
+        return sound
+
+
+def load_audio_sound(
+    wav_path: Path | str,
+    gain_factor: Optional[float] = None,
+    target_peak_fraction: Optional[float] = None,
+    volume_scale: float = 1.0,
+) -> "pygame.mixer.Sound":
+    """Load a WAV audio file and return a volume-boosted Pygame Sound object."""
+    gf = gain_factor if gain_factor is not None else DEFAULT_GAIN_FACTOR
+    tpf = target_peak_fraction if target_peak_fraction is not None else DEFAULT_TARGET_PEAK_FRACTION
+
+    path_str = str(wav_path)
+    cache_key = (path_str, round(volume_scale, 2), round(gf, 2), round(tpf, 2))
+    if cache_key in _SOUND_CACHE:
+        return _SOUND_CACHE[cache_key]
+
+    import pygame
+
+    sound = pygame.mixer.Sound(path_str)
+    boosted = boost_sound_volume(
+        sound,
+        gain_factor=gf,
+        target_peak_fraction=tpf,
+        volume_scale=volume_scale,
+    )
+    if len(_SOUND_CACHE) > 200:
+        _SOUND_CACHE.clear()
+    _SOUND_CACHE[cache_key] = boosted
+    return boosted
+
+
+def play_sound_effect(filename: str, app: Optional[object] = None, gain_factor: Optional[float] = None) -> None:
+    """Play a sound effect file from assets/audio/sfx/ asynchronously via Pygame mixer with volume boost."""
     try:
         import pygame
         if not pygame.mixer.get_init():
@@ -21,7 +106,16 @@ def play_sound_effect(filename: str) -> None:
         if not sfx_path.exists():
             logger.warning("Sound effect file not found: %s", sfx_path)
             return
-        sound = pygame.mixer.Sound(str(sfx_path))
+
+        vol_scale = 1.0
+        if app and getattr(app, "tts", None) and hasattr(app.tts, "config"):
+            vol_scale = getattr(app.tts.config, "volume", 1.0)
+
+        kwargs = {"volume_scale": vol_scale}
+        if gain_factor is not None:
+            kwargs["gain_factor"] = gain_factor
+
+        sound = load_audio_sound(sfx_path, **kwargs)
         sound.play()
     except Exception as exc:
         logger.warning("Could not play sound effect %s: %s", filename, exc)
@@ -223,8 +317,9 @@ def play_audio_file(
     wav_path: Path,
     is_paused: Optional[Callable[[], bool]] = None,
     app: Optional[object] = None,
+    gain_factor: Optional[float] = None,
 ) -> bool:
-    """Play a WAV audio file using Pygame mixer.
+    """Play a WAV audio file using Pygame mixer with peak-normalized volume boost.
 
     Returns True if aborted during playback, False otherwise.
     """
@@ -236,7 +331,15 @@ def play_audio_file(
             except Exception:
                 return False
 
-        sound = pygame.mixer.Sound(str(wav_path))
+        vol_scale = 1.0
+        if app and getattr(app, "tts", None) and hasattr(app.tts, "config"):
+            vol_scale = getattr(app.tts.config, "volume", 1.0)
+
+        kwargs = {"volume_scale": vol_scale}
+        if gain_factor is not None:
+            kwargs["gain_factor"] = gain_factor
+
+        sound = load_audio_sound(wav_path, **kwargs)
         channel = sound.play()
         while channel and channel.get_busy():
             if is_paused and is_paused():
@@ -255,5 +358,6 @@ def play_audio_file(
             app.tts.current_amplitude = 0.0
         logger.warning("Error playing audio file %s: %s", wav_path, exc)
         return False
+
 
 

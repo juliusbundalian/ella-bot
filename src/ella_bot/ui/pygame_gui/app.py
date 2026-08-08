@@ -373,6 +373,32 @@ class EllaGUIApp:
         self.active_scene.on_enter()
         return True
 
+    def _translate_pointer_event(self, pygame_module, event):
+        """Keep pointer input aligned with the globally shifted rendering."""
+        pointer_events = {
+            pygame_module.MOUSEMOTION,
+            pygame_module.MOUSEBUTTONDOWN,
+            pygame_module.MOUSEBUTTONUP,
+        }
+        padding = max(0, self.config.left_padding)
+        if padding == 0 or event.type not in pointer_events:
+            return event
+        attributes = event.dict.copy()
+        attributes["pos"] = (event.pos[0] - padding, event.pos[1])
+        return pygame_module.event.Event(event.type, attributes)
+
+    def _apply_render_padding(self, pygame_module) -> None:
+        """Shift the completed frame right, clipping its far-right edge."""
+        padding = max(0, self.config.left_padding)
+        if padding == 0:
+            return
+        self.screen.scroll(padding, 0)
+        pygame_module.draw.rect(
+            self.screen,
+            (0, 0, 0),
+            (0, 0, padding, self.screen.get_height()),
+        )
+
     def run(self) -> None:
         try:
             import pygame
@@ -439,11 +465,14 @@ class EllaGUIApp:
                     if event.type == pygame.QUIT:
                         self.running = False
                     else:
-                        self.active_scene.handle_event(event)
+                        self.active_scene.handle_event(
+                            self._translate_pointer_event(pygame, event)
+                        )
 
                 self.animator.update(now_ms)
                 self.active_scene.update(now_ms)
                 self.active_scene.render()
+                self._apply_render_padding(pygame)
 
                 pygame.display.flip()
                 self.clock.tick(self.config.fps)

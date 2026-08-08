@@ -11,7 +11,7 @@ def test_load_settings_maps_ini_sections(tmp_path, monkeypatch):
         "[System]\nstart_level = 2a\n"
         "[Speech]\nuse_mic = true\nlisten_seconds = 6\n"
         "[TTS]\naudio_feedback = true\ntts_rate = 170\n"
-        "[GUI]\nfullscreen = false\ngui_width = 800\n",
+        "[GUI]\nfullscreen = false\ngui_width = 800\ngui_left_padding = 10\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(app_config, "get_project_root", lambda: tmp_path)
@@ -25,6 +25,7 @@ def test_load_settings_maps_ini_sections(tmp_path, monkeypatch):
     assert settings["tts_rate"] == 170
     assert settings["fullscreen"] is False
     assert settings["gui_width"] == 800
+    assert settings["gui_left_padding"] == 10
 
 
 def test_load_settings_missing_file_returns_empty(tmp_path, monkeypatch):

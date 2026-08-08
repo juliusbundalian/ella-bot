@@ -77,6 +77,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fullscreen", action="store_true", help="Launch GUI in fullscreen mode")
     parser.add_argument("--gui-width", type=int, default=1280, help="GUI window width (ignored in fullscreen)")
     parser.add_argument("--gui-height", type=int, default=720, help="GUI window height (ignored in fullscreen)")
+    parser.add_argument(
+        "--gui-left-padding",
+        type=int,
+        default=10,
+        help="Shift the complete GUI rendering right by this many pixels",
+    )
     
     settings = load_settings()
     parser.set_defaults(**settings)
@@ -184,6 +190,7 @@ def run_gui(args: argparse.Namespace) -> None:
         config=GUIConfig(
             width=args.gui_width,
             height=args.gui_height,
+            left_padding=max(0, getattr(args, "gui_left_padding", 10)),
             fullscreen=args.fullscreen,
             session_log_path=session_log,
         ),

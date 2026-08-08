@@ -113,6 +113,17 @@ class Button:
             text_surf = self.font.render(self.label, True, text_color)
             if not isinstance(text_surf, pygame.Surface):
                 return
+            padding_x = max(12, self.stroke_weight * 2)
+            padding_y = max(8, self.stroke_weight * 2)
+            max_w = max(1, self.rect.width - padding_x)
+            max_h = max(1, self.rect.height - padding_y)
+            if text_surf.get_width() > max_w or text_surf.get_height() > max_h:
+                scale_w = max_w / max(1, text_surf.get_width())
+                scale_h = max_h / max(1, text_surf.get_height())
+                scale = min(scale_w, scale_h)
+                new_w = max(1, int(text_surf.get_width() * scale))
+                new_h = max(1, int(text_surf.get_height() * scale))
+                text_surf = pygame.transform.smoothscale(text_surf, (new_w, new_h))
             try:
                 bound = text_surf.get_bounding_rect()
                 if isinstance(bound.width, int) and bound.width > 0 and bound.height > 0:

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ELLA Reading Assistant
+Comment=Start ELLA when the Raspberry Pi desktop session begins
+Exec=/home/ella/project-ella/ella-bot/.venv/bin/ella-bot
+Path=/home/ella/project-ella/ella-bot
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
