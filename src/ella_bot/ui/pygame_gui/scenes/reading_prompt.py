@@ -292,7 +292,7 @@ class ReadingPromptScene(BaseScene):
         label_surf = self.app.font_subtitle.render(label_text, True, label_fg)
         label_pad_x = 28
         label_pad_y = 12
-        label_rect = label_surf.get_rect(centerx=width // 2, top=28)
+        label_rect = label_surf.get_rect(centerx=width // 2, top=44)
         pill_rect = pygame.Rect(
             label_rect.left - label_pad_x,
             label_rect.top - label_pad_y,
@@ -393,6 +393,11 @@ class ReadingPromptScene(BaseScene):
         overlap = int(max_sprite_height * 0.28)
         return inner_rect.bottom + overlap - 48 - max_sprite_height
 
+    @staticmethod
+    def _centered_safe_top(inner_rect, safe_bottom):
+        """Center a text region vertically while keeping it above ELLA."""
+        return max(inner_rect.top, inner_rect.centery * 2 - safe_bottom)
+
     def _prompt_layout(self, inner_rect, pygame_module):
         text = self.app.expected_sentence
         session = getattr(self.app, "session", None)
@@ -404,7 +409,7 @@ class ReadingPromptScene(BaseScene):
 
         if current_tier in (3, 4):
             safe_bottom = self._bot_safe_bottom(inner_rect)
-            text_top = min(inner_rect.top + 168, safe_bottom)
+            text_top = self._centered_safe_top(inner_rect, safe_bottom)
             text_width = max(1, int(inner_rect.width * 0.48))
             text_rect = pygame_module.Rect(
                 inner_rect.centerx - text_width // 2,
@@ -421,7 +426,7 @@ class ReadingPromptScene(BaseScene):
         if len(text.split()) <= 6:
             if current_tier == 2:
                 safe_bottom = self._bot_safe_bottom(inner_rect)
-                text_top = min(inner_rect.top + 120, safe_bottom)
+                text_top = self._centered_safe_top(inner_rect, safe_bottom)
                 text_rect = pygame_module.Rect(
                     inner_rect.left + 40,
                     text_top,
@@ -444,7 +449,10 @@ class ReadingPromptScene(BaseScene):
             return font, text_rect
 
         safe_bottom = self._bot_safe_bottom(inner_rect)
-        text_top = min(inner_rect.top + 88, safe_bottom)
+        if current_tier == 2:
+            text_top = self._centered_safe_top(inner_rect, safe_bottom)
+        else:
+            text_top = min(inner_rect.top + 88, safe_bottom)
         text_rect = pygame_module.Rect(
             inner_rect.left + 40,
             text_top,

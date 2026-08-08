@@ -31,7 +31,7 @@ def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
         assert text_rect.width < inner_rect.width - 80
         assert text_rect.right < inner_rect.right - 40
         assert abs(text_rect.centerx - inner_rect.centerx) <= 1
-        assert text_rect.top == inner_rect.top + 168
+        assert text_rect.centery == inner_rect.centery
         assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
         assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 64
 
@@ -48,10 +48,12 @@ def test_level_2_uses_smaller_font_and_stays_above_ella():
     assert font.get_height() < scene.app.font_prompt_small.get_height()
     assert text_rect == pygame.Rect(
         inner_rect.left + 40,
-        inner_rect.top + 120,
+        scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect)),
         inner_rect.width - 80,
-        scene._bot_safe_bottom(inner_rect) - (inner_rect.top + 120),
+        scene._bot_safe_bottom(inner_rect)
+        - scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect)),
     )
+    assert text_rect.centery == inner_rect.centery
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 72
 
@@ -152,7 +154,7 @@ def test_state_trigger_does_not_fire_when_not_listening():
     scene._start_attempt.assert_not_called()
 
 
-def test_long_prompt_uses_smaller_font_and_higher_text_area():
+def test_long_level_2_prompt_uses_smaller_font_and_centered_safe_area():
     scene, pygame = _make_scene_for_layout(
         "she stepped in and respectfully stated a reasonable solution by "
         "sharing the consumer's rights and the store's policy."
@@ -162,7 +164,7 @@ def test_long_prompt_uses_smaller_font_and_higher_text_area():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert text_rect.top < inner_rect.top + 120
+    assert text_rect.centery == inner_rect.centery
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert scene._wrapped_height(
         scene.app.expected_sentence, font, text_rect.width
