@@ -305,7 +305,7 @@ class ReadingPromptScene(BaseScene):
 
         # 2. Settings / Pause Button (Left-Centered circular gear button matching Main Menu)
         gear_size = 80
-        gear_x = 40
+        gear_x = inner_rect.left + 40
         gear_y = height // 2 - gear_size // 2
         self.menu_button_rect = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
 
@@ -342,7 +342,7 @@ class ReadingPromptScene(BaseScene):
             btn_w, btn_h = 180, 56
             gap = 24
             center_x = width // 2
-            btn_y = height - 90
+            btn_y = height - 114
 
             self.replay_button_rect = pygame.Rect(center_x - btn_w - gap // 2, btn_y, btn_w, btn_h)
             self.next_button_rect = pygame.Rect(center_x + gap // 2, btn_y, btn_w, btn_h)
@@ -395,13 +395,53 @@ class ReadingPromptScene(BaseScene):
 
     def _prompt_layout(self, inner_rect, pygame_module):
         text = self.app.expected_sentence
+        session = getattr(self.app, "session", None)
+        current_level = getattr(session, "current_level", None)
+        if not isinstance(current_level, str):
+            current_level = getattr(self.app, "current_level", "")
+
+        current_tier = tier_of(current_level)
+
+        if current_tier in (3, 4):
+            safe_bottom = self._bot_safe_bottom(inner_rect)
+            text_top = min(inner_rect.top + 168, safe_bottom)
+            text_width = max(1, int(inner_rect.width * 0.48))
+            text_rect = pygame_module.Rect(
+                inner_rect.centerx - text_width // 2,
+                text_top,
+                text_width,
+                max(0, safe_bottom - text_top),
+            )
+            for font_size in range(64, 11, -2):
+                font = self.app._get_prompt_font(font_size)
+                if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
+                    return font, text_rect
+            return None, text_rect
+
         if len(text.split()) <= 6:
-            return self.app._prompt_font(pygame_module), pygame_module.Rect(
+            if current_tier == 2:
+                safe_bottom = self._bot_safe_bottom(inner_rect)
+                text_top = min(inner_rect.top + 120, safe_bottom)
+                text_rect = pygame_module.Rect(
+                    inner_rect.left + 40,
+                    text_top,
+                    inner_rect.width - 80,
+                    max(0, safe_bottom - text_top),
+                )
+                for font_size in range(72, 11, -2):
+                    font = self.app._get_prompt_font(font_size)
+                    if font.size(text)[0] <= text_rect.width:
+                        return font, text_rect
+                return None, text_rect
+
+            text_rect = pygame_module.Rect(
                 inner_rect.left + 40,
                 inner_rect.top + 120,
                 inner_rect.width - 80,
                 inner_rect.height - 160,
             )
+            font = self.app._prompt_font(pygame_module)
+            return font, text_rect
 
         safe_bottom = self._bot_safe_bottom(inner_rect)
         text_top = min(inner_rect.top + 88, safe_bottom)
@@ -411,7 +451,8 @@ class ReadingPromptScene(BaseScene):
             max(1, inner_rect.width - 80),
             max(0, safe_bottom - text_top),
         )
-        for font_size in range(82, 11, -2):
+        max_font_size = 72 if current_tier == 2 else 82
+        for font_size in range(max_font_size, 11, -2):
             font = self.app._get_prompt_font(font_size)
             if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
                 return font, text_rect
@@ -704,4 +745,3 @@ class ReadingPromptScene(BaseScene):
             return
         self.worker_thread = threading.Thread(target=self.runner.advance_level1, daemon=True)
         self.worker_thread.start()
-

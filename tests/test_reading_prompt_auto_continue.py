@@ -3,16 +3,71 @@ import time
 from unittest.mock import MagicMock
 
 
-def _make_scene_for_layout(expected_sentence):
+def _make_scene_for_layout(expected_sentence, current_level="2a"):
     import pygame
 
     pygame.font.init()
     scene = _make_scene()
     scene.app.expected_sentence = expected_sentence
+    scene.app.session.current_level = current_level
     scene.app.font_prompt_small = pygame.font.SysFont("Arial", 96)
     scene.app._prompt_font.side_effect = lambda pygame_module: scene.app.font_prompt_small
     scene.app._get_prompt_font.side_effect = lambda size: pygame.font.SysFont("Arial", size)
     return scene, pygame
+
+
+def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
+    for current_level in ("3", "4"):
+        scene, pygame = _make_scene_for_layout(
+            "Please read this advanced sentence aloud",
+            current_level=current_level,
+        )
+        inner_rect = pygame.Rect(32, 32, 1216, 656)
+
+        font, text_rect = scene._prompt_layout(inner_rect, pygame)
+
+        assert font.get_height() < scene.app.font_prompt_small.get_height()
+        assert text_rect.left > inner_rect.left + 40
+        assert text_rect.width < inner_rect.width - 80
+        assert text_rect.right < inner_rect.right - 40
+        assert abs(text_rect.centerx - inner_rect.centerx) <= 1
+        assert text_rect.top == inner_rect.top + 168
+        assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
+        assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 64
+
+
+def test_level_2_uses_smaller_font_and_stays_above_ella():
+    scene, pygame = _make_scene_for_layout(
+        "Please read this sentence",
+        current_level="2a",
+    )
+    inner_rect = pygame.Rect(32, 32, 1216, 656)
+
+    font, text_rect = scene._prompt_layout(inner_rect, pygame)
+
+    assert font.get_height() < scene.app.font_prompt_small.get_height()
+    assert text_rect == pygame.Rect(
+        inner_rect.left + 40,
+        inner_rect.top + 120,
+        inner_rect.width - 80,
+        scene._bot_safe_bottom(inner_rect) - (inner_rect.top + 120),
+    )
+    assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
+    assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 72
+
+
+def test_level_2_shrinks_a_short_prompt_that_is_too_wide():
+    scene, pygame = _make_scene_for_layout(
+        "characteristically incomprehensibilities institutionalization counterrevolutionaries",
+        current_level="2a",
+    )
+    inner_rect = pygame.Rect(32, 32, 1216, 656)
+
+    font, text_rect = scene._prompt_layout(inner_rect, pygame)
+
+    assert font.get_height() < scene.app.font_prompt_small.get_height()
+    assert font.size(scene.app.expected_sentence)[0] <= text_rect.width
+    scene.app._get_prompt_font.assert_called()
 
 
 def _make_scene(state="idle", prompt_active=False, is_paused=False,
