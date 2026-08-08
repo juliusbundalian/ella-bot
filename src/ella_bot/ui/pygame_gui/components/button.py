@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 BUTTON_THEMES = {
     "yellow": {
         "fill": (242, 210, 20),      # #F2D214
-        "stroke": (175, 141, 55),    # #AF8D37
+        "stroke": (127, 89, 28),     # #7F591C
         "text": (87, 39, 108),       # #57276C
         "pressed": (220, 188, 15),
     },
     "violet": {
         "fill": (175, 110, 210),     # #AF6ED2 (light violet fill matching Figma spec)
-        "stroke": (127, 63, 151),    # #7F3F97
+        "stroke": (59, 12, 76),      # #3B0C4C
         "text": (255, 250, 243),     # #FFFAF3
         "pressed": (150, 90, 185),
     },
