@@ -107,24 +107,24 @@ class EllaGUIApp:
         return self.session.build_start_announcement()
 
     def _get_sys_font(self, size, bold=False):
-        """Helper to get system or bundled font (Changa One) with cross-platform fallbacks."""
+        """Helper to get system or bundled font (Rencana / Changa One) with cross-platform fallbacks."""
         import pygame
         from ella_bot.utils.file_utils import resolve_asset_path
 
-        ttf_path = resolve_asset_path("assets/fonts/ChangaOne-Regular.ttf")
-        if ttf_path.exists():
-            try:
-                return pygame.font.Font(str(ttf_path), size)
-            except Exception:
-                pass
+        for font_file in ["assets/fonts/Rencana.ttf", "assets/fonts/Rencana.otf", "assets/fonts/ChangaOne-Regular.ttf"]:
+            ttf_path = resolve_asset_path(font_file)
+            if ttf_path.exists():
+                try:
+                    return pygame.font.Font(str(ttf_path), size)
+                except Exception:
+                    pass
 
-        fonts = ["Changa One", "Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"]
+        fonts = ["Rencana", "Changa One", "Avenir Next", "Segoe UI", "Arial", "Verdana", "sans-serif"]
         return pygame.font.SysFont(fonts, size, bold=bold)
 
     def _get_prompt_font(self, size):
-        """Return Arial exclusively for words, phrases, and sentences to read."""
-        import pygame
-        return pygame.font.SysFont("Arial", size)
+        """Return Rencana font with cross-platform fallbacks for words, phrases, and sentences to read."""
+        return self._get_sys_font(size)
 
     def _prompt_font(self, pygame_module):
         width, height = self.screen.get_size()
