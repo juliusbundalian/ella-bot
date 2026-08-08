@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 @dataclass
 class TTSConfig:
     voice: Optional[str] = None
-    rate: int = 150
+    rate: int = 120
     non_blocking: bool = False
     piper_binary: Optional[str] = None
     piper_model: Optional[str] = None

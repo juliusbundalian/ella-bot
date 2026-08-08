@@ -33,7 +33,7 @@ def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
         assert abs(text_rect.centerx - inner_rect.centerx) <= 1
         assert text_rect.centery == inner_rect.centery
         assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
-        assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 64
+        assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 80
 
 
 def test_level_2_uses_smaller_font_and_stays_above_ella():

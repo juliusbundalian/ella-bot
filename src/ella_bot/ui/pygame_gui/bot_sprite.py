@@ -43,29 +43,29 @@ def draw_thought_bubble(
 
     inner_rect = prompt_rect.inflate(-64, -64)
 
-    bubble_w = max(180, text_surf.get_width() + 48)
-    bubble_h = 70
+    bubble_w = max(160, text_surf.get_width() + 40)
+    bubble_h = 60
 
-    bubble_right = inner_rect.right - 45
+    bubble_right = prompt_rect.right - 24
     bubble_x = bubble_right - bubble_w
-    bubble_y = inner_rect.top + int(inner_rect.height * 0.31)
+    bubble_y = inner_rect.top + int(inner_rect.height * 0.28)
 
     bubble_rect = pygame.Rect(bubble_x, bubble_y, bubble_w, bubble_h)
 
     # 1. Drop shadow
-    shadow_rect = pygame.Rect(bubble_rect.left + 4, bubble_rect.top + 4, bubble_w, bubble_h)
-    pygame.draw.rect(screen, (25, 5, 35), shadow_rect, border_radius=35)
+    shadow_rect = pygame.Rect(bubble_rect.left + 3, bubble_rect.top + 3, bubble_w, bubble_h)
+    pygame.draw.rect(screen, (25, 5, 35), shadow_rect, border_radius=30)
 
     # 2. Main pill body (#7F3F97)
-    pygame.draw.rect(screen, (127, 63, 151), bubble_rect, border_radius=35)
+    pygame.draw.rect(screen, (127, 63, 151), bubble_rect, border_radius=30)
 
     # 3. Outline stroke (#3B0C4C)
-    pygame.draw.rect(screen, (59, 12, 76), bubble_rect, width=3, border_radius=35)
+    pygame.draw.rect(screen, (59, 12, 76), bubble_rect, width=3, border_radius=30)
 
     # 4. Speech bubble tail pointing DOWNWARDS directly into the top of ELLA's head
     p1 = (bubble_rect.right - 65, bubble_rect.bottom - 2)
     p2 = (bubble_rect.right - 35, bubble_rect.bottom - 2)
-    p3 = (bubble_rect.right - 45, bubble_rect.bottom + 38)
+    p3 = (bubble_rect.right - 50, bubble_rect.bottom + 32)
 
     pygame.draw.polygon(screen, (127, 63, 151), [p1, p2, p3])
     pygame.draw.line(screen, (59, 12, 76), p1, p3, 3)

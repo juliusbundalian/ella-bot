@@ -107,7 +107,7 @@ def test_piper_passes_synthesis_config_from_ttsconfig(monkeypatch):
     tts = piper_mod.PiperTTS(config=cfg, piper_model="x.onnx")
     assert tts._syn_config.noise_scale == 0.5
     assert tts._syn_config.noise_w_scale == 0.9
-    assert tts._syn_config.length_scale == pytest.approx(1.2 * 200 / cfg.rate)
+    assert tts._syn_config.length_scale == pytest.approx(1.2 * 150 / cfg.rate)
 
 
 def test_build_tts_piper_defaults_to_hfc_female(monkeypatch):

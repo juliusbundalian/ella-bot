@@ -72,6 +72,9 @@ class ReadingPromptScene(BaseScene):
                 self._settings_icon = False
 
     def on_enter(self) -> None:
+        from ella_bot.services.bgm_service import pause_bgm
+
+        pause_bgm()
         self._load_assets()
         self.app.state = "idle"
         self.app.message = ""
@@ -247,8 +250,12 @@ class ReadingPromptScene(BaseScene):
             if self._auto_start_at is not None and time.monotonic() >= self._auto_start_at:
                 self._auto_start_at = None
                 self._start_attempt()
-            elif self._auto_start_at is None and self.app.state == "listening":
-                self._start_attempt()
+            elif self._auto_start_at is None and self.app.state in ("listening", "idle", "success", "retry"):
+                is_level_1 = False
+                if hasattr(self.app, "session") and hasattr(self.app.session, "current_level") and isinstance(self.app.session.current_level, str):
+                    is_level_1 = (tier_of(self.app.session.current_level) == 1)
+                if not is_level_1:
+                    self._start_attempt()
 
         if self.app.state == "listening" and not self.app.prompt_active:
             if time.monotonic() - self.last_activity_monotonic >= self.idle_timeout_seconds:
@@ -342,9 +349,7 @@ class ReadingPromptScene(BaseScene):
 
         show_bubble = False
         if not self.modal.visible and not is_speaking:
-            if self.app.state == "listening":
-                show_bubble = True
-            elif self.app.state == "idle" and not getattr(self.app, "prompt_active", False):
+            if self.app.state == "listening" and getattr(self.app, "prompt_active", False):
                 show_bubble = True
 
         self.bot.draw(
@@ -431,14 +436,14 @@ class ReadingPromptScene(BaseScene):
         if current_tier in (3, 4):
             safe_bottom = self._bot_safe_bottom(inner_rect)
             text_top = self._centered_safe_top(inner_rect, safe_bottom)
-            text_width = max(1, int(inner_rect.width * 0.48))
+            text_width = max(1, int(inner_rect.width * 0.64))
             text_rect = pygame_module.Rect(
                 inner_rect.centerx - text_width // 2,
                 text_top,
                 text_width,
                 max(0, safe_bottom - text_top),
             )
-            for font_size in range(64, 11, -2):
+            for font_size in range(80, 11, -2):
                 font = self.app._get_prompt_font(font_size)
                 if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
                     return font, text_rect

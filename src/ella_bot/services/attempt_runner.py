@@ -90,16 +90,17 @@ class AttemptRunner:
             time.sleep(0.1)
         return self._abort_requested
 
-    def _speak(self, text: str) -> bool:
+    def _speak(self, text: str, rate: Optional[int] = None) -> bool:
         """Speak text. Returns True if aborted."""
         if self._abort_requested:
             return True
         self.app.event_queue.put(StateChanged("speaking"))
-        rate = None
-        if text.startswith("SLOW: "):
-            text = text[6:].strip()
-            rate = int(self.app.tts.config.rate * 0.7)
-        self.app.tts.speak(text, rate=rate)
+        actual_rate = rate
+        if actual_rate is None:
+            if text.startswith("SLOW: "):
+                text = text[6:].strip()
+                actual_rate = int(self.app.tts.config.rate * 0.7)
+        self.app.tts.speak(text, rate=actual_rate)
         return self._abort_requested
 
     def run(self) -> None:
@@ -128,22 +129,17 @@ class AttemptRunner:
                     self.app.session.current_level, self.app.pronunciation_overrides
                 )
                 target_override = level_overrides.get(target_item.lower(), target_item)
-                if "phonemes:" in target_override:
-                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                    parts = pattern.split(announcement, maxsplit=1)
-                    if len(parts) == 2:
-                        intro_part = parts[0].strip().rstrip(",").rstrip(".")
-                        if self._speak(intro_part):
-                            return
-                        if self._speak(target_override):
-                            return
-                    else:
-                        if self._speak(announcement):
-                            return
+
+                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
+                parts = pattern.split(announcement, maxsplit=1)
+                if len(parts) == 2:
+                    intro_part = parts[0].strip().rstrip(",").rstrip(".")
+                    if self._speak(intro_part):
+                        return
+                    if self._speak(target_override, rate=100):
+                        return
                 else:
-                    pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                    announcement_with_overrides = pattern.sub(target_override, announcement)
-                    if self._speak(announcement_with_overrides):
+                    if self._speak(announcement, rate=100):
                         return
             except Exception as exc:
                 logger.debug("Intro TTS error: %s", exc)
@@ -282,7 +278,6 @@ class AttemptRunner:
             time.sleep(0.6)
             if self._wait_if_paused():
                 return
-            self.app.event_queue.put(StateChanged("listening"))
             self.app.event_queue.put(MessageChanged(""))
 
         except Exception as exc:

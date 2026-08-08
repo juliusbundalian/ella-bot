@@ -59,7 +59,7 @@ class KokoroTTS(BaseTTS):
             
             # Map rate to speed (Kokoro uses 1.0 as normal)
             # Ella's rate is usually around 150 (wpm).
-            actual_rate = rate if rate is not None else (self.config.rate or 150)
+            actual_rate = rate if rate is not None else (self.config.rate or 120)
             speed = actual_rate / 150.0
 
             print(f"[Kokoro TTS] Generating speech with voice '{voice}' at speed {speed:.2f}...")

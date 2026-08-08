@@ -49,8 +49,8 @@ class PiperTTS(BaseTTS):
             return self._active_stream is not None
 
     def _get_syn_config(self, volume: Optional[float] = None, rate: Optional[int] = None) -> SynthesisConfig:
-        base_rate = 200.0
-        target_rate = rate if (rate is not None and rate > 0) else (self.config.rate if (self.config.rate and self.config.rate > 0) else 200)
+        base_rate = 150.0
+        target_rate = rate if (rate is not None and rate > 0) else (self.config.rate if (self.config.rate and self.config.rate > 0) else 120)
         speed_ratio = base_rate / target_rate
 
         return SynthesisConfig(
