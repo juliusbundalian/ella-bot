@@ -252,7 +252,347 @@ configuration value is a CLI option, and unknown keys are ignored by
 
 ## Part II — Follow the Program
 
+### From a terminal command to a running app
+
+`main()` in `src/ella_bot/cli/main.py` has a deliberately small job: parse
+settings and start the GUI. The work is separated so tests can check argument
+parsing and engine construction without opening a real window.
+
+The startup stages are:
+
+1. `load_settings()` reads recognized keys from `config/settings.ini` into a
+   Python dictionary.
+2. `ArgumentParser.set_defaults()` uses that dictionary as the CLI defaults.
+3. `parse_args()` replaces a default when the user supplies a command-line
+   option.
+4. `run_gui()` resolves paths and maps numeric shortcuts `1` and `2` to `1a`
+   and `2a`.
+5. The ASR factory constructs `SimulatedASR` or `VoskASR`.
+6. If audio feedback is enabled, the TTS factory constructs a speech engine;
+   otherwise the app receives `None`.
+7. `EllaGUIApp` constructs the shared services, scenes, profile store, and
+   runtime state, then `run()` starts Pygame.
+
+```mermaid
+flowchart TD
+    INI[config/settings.ini] --> Parse[parse_args]
+    Terminal[Command-line options] --> Parse
+    Parse --> Paths[Resolve project-relative paths]
+    Paths --> ASRFactory[ASR factory]
+    Paths --> TTSFactory[TTS factory, if enabled]
+    ASRFactory --> App[EllaGUIApp]
+    TTSFactory --> App
+    Overrides[pronunciation_overrides.json] --> App
+    App --> Loop[Pygame run loop]
+```
+
+`main()` catches any exception that escapes startup or the GUI and prints a
+`[Runtime error]` message. This keeps a traceback from being the only message a
+learner sees, but it also means the process does not currently return a
+purpose-specific error code.
+
+### Configuration precedence and dependency construction
+
+**Precedence** means which setting wins when the same option appears in more
+than one place:
+
+```text
+CLI option supplied by the user
+        wins over
+recognized value in config/settings.ini
+        wins over
+default written in parse_args()
+```
+
+For example, `settings.ini` currently sets an eight-second listening window.
+Running `ella-bot --listen-seconds 5` changes it to five seconds for that run.
+The Settings scene can persist selected values back to the INI file through
+`save_setting()`.
+
+Important current settings include:
+
+| Section | Keys read by the application |
+|---|---|
+| `[System]` | `start_level`, `sentence_file`, `session_log` |
+| `[Speech]` | `use_mic`, `vosk_model`, `listen_seconds`, `sample_rate`, `input_device` |
+| `[TTS]` | `audio_feedback`, `tts_engine`, `tts_rate`, models, Piper synthesis values, `volume`, pronunciation overrides |
+| `[GUI]` | `gui`, `fullscreen`, width, height, and left padding |
+
+`sentence_file` is read into the defaults dictionary even though the present
+CLI parser has no argument with that name. Conversely, not every internal
+value is meant to be configured. This is a reminder that “present in a config
+file” and “actively used by the runtime” are different claims.
+
+Paths are resolved in three places:
+
+- `resolve_existing_path()` tries the literal path and then the project root.
+- `resolve_model_path()` in `utils/file_utils.py` puts bare model filenames
+  under `models/`.
+- `GUIConfig` receives an absolute or project-root-relative session log path.
+
+A **factory** is a function that chooses and constructs an object. Factories
+keep the CLI from knowing all constructor details. The ASR factory's decision
+is simple: microphone mode means `VoskASR`; otherwise it creates
+`SimulatedASR`. The TTS factory has more choices and fallbacks, described in
+Part III.
+
+### Core constants and immutable events
+
+`src/ella_bot/core/constants.py` is the single Python source for:
+
+- the ordered list of 13 levels;
+- each level's pass threshold;
+- the mapping from sublevel to tier;
+- a maximum of one attempt per Tier 1 item and three attempts per later item;
+- a ten-item session cap for Tier 2 and above.
+
+Levels 3 and 4 have thresholds of `1.01`, which is above the maximum possible
+accuracy of `1.0`. Tests explicitly call these “unreachable by threshold.”
+Their completion is therefore handled through session/final-evaluation flow,
+not ordinary automatic level-up based on a score above 101%.
+
+`src/ella_bot/core/events.py` defines six frozen dataclasses:
+
+| Event | Payload and purpose |
+|---|---|
+| `StateChanged` | A new robot/application state such as listening. |
+| `MessageChanged` | New text for the scene to display. |
+| `ErrorOccurred` | An error string that crossed a worker boundary. |
+| `AttemptReady` | A completed attempt view model. |
+| `SubLevelCompleted` | A result plus whether the result represents a sublevel or tier. |
+| `SessionCompleted` | The final cumulative result. |
+
+“Frozen” means code cannot replace a dataclass field after construction. That
+makes an event safer to pass between threads: the sender and receiver cannot
+quietly rewrite the same message. Some payloads are annotated as `Any`, so the
+type checker cannot verify their exact shape; runtime tests provide part of the
+contract.
+
+`core/models.py` and `core/exceptions.py` currently contain only placeholder
+statements. They are architectural space for future shared types, not active
+model or error systems. This handbook does not assign them behavior they do
+not have.
+
 ## Part III — Understand the Subsystems
+
+### How ELLA listens: ASR
+
+An ASR engine implements one main operation:
+
+```python
+transcribe(expected_sentence=None, is_paused=None) -> ASRResult
+```
+
+`ASRResult` contains the complete `transcript` and a list of `WordScore`
+objects. Each word score contains a recognized word and Vosk's confidence from
+`0.0` to `1.0`. Confidence is evidence from the recognizer, not a probability
+that the learner understands the word.
+
+#### Simulated recognition
+
+`SimulatedASR` returns the text supplied with `--spoken`. Every simulated word
+gets confidence `0.9`. This path is valuable for development because it tests
+the lesson flow without requiring a microphone or model.
+
+There are similarly named ASR classes in both `asr/simulated.py` and
+`asr/vosk_engine.py`. The active factory imports `SimulatedASR` from the first
+file and `VoskASR` from the second. The other duplicated definitions are not
+selected by `build_asr()`.
+
+#### Vosk microphone recognition
+
+The active `VoskASR` performs these steps:
+
+1. Load the local Vosk model during construction.
+2. Open a persistent `sounddevice.RawInputStream` for mono, signed 16-bit audio.
+3. Let the audio callback place byte chunks into a thread-safe queue.
+4. At the start of an attempt, discard old queued audio and create a fresh
+   `KaldiRecognizer`.
+5. For `listen_seconds`, take chunks from the queue and feed them to Vosk.
+6. Stop early with an empty result if the pause/cancel callback becomes true.
+7. Parse Vosk's final JSON into the transcript and per-word scores.
+8. Log capture time, decoded audio, remaining queue backlog, decoder time, and
+   word confidences.
+
+The default stream block size is 4,000 frames. The configured sample rate is
+currently 16,000 samples per second. Because each mono sample is a signed
+16-bit value (two bytes), one second contains about 32,000 audio bytes.
+
+The stream starts early to reduce delay, but that creates a possible backlog;
+the diagnostics make that visible. If opening the stream fails, construction
+logs an error and continues with `_stream` unset. A later transcription tries
+to start it again. Missing or invalid Vosk model files instead cause a detailed
+`RuntimeError` during model loading.
+
+The ASR does not use Whisper, a cloud API, or a file named
+`post_processor.py`. Correction rules that compensate for known Vosk
+misrecognitions are part of `validation/validators.py`.
+
+### How ELLA speaks: TTS and prerecorded audio
+
+The `TTSEngine` protocol says a compatible object must have `speak(text)` and
+`stop()`. The richer `BaseTTS` also supplies optional `pause()`, `resume()`,
+`set_volume()`, and `current_amplitude`. The amplitude value lets robot
+animation react while speech is playing.
+
+`TTSConfig` carries voice, rate, nonblocking mode, volume, Piper model and
+synthesis values, and Kokoro model paths. A TTS call is **blocking** when it
+does not return until speech playback finishes. Some engines support a
+nonblocking mode that uses a subprocess or background thread.
+
+#### Engine selection
+
+An explicit engine name constructs that backend. For `auto`, the current order
+is:
+
+```mermaid
+flowchart TD
+    Start[auto] --> PiperModel{Piper model exists?}
+    PiperModel -- yes --> Piper[Try Piper]
+    PiperModel -- no or load fails --> KokoroFiles{Kokoro model + voices exist?}
+    KokoroFiles -- yes --> Kokoro[Try Kokoro]
+    KokoroFiles -- no or load fails --> OS{Platform}
+    OS -- macOS --> Say[macOS say]
+    Say --> Pyttsx3[pyttsx3 fallback]
+    Pyttsx3 --> EspeakMac[eSpeak fallback]
+    OS -- Linux/other --> Driver{Seeed/ac108 module loaded?}
+    Driver -- yes --> ReSpeaker[ReSpeaker/eSpeak]
+    Driver -- no or failure --> Espeak[eSpeak]
+    Espeak --> Pyttsx3Linux[pyttsx3 fallback]
+```
+
+Explicit Piper or Kokoro selection also falls back to `auto` when required
+model files do not exist. An unsupported name raises `ValueError`.
+
+The classic backends—eSpeak, `pyttsx3`, macOS `say`, and ReSpeaker/eSpeak—are
+implemented in `speech/tts/base.py`. Several same-named files under
+`speech/tts/engines/` are placeholders; Piper and Kokoro are the implemented
+neural engines in that folder.
+
+#### Piper
+
+`PiperTTS` loads one `PiperVoice` and reuses it. It synthesizes chunks, applies
+a gentle three-point finite impulse response (FIR) smoothing filter, mixes 30%
+of the smoothed signal with 70% of the original, peak-normalizes the result,
+and sends signed 16-bit chunks to a `sounddevice.RawOutputStream`.
+
+The filter operation is:
+
+```python
+smoothed = np.convolve(audio, [0.25, 0.50, 0.25], mode="same")
+output = 0.70 * audio + 0.30 * smoothed
+```
+
+That is a short real excerpt from `_apply_warmth()`. It softens rapid sample
+changes while retaining most of the original signal. Piper also:
+
+- maps the configured words-per-minute rate to Piper's `length_scale`;
+- clamps volume during normalization;
+- serializes speech with `_speak_lock`, avoiding two voices writing together;
+- streams roughly 50 ms playback pieces;
+- reports each piece's peak amplitude for animation;
+- checks stop and pause events between pieces;
+- has a special `phonemes:` path for configured IPA-like phoneme strings.
+
+The program catches and logs errors inside Piper playback rather than letting
+them escape to the whole application. This keeps the UI alive, but a failed
+utterance can be silent.
+
+#### Kokoro and system voices
+
+`KokoroTTS` warms its ONNX model on a daemon thread, uses voice `af_heart` when
+none is selected, maps 150 words per minute to speed `1.0`, and plays generated
+samples through `sounddevice`. Its dependency, `kokoro-onnx`, is optional and
+must be installed separately.
+
+eSpeak, macOS `say`, and ReSpeaker launch operating-system commands.
+`pyttsx3` initializes an engine for each utterance; on Windows it also attempts
+to initialize COM in the calling thread. These differences explain why one
+backend may work on a laptop while another is better suited to the Pi.
+
+Prerecorded Tier 1 lesson prompts are a separate path managed by
+`services/sound_effects.py`. They do not pass through neural TTS at all. That
+path is explained with the attempt runner later in this part.
+
+### How ELLA compares spoken and expected text
+
+Validation starts by extracting sequences matching letters and apostrophes and
+lowercasing them. Punctuation and digits do not become comparison tokens.
+
+For a phrase or sentence, `align_words()` uses dynamic programming: it builds a
+table of the cheapest edits needed to transform recognized words into expected
+words. Each operation is recorded as:
+
+| Operation | Meaning | Cost |
+|---|---|---:|
+| `equal` | Words match or an allowed equivalent matches. | 0 |
+| `sub` | A recognized word replaces an expected word. | 1 |
+| `del` | An expected word is missing. | 1 |
+| `ins` | An extra recognized word appears. | 1 |
+
+Word error rate (WER) and accuracy are then calculated as:
+
+```text
+edits = missing + substitutions + extra
+WER = edits / number of expected words
+accuracy = max(0, 1 - WER)
+```
+
+Example: expected `we read books`, recognized `we red`. The alignment can count
+`red` as an allowed homophone of `read`, then mark `books` as missing. That is
+one edit across three expected words: WER is about `0.333`, and accuracy is
+about `0.667`.
+
+The implementation adds curriculum-specific fairness rules:
+
+- common strict homophones such as `to`/`two` may match;
+- dropped `-ed` and possessive endings can match in selected forms;
+- known Vosk phrase substitutions are reversed only when the target word
+  appears in the expected text;
+- a single-item lesson succeeds if the target or one of its broad configured
+  ASR equivalents appears anywhere in the transcript, ignoring extra noise;
+- strict fluency mode turns an otherwise matching word into an error below
+  `0.35` Vosk confidence.
+
+The single-item equivalence tables are intentionally generous for early
+phonics. They should not be interpreted as a general English homophone
+dictionary.
+
+`ValidationResult` keeps WER, accuracy, missing words, incorrect pairs, extra
+words, and the complete alignment. `build_highlighted_expected()` places
+brackets around nonmatching expected words for simple display.
+
+### How feedback and pronunciation coaching are built
+
+`build_feedback()` converts validation details into a `FeedbackResult`:
+
+- accuracy at least `0.95` receives a randomly selected success phrase;
+- accuracy from `0.75` to below `0.95` receives an “almost” phrase;
+- lower accuracy receives a retry phrase;
+- missing, substituted, and extra words become detail strings;
+- up to four hint candidates are collected, while normal spoken feedback uses
+  at most two.
+
+The phrase selection is random, so tests check categories and contents instead
+of relying on one permanent sentence.
+
+Feedback distinguishes a sound, word, phrase, or sentence. On an unsuccessful
+attempt it may identify the first difficult word, speak it slowly, demonstrate
+the complete target, and invite another try. Manual pronunciation overrides
+come from `config/pronunciation_overrides.json`.
+
+Overrides need careful scoping. Entries such as `go` can represent a phonics
+sound in Tier 1 but an ordinary word later. `overrides_for_level()` therefore
+returns the table only for Tier 1. In multiword targets, common short words and
+single letters are also excluded from targeted replacement so a normal
+sentence is not mangled.
+
+If no manual form is available, `auto_pronunciation_coaching()` can query the
+CMU pronunciation dictionary through `pronouncing`, translate ARPAbet symbols
+to child-friendly sound chunks, or fall back to a basic vowel-based syllable
+split. ARPAbet is a set of text symbols for English speech sounds; for example,
+`CH` maps to “ch.” This coaching is a practical heuristic, not a complete
+phonetics engine.
 
 ## Part IV — Work With the Project
 
