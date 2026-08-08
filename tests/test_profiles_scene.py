@@ -140,28 +140,21 @@ def test_empty_profiles_show_empty_state_without_indicators():
     assert scene.create_button is not None
 
 
-def test_profiles_page_uses_exact_title_and_reset_progress_copy():
+def test_profiles_page_uses_exact_title_copy():
     scene = _scene()
     profile = _profile(1)
     scene.app.profiles.return_value = (profile,)
     real_title_font = scene.app.font_title
-    real_small_font = scene.app.font_small
     scene.app.font_title = MagicMock()
     scene.app.font_title.render.side_effect = real_title_font.render
-    scene.app.font_small = MagicMock()
-    scene.app.font_small.render.side_effect = real_small_font.render
 
     scene.render()
 
     title_labels = [
         call.args[0] for call in scene.app.font_title.render.call_args_list
     ]
-    small_labels = [
-        call.args[0] for call in scene.app.font_small.render.call_args_list
-    ]
     assert 'Who\'s Learning?' in title_labels
     assert 'Choose a Profile' not in title_labels
-    assert 'Reset Progress' in small_labels
 
 
 def test_close_modal_stops_text_input(monkeypatch):
@@ -527,6 +520,84 @@ def test_closing_modal_cancels_pressed_keyboard_key():
     scene._close_modal()
 
     assert scene.keyboard.handle_mouse_up(point) is None
+
+
+def test_visible_profile_cards_and_actions_use_consistent_geometry():
+    scene = _scene()
+    profiles = (_profile(1, "Maria"), _profile(2, "Leo"))
+    scene.app.profiles.return_value = profiles
+
+    scene.render()
+
+    first_card = scene._profile_card_rects[profiles[0].id]
+    second_card = scene._profile_card_rects[profiles[1].id]
+    assert first_card.size == second_card.size
+
+    rename = scene.manage_buttons[("rename", profiles[0].id)]
+    reset = scene.manage_buttons[("reset", profiles[0].id)]
+    delete = scene.manage_buttons[("delete", profiles[0].id)]
+    assert rename.height == reset.height == delete.height == 40
+    assert reset.size == delete.size
+    assert rename.top < reset.top
+    assert rename.width == reset.width + 8 + delete.width
+
+
+def test_profile_selection_hitbox_stops_above_management_actions():
+    scene = _scene()
+    profile = _profile(1)
+    scene.app.profiles.return_value = (profile,)
+
+    scene.render()
+
+    selection = scene.profile_cards[profile.id]
+    rename = scene.manage_buttons[("rename", profile.id)]
+    assert selection.bottom <= rename.top - 8
+
+
+def test_management_labels_use_short_consistent_copy():
+    scene = _scene()
+    profile = _profile(1)
+    scene.app.profiles.return_value = (profile,)
+    real_font = pygame.font.SysFont(None, 16)
+    tracking_font = MagicMock()
+    tracking_font.render.side_effect = real_font.render
+    scene._get_adaptive_font = MagicMock(return_value=tracking_font)
+
+    scene.render()
+
+    rendered_labels = [call.args[0] for call in tracking_font.render.call_args_list]
+    assert "Rename" in rendered_labels
+    assert "Reset" in rendered_labels
+    assert "Delete" in rendered_labels
+    assert "Reset Progress" not in rendered_labels
+
+
+def test_delete_clamps_carousel_to_new_last_page():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(5))
+    scene.app.profiles.return_value = profiles[:4]
+    scene.carousel_page = 2
+    scene._open_confirmation("delete", profiles[4])
+
+    scene._confirm_management()
+
+    assert scene.carousel_page == 1
+
+
+def test_rename_and_reset_keep_current_carousel_page():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(4))
+    scene.app.profiles.return_value = profiles
+    scene.carousel_page = 1
+
+    scene._open_rename(profiles[2])
+    scene.name_input = "Renamed"
+    scene._save_name()
+    assert scene.carousel_page == 1
+
+    scene._open_confirmation("reset", profiles[2])
+    scene._confirm_management()
+    assert scene.carousel_page == 1
 
 
 def test_leaving_scene_cancels_pressed_keyboard_key(monkeypatch):

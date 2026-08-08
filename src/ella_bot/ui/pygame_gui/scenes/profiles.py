@@ -183,6 +183,8 @@ class ProfilesScene(BaseScene):
             self.pressed_button = None
             self._modal_cancel_button = None
             return
+        profiles = tuple(self.app.profiles())[:MAX_PROFILES]
+        self._clamp_carousel_page(profiles)
         self._close_modal()
         if not cleaned:
             self.error_message = "Some old profile files could not be removed."
@@ -594,12 +596,7 @@ class ProfilesScene(BaseScene):
                 )
                 self._profile_card_rects[profile.id] = c_rect
                 self._management_profiles[profile.id] = profile
-                self.profile_cards[profile.id] = pygame.Rect(
-                    c_rect.left,
-                    c_rect.top,
-                    c_rect.width,
-                    c_rect.height - 48,
-                )
+                self.profile_cards[profile.id] = self._profile_selection_rect(c_rect)
                 self._draw_profile_card(
                     screen,
                     c_rect,
@@ -712,6 +709,36 @@ class ProfilesScene(BaseScene):
         elif self.modal == "cleanup_warning":
             self._draw_cleanup_warning_modal(screen, width, height)
 
+    @staticmethod
+    def _management_button_rects(rect: pygame.Rect) -> dict[str, pygame.Rect]:
+        padding = 16
+        gap = 8
+        button_h = 40
+        bottom_y = rect.bottom - padding - button_h
+        rename_y = bottom_y - gap - button_h
+        full_w = rect.width - 2 * padding
+        half_w = (full_w - gap) // 2
+        return {
+            "rename": pygame.Rect(rect.left + padding, rename_y, full_w, button_h),
+            "reset": pygame.Rect(rect.left + padding, bottom_y, half_w, button_h),
+            "delete": pygame.Rect(
+                rect.left + padding + half_w + gap,
+                bottom_y,
+                half_w,
+                button_h,
+            ),
+        }
+
+    @classmethod
+    def _profile_selection_rect(cls, rect: pygame.Rect) -> pygame.Rect:
+        rename = cls._management_button_rects(rect)["rename"]
+        return pygame.Rect(
+            rect.left,
+            rect.top,
+            rect.width,
+            max(0, rename.top - rect.top - 8),
+        )
+
     def _draw_profile_card(self, screen, rect, profile, is_active: bool) -> None:
         key = f"profile:{profile.id}"
         is_pressed = self.pressed_button == key
@@ -727,19 +754,19 @@ class ProfilesScene(BaseScene):
         pygame.draw.rect(screen, card_fill, rect, border_radius=20)
         pygame.draw.rect(screen, border_col, rect, width=border_w, border_radius=20)
 
-        # Profile Name (Bold cream)
-        title_font = getattr(self.app, "font_body", self.app.font_title)
-        max_name_w = rect.width - (140 if is_active else 40)
         name_surf = self._render_adaptive_text(
             profile.name,
             24,
             (255, 250, 243),
-            max_w=max_name_w,
+            max_w=rect.width - (110 if is_active else 32),
             bold=True,
-            default_font=title_font,
+            default_font=self._get_adaptive_font(24, bold=True),
         )
         if name_surf:
-            screen.blit(name_surf, name_surf.get_rect(left=rect.left + 20, top=rect.top + 14))
+            screen.blit(
+                name_surf,
+                name_surf.get_rect(left=rect.left + 16, top=rect.top + 18),
+            )
 
         # Progress / Subtitle
         try:
@@ -750,13 +777,16 @@ class ProfilesScene(BaseScene):
 
         progress_surf = self._render_adaptive_text(
             _summary_text(summary),
-            20,
+            18,
             (227, 198, 236),
-            max_w=rect.width - 40,
-            default_font=self.app.font_small,
+            max_w=rect.width - 32,
+            default_font=self._get_adaptive_font(18),
         )
         if progress_surf:
-            screen.blit(progress_surf, progress_surf.get_rect(left=rect.left + 20, top=rect.top + 48))
+            screen.blit(
+                progress_surf,
+                progress_surf.get_rect(left=rect.left + 16, top=rect.top + 58),
+            )
 
         # Active Badge
         if is_active:
@@ -773,8 +803,8 @@ class ProfilesScene(BaseScene):
                 pygame.draw.rect(screen, (242, 210, 20), badge_rect, border_radius=10)
                 screen.blit(badge_surf, badge_surf.get_rect(center=badge_rect.center))
 
-        # Action Buttons at Bottom of Card (Rename, Reset Progress, Delete)
-        divider_y = rect.bottom - 42
+        action_rects = self._management_button_rects(rect)
+        divider_y = action_rects["rename"].top - 12
         pygame.draw.line(
             screen,
             (127, 63, 151),
@@ -782,51 +812,24 @@ class ProfilesScene(BaseScene):
             (rect.right - 16, divider_y),
             width=2,
         )
-
-        button_gap = 8
-        button_left = rect.left + 16
-        button_width = (rect.width - 32 - 2 * button_gap) // 3
-        for index, (action, label) in enumerate(
-            (
-                ("rename", "Rename"),
-                ("reset", "Reset Progress"),
-                ("delete", "Delete"),
-            )
+        action_font = self._get_adaptive_font(16, bold=True)
+        for action, label, variant in (
+            ("rename", "Rename", "yellow"),
+            ("reset", "Reset", "yellow"),
+            ("delete", "Delete", "violet"),
         ):
-            btn_r = pygame.Rect(
-                button_left + index * (button_width + button_gap),
-                divider_y + 6,
-                button_width,
-                30,
+            btn_rect = action_rects[action]
+            self.manage_buttons[(action, profile.id)] = btn_rect
+            button = Button(
+                btn_rect,
+                label=label,
+                variant=variant,
+                font=action_font,
+                corner_radius=14,
+                stroke_weight=3,
             )
-            self.manage_buttons[(action, profile.id)] = btn_r
-            self._draw_management_button(screen, btn_r, label, f"{action}:{profile.id}")
-
-    def _draw_management_button(
-        self,
-        screen,
-        rect: pygame.Rect,
-        label: str,
-        key: str,
-    ) -> None:
-        is_pressed = self.pressed_button == key
-
-        fill = (200, 160, 20) if is_pressed else (242, 210, 20)
-        stroke = (175, 141, 55)
-
-        pygame.draw.rect(screen, fill, rect, border_radius=8)
-        pygame.draw.rect(screen, stroke, rect, width=2, border_radius=8)
-
-        max_w = max(1, rect.width - 6)
-        font = getattr(self.app, "font_small", self.app.font_body)
-        surface = font.render(label, True, (35, 10, 45))
-        if isinstance(surface, pygame.Surface):
-            if surface.get_width() > max_w:
-                scale_ratio = max_w / surface.get_width()
-                new_w = max_w
-                new_h = max(1, int(surface.get_height() * scale_ratio))
-                surface = pygame.transform.smoothscale(surface, (new_w, new_h))
-            screen.blit(surface, surface.get_rect(center=rect.center))
+            button.is_pressed = self.pressed_button == f"{action}:{profile.id}"
+            button.draw(screen)
 
     def _draw_name_modal(self, screen, width: int, height: int) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
