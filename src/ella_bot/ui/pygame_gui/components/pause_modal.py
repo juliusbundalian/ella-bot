@@ -4,6 +4,7 @@ from typing import Optional
 import pygame
 
 from ella_bot.ui.pygame_gui.components.button import Button
+from ella_bot.utils.file_utils import resolve_asset_path
 
 _VOLUME_MAX = 6
 
@@ -19,6 +20,8 @@ class PauseModal:
         self._pressed_button: Optional[str] = None
         self.volume_level: int = 6
         self.listen_seconds: int = 5
+        self._volume_down_icon = None
+        self._volume_up_icon = None
 
         self.restart_rect: Optional[pygame.Rect] = None
         self.main_menu_rect: Optional[pygame.Rect] = None
@@ -72,7 +75,26 @@ class PauseModal:
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_circular_button(self, screen: pygame.Surface, rect: pygame.Rect, symbol: str, is_pressed: bool) -> None:
+    def _load_assets(self) -> None:
+        for attr, asset in (
+            ("_volume_down_icon", "assets/ic_volume_down.svg"),
+            ("_volume_up_icon", "assets/ic_volume_up.svg"),
+        ):
+            if getattr(self, attr) is None:
+                try:
+                    icon = pygame.image.load(str(resolve_asset_path(asset))).convert_alpha()
+                    setattr(self, attr, pygame.transform.smoothscale(icon, (31, 32)))
+                except Exception:
+                    setattr(self, attr, False)
+
+    def _draw_circular_button(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        symbol: str,
+        is_pressed: bool,
+        icon=None,
+    ) -> None:
         cx, cy = rect.center
         r = rect.width // 2
 
@@ -85,9 +107,12 @@ class PauseModal:
         pygame.draw.circle(screen, fill_col, (cx, cy), r)
         pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
 
-        font = getattr(self.app, "font_button", self.app.font_title)
-        symbol_text = "X" if symbol.lower() == "x" else symbol
-        surf = font.render(symbol_text, True, (255, 250, 243))
+        if icon:
+            surf = icon
+        else:
+            font = getattr(self.app, "font_button", self.app.font_title)
+            symbol_text = "X" if symbol.lower() == "x" else symbol
+            surf = font.render(symbol_text, True, (255, 250, 243))
         screen.blit(surf, surf.get_rect(center=(cx, cy)))
 
     def hit_test(self, pos) -> Optional[str]:
@@ -126,6 +151,8 @@ class PauseModal:
     def render(self, screen: pygame.Surface, prompt_rect: pygame.Rect) -> None:
         if not self.visible:
             return
+
+        self._load_assets()
 
         # Semi-transparent dark backdrop
         overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
@@ -187,8 +214,20 @@ class PauseModal:
 
         self._vol_minus_rect = pygame.Rect(seg_x0 - 30 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self._vol_plus_rect = pygame.Rect(seg_x0 + total_seg_w + 30, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(screen, self._vol_minus_rect, "-", self._pressed_button == "vol_minus")
-        self._draw_circular_button(screen, self._vol_plus_rect, "+", self._pressed_button == "vol_plus")
+        self._draw_circular_button(
+            screen,
+            self._vol_minus_rect,
+            "-",
+            self._pressed_button == "vol_minus",
+            self._volume_down_icon,
+        )
+        self._draw_circular_button(
+            screen,
+            self._vol_plus_rect,
+            "+",
+            self._pressed_button == "vol_plus",
+            self._volume_up_icon,
+        )
 
         # 2. LISTENING TIME SECTION
         listen_y = vol_row_cy + 38

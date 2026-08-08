@@ -26,6 +26,8 @@ class SettingsScene(BaseScene):
         self.pressed_button: str | None = None
 
         self._lottie_bg = None
+        self._volume_down_icon = None
+        self._volume_up_icon = None
         self.btn_vol_minus: pygame.Rect | None = None
         self.btn_vol_plus: pygame.Rect | None = None
         self.btn_listen_minus: pygame.Rect | None = None
@@ -60,6 +62,17 @@ class SettingsScene(BaseScene):
             )
             if self._lottie_bg is None:
                 self._lottie_bg = False
+
+        for attr, asset in (
+            ("_volume_down_icon", "assets/ic_volume_down.svg"),
+            ("_volume_up_icon", "assets/ic_volume_up.svg"),
+        ):
+            if getattr(self, attr) is None:
+                try:
+                    icon = pygame.image.load(str(resolve_asset_path(asset))).convert_alpha()
+                    setattr(self, attr, pygame.transform.smoothscale(icon, (31, 32)))
+                except Exception:
+                    setattr(self, attr, False)
 
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -112,7 +125,14 @@ class SettingsScene(BaseScene):
             self.app.asr.listen_seconds = self.listen_seconds
         save_setting("Speech", "listen_seconds", str(self.listen_seconds))
 
-    def _draw_circular_button(self, screen: pygame.Surface, rect: pygame.Rect, symbol: str, is_pressed: bool) -> None:
+    def _draw_circular_button(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        symbol: str,
+        is_pressed: bool,
+        icon=None,
+    ) -> None:
         cx, cy = rect.center
         r = rect.width // 2
 
@@ -126,9 +146,12 @@ class SettingsScene(BaseScene):
         pygame.draw.circle(screen, fill_col, (cx, cy), r)
         pygame.draw.circle(screen, stroke_col, (cx, cy), r, width=4)
 
-        font = getattr(self.app, "font_button", self.app.font_title)
-        symbol_text = "X" if symbol.lower() == "x" else symbol
-        surf = font.render(symbol_text, True, (255, 250, 243))
+        if icon:
+            surf = icon
+        else:
+            font = getattr(self.app, "font_button", self.app.font_title)
+            symbol_text = "X" if symbol.lower() == "x" else symbol
+            surf = font.render(symbol_text, True, (255, 250, 243))
         screen.blit(surf, surf.get_rect(center=(cx, cy)))
 
     @staticmethod
@@ -199,8 +222,20 @@ class SettingsScene(BaseScene):
 
         self.btn_vol_minus = pygame.Rect(seg_x0 - 40 - btn_sz, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
         self.btn_vol_plus = pygame.Rect(seg_x0 + total_seg_w + 40, vol_row_cy - btn_sz // 2, btn_sz, btn_sz)
-        self._draw_circular_button(screen, self.btn_vol_minus, "-", self.pressed_button == "vol_minus")
-        self._draw_circular_button(screen, self.btn_vol_plus, "+", self.pressed_button == "vol_plus")
+        self._draw_circular_button(
+            screen,
+            self.btn_vol_minus,
+            "-",
+            self.pressed_button == "vol_minus",
+            self._volume_down_icon,
+        )
+        self._draw_circular_button(
+            screen,
+            self.btn_vol_plus,
+            "+",
+            self.pressed_button == "vol_plus",
+            self._volume_up_icon,
+        )
 
         # 5. LISTENING TIME SECTION (Spaced down further)
         listen_y = vol_row_cy + 55
