@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from typing import Optional
 import pygame
 
@@ -82,8 +83,10 @@ class PauseModal:
         ):
             if getattr(self, attr) is None:
                 try:
-                    icon = pygame.image.load(str(resolve_asset_path(asset))).convert_alpha()
-                    setattr(self, attr, pygame.transform.smoothscale(icon, (31, 32)))
+                    svg = resolve_asset_path(asset).read_text(encoding="utf-8")
+                    svg = svg.replace('width="23" height="24"', 'width="31" height="32"')
+                    icon = pygame.image.load(io.BytesIO(svg.encode("utf-8"))).convert_alpha()
+                    setattr(self, attr, icon)
                 except Exception:
                     setattr(self, attr, False)
 
