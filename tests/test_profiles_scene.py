@@ -77,11 +77,66 @@ def test_on_enter_opens_page_containing_active_profile():
     assert scene.carousel_page == 1
 
 
-def test_empty_page_exposes_create_card():
+def test_carousel_renders_only_two_profiles_and_three_indicators():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(5))
+    scene.app.profiles.return_value = profiles
+
+    scene.render()
+
+    assert tuple(scene.profile_cards) == (profiles[0].id, profiles[1].id)
+    assert scene.carousel_previous_button is None
+    assert scene.carousel_next_button is not None
+    assert len(scene.page_indicator_rects) == 3
+    assert scene.page_indicator_states == [True, False, False]
+    assert scene.carousel_page == 0
+
+
+def test_carousel_arrow_moves_page_and_disables_at_last_page():
+    scene = _scene()
+    profiles = tuple(_profile(index) for index in range(5))
+    scene.app.profiles.return_value = profiles
+    scene.render()
+
+    next_point = scene.carousel_next_button.center
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=next_point)
+    )
+    scene.handle_event(
+        pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=next_point)
+    )
+    scene.carousel_page = 2
+    scene.render()
+
+    assert tuple(scene.profile_cards) == (profiles[4].id,)
+    assert scene.carousel_previous_button is not None
+    assert scene.carousel_next_button is None
+
+
+def test_create_and_back_are_fixed_equal_actions_outside_carousel():
+    scene = _scene()
+    scene.app.profiles.return_value = tuple(_profile(index) for index in range(3))
+
+    scene.render()
+
+    assert scene.create_button is not None
+    assert scene.back_button is not None
+    assert scene.create_button.size == scene.back_button.size
+    assert not any(
+        rect.colliderect(scene.create_button)
+        for rect in scene._profile_card_rects.values()
+    )
+
+
+def test_empty_profiles_show_empty_state_without_indicators():
     scene = _scene()
 
     scene.render()
 
+    assert scene.empty_state_rect is not None
+    assert scene.page_indicator_rects == []
+    assert scene.carousel_previous_button is None
+    assert scene.carousel_next_button is None
     assert scene.create_button is not None
 
 
@@ -160,7 +215,8 @@ def test_rendering_five_profiles_hides_create_button():
     scene.render()
 
     assert scene.create_button is None
-    assert len(scene.profile_cards) == 5
+    assert scene.capacity_status_rect is not None
+    assert len(scene.profile_cards) == 2
 
 
 def test_selection_error_is_rendered_at_five_profile_capacity():

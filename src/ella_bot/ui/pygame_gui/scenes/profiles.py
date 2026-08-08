@@ -44,6 +44,12 @@ class ProfilesScene(BaseScene):
         self.error_message = ""
         self.pressed_button: str | None = None
         self.carousel_page = 0
+        self.carousel_previous_button: pygame.Rect | None = None
+        self.carousel_next_button: pygame.Rect | None = None
+        self.page_indicator_rects: list[pygame.Rect] = []
+        self.page_indicator_states: list[bool] = []
+        self.empty_state_rect: pygame.Rect | None = None
+        self.capacity_status_rect: pygame.Rect | None = None
 
         self._profile_card_rects: dict[str, pygame.Rect] = {}
         self._management_profiles: dict[str, object] = {}
@@ -248,6 +254,21 @@ class ProfilesScene(BaseScene):
                 play_button_click()
             return
 
+        if (
+            self.carousel_previous_button
+            and self.carousel_previous_button.collidepoint(mouse_pos)
+        ):
+            self.pressed_button = "carousel_previous"
+            play_button_click()
+            return
+        if (
+            self.carousel_next_button
+            and self.carousel_next_button.collidepoint(mouse_pos)
+        ):
+            self.pressed_button = "carousel_next"
+            play_button_click()
+            return
+
         for (action, profile_id), rect in self.manage_buttons.items():
             if rect.collidepoint(mouse_pos):
                 self.pressed_button = f"{action}:{profile_id}"
@@ -302,6 +323,21 @@ class ProfilesScene(BaseScene):
                 self._apply_keyboard_action(self.keyboard.handle_mouse_up(mouse_pos))
             return
 
+        profiles = tuple(self.app.profiles())[:MAX_PROFILES]
+        if (
+            pressed == "carousel_previous"
+            and self.carousel_previous_button
+            and self.carousel_previous_button.collidepoint(mouse_pos)
+        ):
+            self._change_carousel_page(-1, profiles)
+            return
+        if (
+            pressed == "carousel_next"
+            and self.carousel_next_button
+            and self.carousel_next_button.collidepoint(mouse_pos)
+        ):
+            self._change_carousel_page(1, profiles)
+            return
         if (
             pressed == "create"
             and self.create_button
@@ -395,6 +431,45 @@ class ProfilesScene(BaseScene):
                 self.carousel_page = index // _PROFILE_PAGE_SIZE
                 return
 
+    def _change_carousel_page(self, delta: int, profiles: tuple) -> None:
+        page_count = self._page_count(len(profiles))
+        last_page = max(0, page_count - 1)
+        self.carousel_page = max(0, min(self.carousel_page + delta, last_page))
+        self.profile_cards = {}
+        self.manage_buttons = {}
+
+    def _draw_carousel_arrow(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        direction: int,
+        enabled: bool,
+        pressed: bool,
+    ) -> None:
+        fill = (70, 30, 90) if enabled else (65, 42, 73)
+        if pressed and enabled:
+            fill = (60, 24, 78)
+        stroke = (127, 63, 151) if enabled else (91, 70, 98)
+        icon = (255, 250, 243) if enabled else (145, 127, 151)
+        if enabled and not pressed:
+            pygame.draw.rect(
+                screen,
+                (35, 10, 45),
+                rect.move(3, 3),
+                border_radius=18,
+            )
+        pygame.draw.rect(screen, fill, rect, border_radius=18)
+        pygame.draw.rect(screen, stroke, rect, width=4, border_radius=18)
+        cx, cy = rect.center
+        offset = 6 * direction
+        pygame.draw.lines(
+            screen,
+            icon,
+            False,
+            [(cx - offset, cy - 12), (cx + offset, cy), (cx - offset, cy + 12)],
+            width=5,
+        )
+
     def render(self) -> None:
         self._load_assets()
         screen = self.app.screen
@@ -445,75 +520,175 @@ class ProfilesScene(BaseScene):
         banner_btn = Button(banner_rect, label="Who's Learning?", variant="yellow", font=banner_btn_font, stroke_weight=8)
         banner_btn.draw(screen)
 
-        # Profiles Grid setup
         profiles = tuple(self.app.profiles())[:MAX_PROFILES]
         active = self.app.active_profile()
         active_profile_id = active.id if active is not None else None
-
-        entries: list[tuple[str, object | None]] = [
-            ("profile", profile) for profile in profiles
-        ]
-        if len(profiles) < MAX_PROFILES:
-            entries.append(("create", None))
 
         self.profile_cards = {}
         self.manage_buttons = {}
         self.create_button = None
         self._profile_card_rects = {}
         self._management_profiles = {}
+        self.page_indicator_rects = []
+        self.page_indicator_states = []
+        self.empty_state_rect = None
+        self.capacity_status_rect = None
 
-        grid_left = card_rect.left + 50
-        grid_top = banner_rect.bottom + 25
-        grid_width = card_rect.width - 100
-        grid_bottom = card_rect.bottom - 100
-        column_gap = 20
-        row_gap = 14
+        page_count = self._page_count(len(profiles))
+        visible_profiles = self._visible_profiles(profiles)
 
-        # Display cards in grid (2 columns)
-        card_width = (grid_width - column_gap) // 2
-        num_items = len(entries)
-        num_rows = max(1, (num_items + 1) // 2)
-        card_height = min(136, (grid_bottom - grid_top - (num_rows - 1) * row_gap) // num_rows)
+        horizontal_padding = 24
+        arrow_w, arrow_h = 48, 72
+        arrow_gap = 12
+        profile_gap = 16
+        profile_h = 280
+        carousel_top = banner_rect.bottom + 32
+        cards_total_w = (
+            card_rect.width
+            - 2 * horizontal_padding
+            - 2 * arrow_w
+            - 2 * arrow_gap
+            - profile_gap
+        )
+        profile_w = cards_total_w // 2
+        previous_rect = pygame.Rect(
+            card_rect.left + horizontal_padding,
+            carousel_top + (profile_h - arrow_h) // 2,
+            arrow_w,
+            arrow_h,
+        )
+        first_card_left = previous_rect.right + arrow_gap
+        next_rect = pygame.Rect(
+            first_card_left + 2 * profile_w + profile_gap + arrow_gap,
+            previous_rect.top,
+            arrow_w,
+            arrow_h,
+        )
 
-        for index, (kind, value) in enumerate(entries):
-            row, column = divmod(index, 2)
-            c_rect = pygame.Rect(
-                grid_left + column * (card_width + column_gap),
-                grid_top + row * (card_height + row_gap),
-                card_width,
-                card_height,
+        previous_enabled = page_count > 1 and self.carousel_page > 0
+        next_enabled = page_count > 1 and self.carousel_page < page_count - 1
+        self.carousel_previous_button = previous_rect if previous_enabled else None
+        self.carousel_next_button = next_rect if next_enabled else None
+        self._draw_carousel_arrow(
+            screen,
+            previous_rect,
+            -1,
+            previous_enabled,
+            self.pressed_button == "carousel_previous",
+        )
+        self._draw_carousel_arrow(
+            screen,
+            next_rect,
+            1,
+            next_enabled,
+            self.pressed_button == "carousel_next",
+        )
+
+        if visible_profiles:
+            for slot, profile in enumerate(visible_profiles):
+                c_rect = pygame.Rect(
+                    first_card_left + slot * (profile_w + profile_gap),
+                    carousel_top,
+                    profile_w,
+                    profile_h,
+                )
+                self._profile_card_rects[profile.id] = c_rect
+                self._management_profiles[profile.id] = profile
+                self.profile_cards[profile.id] = pygame.Rect(
+                    c_rect.left,
+                    c_rect.top,
+                    c_rect.width,
+                    c_rect.height - 48,
+                )
+                self._draw_profile_card(
+                    screen,
+                    c_rect,
+                    profile,
+                    profile.id == active_profile_id,
+                )
+        else:
+            self.empty_state_rect = pygame.Rect(
+                first_card_left,
+                carousel_top,
+                2 * profile_w + profile_gap,
+                profile_h,
             )
-            if kind == "create":
-                self.create_button = c_rect
-                self._draw_create_card(screen, c_rect)
-                continue
-
-            profile = value
-            self._profile_card_rects[profile.id] = c_rect
-            self._management_profiles[profile.id] = profile
-            selection_rect = pygame.Rect(
-                c_rect.left,
-                c_rect.top,
-                c_rect.width,
-                c_rect.height - 48,
+            empty = self._render_adaptive_text(
+                "No profiles yet",
+                24,
+                (227, 198, 236),
+                default_font=self._get_adaptive_font(24, bold=True),
             )
-            self.profile_cards[profile.id] = selection_rect
-            self._draw_profile_card(
-                screen,
-                c_rect,
-                profile,
-                profile.id == active_profile_id,
+            if empty:
+                screen.blit(empty, empty.get_rect(center=self.empty_state_rect.center))
+
+        if page_count:
+            dot_radius = 6
+            dot_gap = 18
+            indicators_y = carousel_top + profile_h + 22
+            total_dot_w = page_count * dot_radius * 2 + (page_count - 1) * dot_gap
+            dot_x = cx - total_dot_w // 2
+            for index in range(page_count):
+                dot_rect = pygame.Rect(
+                    dot_x + index * (dot_radius * 2 + dot_gap),
+                    indicators_y - dot_radius,
+                    dot_radius * 2,
+                    dot_radius * 2,
+                )
+                self.page_indicator_rects.append(dot_rect)
+                is_current = index == self.carousel_page
+                self.page_indicator_states.append(is_current)
+                color = (242, 210, 20) if is_current else (227, 198, 236)
+                pygame.draw.circle(screen, color, dot_rect.center, dot_radius)
+
+        action_w, action_h, action_gap = 250, 56, 16
+        action_y = card_rect.bottom - action_h - 28
+        left_action = pygame.Rect(
+            cx - action_gap // 2 - action_w,
+            action_y,
+            action_w,
+            action_h,
+        )
+        self.back_button = pygame.Rect(
+            cx + action_gap // 2,
+            action_y,
+            action_w,
+            action_h,
+        )
+        action_font = self._get_adaptive_font(20, bold=True)
+        if len(profiles) < MAX_PROFILES:
+            self.create_button = left_action
+            create = Button(
+                self.create_button,
+                label="+ Create Profile",
+                variant="violet",
+                font=action_font,
+                corner_radius=18,
+                stroke_weight=5,
             )
+            create.is_pressed = self.pressed_button == "create"
+            create.draw(screen)
+        else:
+            self.capacity_status_rect = left_action
+            status = self._render_adaptive_text(
+                "5 of 5 profiles",
+                20,
+                (227, 198, 236),
+                default_font=action_font,
+            )
+            if status:
+                screen.blit(status, status.get_rect(center=left_action.center))
 
-        # 4. Bottom Action Button ("Back to Menu")
-        btn_w, btn_h = min(325, card_rect.width - 40), 64
-        btn_y = card_rect.bottom - btn_h - 25
-        self.back_button = pygame.Rect(cx - btn_w // 2, btn_y, btn_w, btn_h)
-
-        back_btn_font = self._get_adaptive_font(26, bold=True)
-        back_btn = Button(self.back_button, label="Back to Menu", variant="yellow", font=back_btn_font, stroke_weight=8)
-        back_btn.is_pressed = (self.pressed_button == "back")
-        back_btn.draw(screen)
+        back = Button(
+            self.back_button,
+            label="Back to Menu",
+            variant="yellow",
+            font=action_font,
+            corner_radius=18,
+            stroke_weight=5,
+        )
+        back.is_pressed = self.pressed_button == "back"
+        back.draw(screen)
 
         if self.error_message and self.modal is None:
             error = self._render_adaptive_text(
@@ -526,7 +701,7 @@ class ProfilesScene(BaseScene):
             if error:
                 screen.blit(
                     error,
-                    error.get_rect(centerx=cx, bottom=self.back_button.top - 8),
+                    error.get_rect(centerx=cx, bottom=action_y - 8),
                 )
 
         # 5. Render Modals
@@ -652,29 +827,6 @@ class ProfilesScene(BaseScene):
                 new_h = max(1, int(surface.get_height() * scale_ratio))
                 surface = pygame.transform.smoothscale(surface, (new_w, new_h))
             screen.blit(surface, surface.get_rect(center=rect.center))
-
-    def _draw_create_card(self, screen, rect: pygame.Rect) -> None:
-        is_pressed = self.pressed_button == "create"
-        if not is_pressed:
-            pygame.draw.rect(screen, (25, 5, 35), rect.move(3, 3), border_radius=20)
-        
-        fill = (70, 30, 90) if is_pressed else (87, 39, 108)
-        pygame.draw.rect(screen, fill, rect, border_radius=20)
-        pygame.draw.rect(screen, (242, 210, 20), rect, width=3, border_radius=20)
-
-        card_font_size = max(18, min(30, int(rect.height * 0.32)))
-        title_font = getattr(self.app, "font_button", self.app.font_title)
-        if title_font and hasattr(title_font, "render"):
-            title_font.render("+ Create Profile", True, (242, 210, 20))
-        label = self._render_adaptive_text(
-            "+ Create Profile",
-            card_font_size,
-            (242, 210, 20),
-            max_w=rect.width - 24,
-            bold=True,
-        )
-        if label:
-            screen.blit(label, label.get_rect(center=rect.center))
 
     def _draw_name_modal(self, screen, width: int, height: int) -> None:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
