@@ -53,6 +53,7 @@ class ProfilesScene(BaseScene):
 
         self._profile_card_rects: dict[str, pygame.Rect] = {}
         self._management_profiles: dict[str, object] = {}
+        self._name_modal_rect: pygame.Rect | None = None
         self._modal_save_button: pygame.Rect | None = None
         self._modal_cancel_button: pygame.Rect | None = None
         self.keyboard = OnScreenKeyboard(self.app.font_small)
@@ -643,13 +644,13 @@ class ProfilesScene(BaseScene):
 
         action_w, action_h, action_gap = 250, 56, 16
         action_y = card_rect.bottom - action_h - 28
-        left_action = pygame.Rect(
+        self.back_button = pygame.Rect(
             cx - action_gap // 2 - action_w,
             action_y,
             action_w,
             action_h,
         )
-        self.back_button = pygame.Rect(
+        right_action = pygame.Rect(
             cx + action_gap // 2,
             action_y,
             action_w,
@@ -657,11 +658,11 @@ class ProfilesScene(BaseScene):
         )
         action_font = self._get_adaptive_font(20, bold=True)
         if len(profiles) < MAX_PROFILES:
-            self.create_button = left_action
+            self.create_button = right_action
             create = Button(
                 self.create_button,
                 label="+ Create Profile",
-                variant="violet",
+                variant="yellow",
                 font=action_font,
                 corner_radius=18,
                 stroke_weight=5,
@@ -669,7 +670,7 @@ class ProfilesScene(BaseScene):
             create.is_pressed = self.pressed_button == "create"
             create.draw(screen)
         else:
-            self.capacity_status_rect = left_action
+            self.capacity_status_rect = right_action
             status = self._render_adaptive_text(
                 "5 of 5 profiles",
                 20,
@@ -677,12 +678,12 @@ class ProfilesScene(BaseScene):
                 default_font=action_font,
             )
             if status:
-                screen.blit(status, status.get_rect(center=left_action.center))
+                screen.blit(status, status.get_rect(center=right_action.center))
 
         back = Button(
             self.back_button,
             label="Back to Menu",
-            variant="yellow",
+            variant="violet",
             font=action_font,
             corner_radius=18,
             stroke_weight=5,
@@ -839,17 +840,28 @@ class ProfilesScene(BaseScene):
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        dialog = pygame.Rect(
-            0,
-            0,
-            min(1120, width - 80),
-            min(640, height - 40),
-        )
-        dialog.center = (width // 2, height // 2)
+        dialog = self._get_container_rect(width, height)
+        self._name_modal_rect = dialog.copy()
 
-        pygame.draw.rect(screen, (25, 5, 35), dialog.move(4, 4), border_radius=30)
-        pygame.draw.rect(screen, (87, 39, 108), dialog, border_radius=30)
-        pygame.draw.rect(screen, (127, 63, 151), dialog, width=6, border_radius=30)
+        pygame.draw.rect(
+            screen,
+            (25, 5, 35),
+            dialog.move(4, 4),
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
+        pygame.draw.rect(
+            screen,
+            (87, 39, 108),
+            dialog,
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
+        pygame.draw.rect(
+            screen,
+            (127, 63, 151),
+            dialog,
+            width=8,
+            border_radius=_PROFILE_CONTAINER_RADIUS,
+        )
 
         is_create = self.modal == "create"
         title_text = "Create Profile" if is_create else "Rename Profile"
@@ -859,7 +871,7 @@ class ProfilesScene(BaseScene):
             title_font.render(title_text, True, (255, 250, 243))
         title = self._render_adaptive_text(title_text, title_size, (255, 250, 243), max_w=dialog.width - 40, bold=True)
         if title:
-            screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 24))
+            screen.blit(title, title.get_rect(centerx=dialog.centerx, top=dialog.top + 26))
 
         prompt_size = max(14, min(22, int(dialog.height * 0.05)))
         prompt = self._render_adaptive_text(
@@ -870,13 +882,13 @@ class ProfilesScene(BaseScene):
             default_font=self.app.font_small,
         )
         if prompt:
-            screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 80))
+            screen.blit(prompt, prompt.get_rect(centerx=dialog.centerx, top=dialog.top + 72))
 
         input_rect = pygame.Rect(
-            dialog.left + 80,
-            dialog.top + 100,
-            dialog.width - 160,
-            48,
+            dialog.left + 60,
+            dialog.top + 112,
+            dialog.width - 120,
+            52,
         )
         pygame.draw.rect(screen, (60, 25, 75), input_rect, border_radius=12)
         pygame.draw.rect(screen, (127, 63, 151), input_rect, width=3, border_radius=12)
@@ -897,15 +909,15 @@ class ProfilesScene(BaseScene):
                 input_surface.get_rect(left=input_rect.left + 15, centery=input_rect.centery),
             )
 
-        button_width, button_height, gap = 180, 52, 20
-        button_y = dialog.bottom - button_height - 20
-        self._modal_save_button = pygame.Rect(
+        button_width, button_height, gap = 190, 56, 24
+        button_y = dialog.bottom - button_height - 24
+        self._modal_cancel_button = pygame.Rect(
             dialog.centerx - gap // 2 - button_width,
             button_y,
             button_width,
             button_height,
         )
-        self._modal_cancel_button = pygame.Rect(
+        self._modal_save_button = pygame.Rect(
             dialog.centerx + gap // 2,
             button_y,
             button_width,
@@ -949,7 +961,7 @@ class ProfilesScene(BaseScene):
         btn_cancel = Button(
             self._modal_cancel_button,
             label="Cancel",
-            variant="yellow",
+            variant="violet",
             font=modal_btn_font,
             stroke_weight=6,
         )
@@ -1035,7 +1047,7 @@ class ProfilesScene(BaseScene):
         btn_cancel = Button(
             self._modal_cancel_button,
             label="Cancel",
-            variant="yellow",
+            variant="violet",
             font=modal_btn_font,
             stroke_weight=6,
         )

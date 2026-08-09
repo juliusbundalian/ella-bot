@@ -436,7 +436,8 @@ class ReadingPromptScene(BaseScene):
         if current_tier in (3, 4):
             safe_bottom = self._bot_safe_bottom(inner_rect)
             text_top = self._centered_safe_top(inner_rect, safe_bottom)
-            text_width = max(1, int(inner_rect.width * 0.64))
+            width_ratio = 0.50 if current_tier == 4 else 0.64
+            text_width = max(1, int(inner_rect.width * width_ratio))
             text_rect = pygame_module.Rect(
                 inner_rect.centerx - text_width // 2,
                 text_top,
@@ -731,7 +732,8 @@ class ReadingPromptScene(BaseScene):
                 return
             elif isinstance(event, SessionCompleted):
                 self.app.latest_result = event.result
-                self.app.switch_scene("final_eval")
+                self.app.latest_result_kind = "session"
+                self.app.switch_scene("results")
                 return
 
     def _set_paused(self, paused: bool) -> None:

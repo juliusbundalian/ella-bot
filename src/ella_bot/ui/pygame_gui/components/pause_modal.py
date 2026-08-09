@@ -316,8 +316,8 @@ class PauseModal:
 
         btn_w, btn_h = 180, 56
         gap = 24
-        yes_x = cx - btn_w - gap // 2
-        no_x = cx + gap // 2
+        no_x = cx - btn_w - gap // 2
+        yes_x = cx + gap // 2
         btn_y = card_rect.centery + 30
 
         self.confirm_yes_rect = pygame.Rect(yes_x, btn_y, btn_w, btn_h)
@@ -327,7 +327,7 @@ class PauseModal:
         btn_yes.is_pressed = (self._pressed_button == "confirm_yes")
         btn_yes.draw(screen)
 
-        btn_no = Button(self.confirm_no_rect, label="No", variant="yellow", font=self.app.font_button, stroke_weight=6)
+        btn_no = Button(self.confirm_no_rect, label="No", variant="violet", font=self.app.font_button, stroke_weight=6)
         btn_no.is_pressed = (self._pressed_button == "confirm_no")
         btn_no.draw(screen)
 

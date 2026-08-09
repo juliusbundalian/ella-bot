@@ -35,6 +35,8 @@ from ella_bot.validation.validators import (
 
 logger = get_logger(__name__)
 
+NON_LEVEL1_PROMPT_RATE = 100
+
 _EXHAUSTION_PHRASES = [
     "That's okay! Keep going, you're doing great!",
     "Nice try! Let's move to the next one.",
@@ -125,22 +127,8 @@ class AttemptRunner:
                 if self._wait_if_paused():
                     return
                 announcement = self.app.session.build_start_announcement()
-                level_overrides = overrides_for_level(
-                    self.app.session.current_level, self.app.pronunciation_overrides
-                )
-                target_override = level_overrides.get(target_item.lower(), target_item)
-
-                pattern = re.compile(rf'\b{re.escape(target_item)}\b', re.IGNORECASE)
-                parts = pattern.split(announcement, maxsplit=1)
-                if len(parts) == 2:
-                    intro_part = parts[0].strip().rstrip(",").rstrip(".")
-                    if self._speak(intro_part):
-                        return
-                    if self._speak(target_override, rate=100):
-                        return
-                else:
-                    if self._speak(announcement, rate=100):
-                        return
+                if self._speak(announcement, rate=NON_LEVEL1_PROMPT_RATE):
+                    return
             except Exception as exc:
                 logger.debug("Intro TTS error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))
@@ -636,4 +624,3 @@ class AttemptRunner:
 
         self.app.save_active_session("reading")
         self._run_level1_practice()
-

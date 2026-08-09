@@ -171,7 +171,7 @@ def test_carousel_arrow_moves_page_and_disables_at_last_page():
     assert scene.carousel_page == 0
 
 
-def test_create_and_back_are_fixed_equal_actions_outside_carousel():
+def test_back_and_create_are_fixed_equal_actions_outside_carousel():
     scene = _scene()
     scene.app.profiles.return_value = tuple(_profile(index) for index in range(3))
 
@@ -180,10 +180,45 @@ def test_create_and_back_are_fixed_equal_actions_outside_carousel():
     assert scene.create_button is not None
     assert scene.back_button is not None
     assert scene.create_button.size == scene.back_button.size
+    assert scene.back_button.left < scene.create_button.left
     assert not any(
         rect.colliderect(scene.create_button)
         for rect in scene._profile_card_rects.values()
     )
+
+
+def test_profile_actions_use_requested_color_variants(monkeypatch):
+    import ella_bot.ui.pygame_gui.scenes.profiles as profiles_module
+
+    rendered_buttons = []
+
+    class RecordingButton:
+        def __init__(self, rect, *, label, variant="yellow", **kwargs):
+            self.label = label
+            self.variant = variant
+            self.is_pressed = False
+
+        def draw(self, screen):
+            rendered_buttons.append((self.label, self.variant))
+
+    monkeypatch.setattr(profiles_module, "Button", RecordingButton)
+    scene = _scene()
+
+    scene.render()
+    assert ("+ Create Profile", "yellow") in rendered_buttons
+    assert ("Back to Menu", "violet") in rendered_buttons
+
+    rendered_buttons.clear()
+    scene._open_create()
+    scene.render()
+    assert ("Create", "yellow") in rendered_buttons
+    assert ("Cancel", "violet") in rendered_buttons
+
+    rendered_buttons.clear()
+    scene.modal = "delete"
+    scene.target_profile_name = "Leo"
+    scene.render()
+    assert ("Cancel", "violet") in rendered_buttons
 
 
 def test_empty_profiles_show_empty_state_without_indicators():
@@ -681,6 +716,19 @@ def test_name_modal_keyboard_and_actions_fit_inside_screen():
     assert all(screen_rect.contains(rect) for rect in scene.keyboard.key_rects.values())
     assert screen_rect.contains(scene._modal_save_button)
     assert screen_rect.contains(scene._modal_cancel_button)
+
+
+def test_name_modal_matches_options_container_and_cancel_is_left():
+    from ella_bot.ui.pygame_gui.scenes.settings import SettingsScene
+
+    scene = _scene()
+    scene._open_create()
+
+    scene.render()
+
+    width, height = scene.app.screen.get_size()
+    assert scene._name_modal_rect == SettingsScene._get_card_rect(width, height)
+    assert scene._modal_cancel_button.left < scene._modal_save_button.left
 
 
 def test_physical_text_input_still_works_with_embedded_keyboard():

@@ -105,6 +105,26 @@ def test_phonics_override_skipped_on_tier2_word(tmp_path, monkeypatch):
     assert not any("phonemes:" in line for line in _spoken(app))
 
 
+def test_levels_2_to_4_use_the_same_complete_prompt_and_rate(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda exp, got, **kwargs: _FakeValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: ["go"])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+
+    for level in ("2a", "3", "4"):
+        app = _make_app_with_tts(tmp_path / level, {level: ["go"]}, level)
+
+        AttemptRunner(app, is_paused=lambda: False).run()
+
+        first_call = app.tts.speak.call_args_list[0]
+        assert first_call.args == ("Please read, go.",)
+        assert first_call.kwargs == {"rate": runner_mod.NON_LEVEL1_PROMPT_RATE}
+
+
 def test_full_completion_clears_checkpoint_instead_of_saving_results(tmp_path):
     app = _make_app(tmp_path)
     app.session = SessionManager({"4": ["done"]}, "4")

@@ -283,9 +283,13 @@ class LevelSelectionScene(BaseScene):
 
         # 2. Title & Subtitle directly over background matching word color in levels
         cx = width // 2
+        content_offset_y = 12
         title = self.app.font_title.render("Choose a Level", True, (56, 56, 56))
         if isinstance(title, pygame.Surface):
-            screen.blit(title, title.get_rect(centerx=cx, top=45))
+            screen.blit(
+                title,
+                title.get_rect(centerx=cx, top=45 + content_offset_y),
+            )
 
         subtitle = self.app.font_body.render(
             "All levels are available. Pick where you would like to begin.",
@@ -295,7 +299,7 @@ class LevelSelectionScene(BaseScene):
         if isinstance(subtitle, pygame.Surface):
             screen.blit(
                 subtitle,
-                subtitle.get_rect(centerx=cx, top=115),
+                subtitle.get_rect(centerx=cx, top=115 + content_offset_y),
             )
 
         # 3. Level carousel with named yellow cards
@@ -317,14 +321,17 @@ class LevelSelectionScene(BaseScene):
             bold=True,
         )
         if group:
-            screen.blit(group, group.get_rect(centerx=cx, top=166))
+            screen.blit(
+                group,
+                group.get_rect(centerx=cx, top=166 + content_offset_y),
+            )
 
         card_gap = 18
         row_gap = 16
         grid_w = min(880, width - 360)
         card_w = (grid_w - card_gap) // 2
         card_h = 100
-        cards_top = 207
+        cards_top = 207 + content_offset_y
         cards_area_h = card_h * 2 + row_gap
 
         arrow_w, arrow_h = 48, 72
@@ -396,7 +403,7 @@ class LevelSelectionScene(BaseScene):
             pygame.draw.circle(screen, color, dot_rect.center, dot_radius)
 
         # 4. Centered Violet Back Button
-        self.back_button = pygame.Rect(cx - 80, height - 90, 160, 58)
+        self.back_button = pygame.Rect(cx - 80, height - 102, 160, 58)
         font_btn = getattr(self.app, "font_button", None)
         btn_font = font_btn if isinstance(font_btn, pygame.font.Font) else self.app.font_body
         back_btn = Button(
@@ -478,13 +485,13 @@ class LevelSelectionScene(BaseScene):
         btn_h = min(58, max(42, int(dlg_h * 0.24)))
         gap = 20
         btn_y = dialog.bottom - btn_h - int(dlg_h * 0.10)
-        self.confirm_button = pygame.Rect(
+        self.cancel_button = pygame.Rect(
             dialog.centerx - gap // 2 - btn_w,
             btn_y,
             btn_w,
             btn_h,
         )
-        self.cancel_button = pygame.Rect(
+        self.confirm_button = pygame.Rect(
             dialog.centerx + gap // 2,
             btn_y,
             btn_w,
@@ -507,7 +514,7 @@ class LevelSelectionScene(BaseScene):
         btn_cancel = Button(
             self.cancel_button,
             label="Cancel",
-            variant="yellow",
+            variant="violet",
             font=button_font,
             stroke_weight=5,
         )

@@ -111,6 +111,12 @@ class AutoResultsScene(ResultsScene):
         super().update(now_ms)
         if hasattr(self, "_auto_next_at") and time.monotonic() >= self._auto_next_at:
             delattr(self, "_auto_next_at")
+            if getattr(self.app, "latest_result_kind", "") == "session":
+                print("\n==================================================")
+                print("  SUCCESS: E2E GUI Test Completed All Levels!")
+                print("==================================================")
+                self.app.running = False
+                return
             print("[TEST MANAGER] Results screen active, automatically continuing...")
             if getattr(self.app.latest_result, "passed", True):
                 self._do_next()

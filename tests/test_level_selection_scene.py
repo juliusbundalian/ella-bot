@@ -55,6 +55,8 @@ def test_first_page_shows_four_named_level_1_cards_and_indicators():
     assert scene.carousel_next_button is not None
     assert scene.page_indicator_states == [True, False, False, False]
     assert scene.back_button.centerx == scene.app.screen.get_rect().centerx
+    assert scene.level_buttons["1a"].top == 219
+    assert scene.back_button.top == 618
 
 
 def test_each_carousel_page_shows_its_expected_named_levels():
@@ -103,6 +105,32 @@ def test_selecting_level_opens_confirmation_without_replacing_checkpoint():
     assert scene.pending_level == "2c"
     assert scene.show_confirmation is True
     scene.app.start_new_session.assert_not_called()
+
+
+def test_start_level_modal_swaps_actions_and_uses_violet_cancel(monkeypatch):
+    import ella_bot.ui.pygame_gui.scenes.level_selection as level_module
+
+    rendered_buttons = []
+
+    class RecordingButton:
+        def __init__(self, rect, *, label, variant="yellow", **kwargs):
+            self.rect = pygame.Rect(rect)
+            self.label = label
+            self.variant = variant
+            self.is_pressed = False
+
+        def draw(self, screen):
+            rendered_buttons.append((self.label, self.variant, self.rect))
+
+    monkeypatch.setattr(level_module, "Button", RecordingButton)
+    scene = _scene()
+    scene.pending_level = "2c"
+
+    scene._draw_confirmation(scene.app.screen, 1280, 720)
+
+    buttons = {label: (variant, rect) for label, variant, rect in rendered_buttons}
+    assert buttons["Cancel"][0] == "violet"
+    assert buttons["Cancel"][1].left < buttons["Confirm"][1].left
 
 
 def test_confirm_starts_selected_level_then_opens_prompt():

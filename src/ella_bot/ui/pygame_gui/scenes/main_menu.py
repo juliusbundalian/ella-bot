@@ -613,14 +613,14 @@ class MainMenuScene(BaseScene):
         total_w = 3 * btn_w + 2 * btn_gap
         btn_x = dlg_rect.centerx - total_w // 2
         btn_y = dlg_rect.bottom - btn_h - int(dlg_h * 0.09)
-        self.resume_continue_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        self.resume_cancel_button = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
         self.resume_new_button = pygame.Rect(
             btn_x + btn_w + btn_gap,
             btn_y,
             btn_w,
             btn_h,
         )
-        self.resume_cancel_button = pygame.Rect(
+        self.resume_continue_button = pygame.Rect(
             btn_x + 2 * (btn_w + btn_gap),
             btn_y,
             btn_w,
@@ -653,7 +653,7 @@ class MainMenuScene(BaseScene):
         btn_cancel = Button(
             self.resume_cancel_button,
             label="Cancel",
-            variant="yellow",
+            variant="violet",
             font=button_font,
             stroke_weight=5,
         )
@@ -695,7 +695,7 @@ class MainMenuScene(BaseScene):
         btn_yes = Button(
             yes_rect,
             label="Yes",
-            variant="yellow",
+            variant="violet",
             font=button_font,
             stroke_weight=5,
         )

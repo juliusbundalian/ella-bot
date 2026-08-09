@@ -137,6 +137,57 @@ def test_profile_required_cancel_only_closes_prompt():
     scene.app.switch_scene.assert_not_called()
 
 
+def test_exit_confirmation_yes_button_is_violet(monkeypatch):
+    import ella_bot.ui.pygame_gui.scenes.main_menu as main_menu_module
+
+    rendered_buttons = []
+
+    class RecordingButton:
+        def __init__(self, rect, *, label, variant="yellow", **kwargs):
+            self.label = label
+            self.variant = variant
+            self.is_pressed = False
+
+        def draw(self, screen):
+            rendered_buttons.append((self.label, self.variant))
+
+    monkeypatch.setattr(main_menu_module, "Button", RecordingButton)
+    scene = _scene()
+
+    scene._draw_exit_confirm(scene.app.screen, 1280, 720)
+
+    assert ("Yes", "violet") in rendered_buttons
+
+
+def test_saved_session_swaps_continue_and_cancel_and_uses_violet_cancel(
+    monkeypatch,
+):
+    import ella_bot.ui.pygame_gui.scenes.main_menu as main_menu_module
+
+    rendered_buttons = []
+
+    class RecordingButton:
+        def __init__(self, rect, *, label, variant="yellow", **kwargs):
+            self.rect = pygame.Rect(rect)
+            self.label = label
+            self.variant = variant
+            self.is_pressed = False
+
+        def draw(self, screen):
+            rendered_buttons.append((self.label, self.variant, self.rect))
+
+    monkeypatch.setattr(main_menu_module, "Button", RecordingButton)
+    scene = _scene()
+    scene.resume_summary = None
+
+    scene._draw_resume_prompt(scene.app.screen, 1280, 720)
+
+    buttons = {label: (variant, rect) for label, variant, rect in rendered_buttons}
+    assert buttons["Cancel"][0] == "violet"
+    assert buttons["Cancel"][1].left < buttons["New Session"][1].left
+    assert buttons["New Session"][1].left < buttons["Continue"][1].left
+
+
 def test_profile_required_prompt_renders_message_and_actions():
     scene = _scene()
     scene.show_profile_required_prompt = True
@@ -220,4 +271,3 @@ def test_welcome_speech_bubble_position_and_drawing():
     screen = scene.app.screen
 
     scene._draw_welcome_speech_bubble(screen, inner_rect)
-

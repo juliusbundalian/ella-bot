@@ -42,6 +42,12 @@ class ResultsScene(BaseScene):
         self._elapsed = None
         self.next_button = None
         self.menu_button = None
+        self.rating_letter_rect = None
+        self.metrics_circle_y = None
+        self.score_circle_rect = None
+        self.fluency_circle_rect = None
+        self.ratings_badge_rect = None
+        self.time_badge_rect = None
         self._show_menu_confirm = False
         self._confirm_continue_button = None
         self._confirm_restart_button = None
@@ -122,6 +128,11 @@ class ResultsScene(BaseScene):
 
     def _do_next(self) -> None:
         result = self.app.latest_result
+        if getattr(self.app, "latest_result_kind", "") == "session":
+            if self.app.start_new_session("1a"):
+                self.app.switch_scene("reading_prompt")
+                self.app.active_scene._start_attempt()
+            return
         if result and not getattr(result, "passed", False):
             return
         if hasattr(self.app, "session") and self.app.session:
@@ -193,7 +204,9 @@ class ResultsScene(BaseScene):
         cx = width // 2
 
         # --- LEVEL TITLE ("LEVEL 4" / "LEVEL 1A") ---
-        if result:
+        if kind == "session":
+            level_str = "LEVEL 4"
+        elif result:
             level_str = f"LEVEL {result.tier}" if kind == "tier" else f"LEVEL {result.level.upper()}"
         else:
             level_str = "LEVEL 4"
@@ -213,52 +226,76 @@ class ResultsScene(BaseScene):
             screen.blit(scaled_ribbon, (ribbon_x, ribbon_y))
 
         # --- RATING LETTER ("A") ---
-        rating_str = result.rating if result else "A"
+        rating_str = (
+            result.overall_rating
+            if result and kind == "session"
+            else result.rating if result else "A"
+        )
         letter_surf = self._font_letter.render(rating_str, True, (242, 210, 20))
         letter_shadow = self._font_letter.render(rating_str, True, (175, 141, 55))
 
-        letter_rect = letter_surf.get_rect(centerx=cx, centery=ribbon_y + ribbon_h + 35)
+        metrics_cy = ribbon_y + ribbon_h + 69
+        letter_rect = letter_surf.get_rect(centerx=cx, centery=metrics_cy)
+        self.rating_letter_rect = letter_rect.copy()
         for off_x, off_y in ((-3, 0), (3, 0), (0, -3), (0, 3), (3, 3)):
             screen.blit(letter_shadow, letter_rect.move(off_x, off_y))
         screen.blit(letter_surf, letter_rect)
 
         # --- "RATINGS" PILL BADGE (#7F3F97 without outline) ---
         badge_w, badge_h = 220, 48
-        badge_rect = pygame.Rect(cx - badge_w // 2, letter_rect.bottom + 6, badge_w, badge_h)
+        badge_rect = pygame.Rect(
+            cx - badge_w // 2,
+            ribbon_y + ribbon_h + 29 + letter_rect.height // 2,
+            badge_w,
+            badge_h,
+        )
+        self.ratings_badge_rect = badge_rect.copy()
         pygame.draw.rect(screen, (127, 63, 151), badge_rect, border_radius=24)
 
         rat_surf = self.app.font_body.render("RATINGS", True, (242, 210, 20))
         screen.blit(rat_surf, rat_surf.get_rect(center=badge_rect.center))
 
         # --- SCORE & FLUENCY CIRCLES (#7F3F97 fill without outlines) ---
-        circ_size = 116
-        circ_cy = letter_rect.centery + 24
-        font_circ_val = getattr(self, "_font_circ_val", None) or self.app._get_sys_font(28)
+        circ_size = 128
+        circ_cy = metrics_cy + 16
+        self.metrics_circle_y = circ_cy
+        font_circ_val = self.app._get_sys_font(32)
+        font_circ_label = self.app._get_sys_font(24)
 
         # LEFT CIRCLE: SCORE ("10/10 SCORE" or "5/5 SCORE")
         score_cx = cx - 210
+        self.score_circle_rect = pygame.Rect(0, 0, circ_size, circ_size)
+        self.score_circle_rect.center = (score_cx, circ_cy)
         pygame.draw.circle(screen, (127, 63, 151), (score_cx, circ_cy), circ_size // 2)
 
         score_val = f"{result.first_try_correct}/{result.items_total}" if result else "10/10"
         s1 = font_circ_val.render(score_val, True, (255, 250, 243))
-        s2 = self.app.font_small.render("SCORE", True, (242, 210, 20))
-        screen.blit(s1, s1.get_rect(center=(score_cx, circ_cy - 12)))
-        screen.blit(s2, s2.get_rect(center=(score_cx, circ_cy + 18)))
+        s2 = font_circ_label.render("SCORE", True, (242, 210, 20))
+        screen.blit(s1, s1.get_rect(center=(score_cx, circ_cy - 14)))
+        screen.blit(s2, s2.get_rect(center=(score_cx, circ_cy + 21)))
 
         # RIGHT CIRCLE: FLUENCY ("100% FLUENCY" or "90% FLUENCY")
         fluency_cx = cx + 210
+        self.fluency_circle_rect = pygame.Rect(0, 0, circ_size, circ_size)
+        self.fluency_circle_rect.center = (fluency_cx, circ_cy)
         pygame.draw.circle(screen, (127, 63, 151), (fluency_cx, circ_cy), circ_size // 2)
 
-        fl_val = f"{round(result.fluency * 100)}%" if result else "100%"
+        fluency = (
+            result.overall_fluency
+            if result and kind == "session"
+            else result.fluency if result else 1.0
+        )
+        fl_val = f"{round(fluency * 100)}%"
         f1 = font_circ_val.render(fl_val, True, (255, 250, 243))
-        f2 = self.app.font_small.render("FLUENCY", True, (242, 210, 20))
-        screen.blit(f1, f1.get_rect(center=(fluency_cx, circ_cy - 12)))
-        screen.blit(f2, f2.get_rect(center=(fluency_cx, circ_cy + 18)))
+        f2 = font_circ_label.render("FLUENCY", True, (242, 210, 20))
+        screen.blit(f1, f1.get_rect(center=(fluency_cx, circ_cy - 14)))
+        screen.blit(f2, f2.get_rect(center=(fluency_cx, circ_cy + 21)))
 
         # --- TIME ROW ("TIME 1min 20 secs") (#7F3F97 badge without outline) ---
-        time_y = badge_rect.bottom + 18
+        time_y = badge_rect.bottom + 6
         time_badge_w, time_badge_h = 120, 34
         time_badge = pygame.Rect(cx - 150, time_y, time_badge_w, time_badge_h)
+        self.time_badge_rect = time_badge.copy()
         pygame.draw.rect(screen, (127, 63, 151), time_badge, border_radius=17)
 
         t_lbl = self.app.font_small.render("TIME", True, (242, 210, 20))
@@ -281,7 +318,10 @@ class ResultsScene(BaseScene):
         menu_btn.draw(screen)
 
         passed = getattr(result, "passed", True) if result else True
-        next_label = "Continue" if passed else "Retry"
+        if kind == "session":
+            next_label = "Play Again"
+        else:
+            next_label = "Continue" if passed else "Retry"
 
         cont_btn = Button(self.next_button, label=next_label, variant="yellow", font=self.app.font_button, stroke_weight=8)
         cont_btn.is_pressed = (self.pressed_button == "next")

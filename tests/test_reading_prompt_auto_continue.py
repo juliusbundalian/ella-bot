@@ -1,4 +1,5 @@
 # tests/test_reading_prompt_auto_continue.py
+import queue
 import time
 from unittest.mock import MagicMock
 
@@ -34,6 +35,20 @@ def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
         assert text_rect.centery == inner_rect.centery
         assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
         assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 80
+
+
+def test_level_4_prompt_is_narrower_to_clear_ella_on_the_right():
+    sentence = "Please read this advanced sentence aloud"
+    level_3_scene, pygame = _make_scene_for_layout(sentence, current_level="3")
+    level_4_scene, _ = _make_scene_for_layout(sentence, current_level="4")
+    inner_rect = pygame.Rect(32, 32, 1216, 656)
+
+    _, level_3_rect = level_3_scene._prompt_layout(inner_rect, pygame)
+    _, level_4_rect = level_4_scene._prompt_layout(inner_rect, pygame)
+
+    assert level_4_rect.width == int(inner_rect.width * 0.50)
+    assert level_4_rect.width < level_3_rect.width
+    assert level_4_rect.right < level_3_rect.right
 
 
 def test_level_2_uses_smaller_font_and_stays_above_ella():
@@ -100,6 +115,23 @@ def test_timer_fires_when_expired():
     scene.update(0)
     scene._start_attempt.assert_called_once()
     assert scene._auto_start_at is None
+
+
+def test_session_completion_opens_standard_results_scene():
+    from ella_bot.core.events import SessionCompleted
+    from ella_bot.services.evaluation import CumulativeResult
+    from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
+
+    scene = _make_scene()
+    result = CumulativeResult(0.86, "A", 28, 24, [], 180.0)
+    scene.app.event_queue = queue.Queue()
+    scene.app.event_queue.put(SessionCompleted(result))
+
+    ReadingPromptScene._drain_event_queue(scene)
+
+    assert scene.app.latest_result == result
+    assert scene.app.latest_result_kind == "session"
+    scene.app.switch_scene.assert_called_once_with("results")
 
 
 def test_timer_does_not_fire_before_expiry():
