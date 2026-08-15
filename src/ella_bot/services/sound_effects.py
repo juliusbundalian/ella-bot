@@ -141,14 +141,44 @@ def play_button_click() -> None:
 
 
 def resolve_level1_playback(level: str, item: str) -> Optional[Path]:
-    """Resolve pre-recorded playback audio for a Level 1 item.
+    """Resolve pre-recorded playback audio for a level item.
 
     Checks assets/Level 1 playbacks/playbacks/{LEVEL}/ for matching .wav files.
+    Supports folder formats like '1A', 'Level-1A', '2A', 'Level-2A', etc.
     """
-    folder = str(level).strip().upper()
+    raw_level = str(level).strip()
+    norm_level = raw_level.lower().replace("level", "").replace("-", "").replace("_", "")
+
     base_dir = resolve_asset_path("assets/Level 1 playbacks/playbacks")
-    sub_dir = base_dir / folder
-    if not sub_dir.exists():
+    if not base_dir.exists():
+        return None
+
+    # Candidate folder names to search in order of preference
+    candidates = [
+        raw_level.upper(),
+        f"Level-{raw_level.upper()}",
+        f"LEVEL-{raw_level.upper()}",
+        norm_level.upper(),
+        f"Level-{norm_level.upper()}",
+        f"LEVEL-{norm_level.upper()}",
+    ]
+    sub_dir: Optional[Path] = None
+    for cand in candidates:
+        d = base_dir / cand
+        if d.exists() and d.is_dir():
+            sub_dir = d
+            break
+
+    if not sub_dir:
+        # Fallback: scan all subdirs for matching normalized name
+        for d in base_dir.iterdir():
+            if d.is_dir():
+                d_norm = d.name.lower().replace("level", "").replace("-", "").replace("_", "")
+                if d_norm == norm_level:
+                    sub_dir = d
+                    break
+
+    if not sub_dir or not sub_dir.exists():
         return None
 
     item_clean = item.lower().strip()
@@ -163,12 +193,17 @@ def resolve_level1_playback(level: str, item: str) -> Optional[Path]:
     if prefix_wav.exists():
         return prefix_wav
 
-    # 3. Match sound substring in item (e.g. ch.wav for 'chip', dge.wav for 'bridge', bl.wav for 'blue')
+    # 3. Match with digit suffix (e.g. come1.wav for 'come')
+    digit_wav = sub_dir / f"{sound_prefix}1.wav"
+    if digit_wav.exists():
+        return digit_wav
+
+    # 4. Match sound substring in item (e.g. ch.wav for 'chip', dge.wav for 'bridge', bl.wav for 'blue')
     if sub_dir.exists():
         wav_files = sorted(sub_dir.glob("*.wav"), key=lambda p: len(p.stem), reverse=True)
         for wav_file in wav_files:
             sound_name = wav_file.stem.lower()
-            if sound_name in item_clean:
+            if sound_name in item_clean or sound_name.rstrip("0123456789") in item_clean:
                 return wav_file
     return None
 

@@ -43,3 +43,9 @@ sounds/
 /data/active_session.json
 /data/active_session.json.invalid-*
 /data/.active_session.json.*.tmp
+
+# Temporary audio recognition tools and environments
+.temp_audio_env/
+.temp_pip/
+.temp_*/
+

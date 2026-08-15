@@ -126,9 +126,28 @@ class AttemptRunner:
             try:
                 if self._wait_if_paused():
                     return
-                announcement = self.app.session.build_start_announcement()
-                if self._speak(announcement, rate=NON_LEVEL1_PROMPT_RATE):
-                    return
+                sound_wav = resolve_level1_playback(level, target_item)
+                if sound_wav and sound_wav.exists():
+                    clean_target = target_item.rstrip(".!?")
+                    announcement = self.app.session.build_start_announcement()
+                    pattern = re.compile(rf'\b{re.escape(clean_target)}\b', re.IGNORECASE)
+                    parts = pattern.split(announcement, maxsplit=1)
+                    if len(parts) == 2:
+                        intro_part = parts[0].strip().rstrip(",").rstrip(".")
+                        if intro_part:
+                            if self._speak(intro_part, rate=NON_LEVEL1_PROMPT_RATE):
+                                return
+                        if self._wait_if_paused():
+                            return
+                        if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                            return
+                    else:
+                        if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                            return
+                else:
+                    announcement = self.app.session.build_start_announcement()
+                    if self._speak(announcement, rate=NON_LEVEL1_PROMPT_RATE):
+                        return
             except Exception as exc:
                 logger.debug("Intro TTS error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))
@@ -454,25 +473,34 @@ class AttemptRunner:
             return
 
         feedback = self.app.latest_attempt.feedback
-        try:
-            lines = build_spoken_feedback_with_coaching(
-                feedback=feedback,
-                overrides=overrides_for_level(
-                    self.app.session.current_level, self.app.pronunciation_overrides
-                ),
-                expected_sentence=self.app.latest_attempt.expected_sentence,
-                max_hints=2,
-                validation=self.app.latest_attempt.validation,
-            )
-        except Exception:
-            lines = [feedback.level_message]
+        level = self.app.session.current_level
+        target_sentence = self.app.session.expected_sentence.strip()
+        sound_wav = resolve_level1_playback(level, target_sentence)
+        if sound_wav and sound_wav.exists():
+            self.app.event_queue.put(StateChanged("speaking"))
+            self.app.event_queue.put(MessageChanged("Replaying pronunciation..."))
+            if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                return
+        else:
+            try:
+                lines = build_spoken_feedback_with_coaching(
+                    feedback=feedback,
+                    overrides=overrides_for_level(
+                        self.app.session.current_level, self.app.pronunciation_overrides
+                    ),
+                    expected_sentence=self.app.latest_attempt.expected_sentence,
+                    max_hints=2,
+                    validation=self.app.latest_attempt.validation,
+                )
+            except Exception:
+                lines = [feedback.level_message]
 
-        for line in lines:
-            if self._wait_if_paused():
-                return
-            self.app.event_queue.put(MessageChanged("Replaying feedback..."))
-            if self._speak(line):
-                return
+            for line in lines:
+                if self._wait_if_paused():
+                    return
+                self.app.event_queue.put(MessageChanged("Replaying feedback..."))
+                if self._speak(line):
+                    return
 
         if self._wait_if_paused():
             return
