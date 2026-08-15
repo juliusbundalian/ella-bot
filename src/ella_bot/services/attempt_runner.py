@@ -122,34 +122,49 @@ class AttemptRunner:
             else:
                 self.app.session.last_announced_sentence = target_item
 
-        if not is_retry and self.app.audio_feedback and self.app.tts is not None:
+        if not is_retry and self.app.audio_feedback:
             try:
                 if self._wait_if_paused():
                     return
                 sound_wav = resolve_level1_playback(level, target_item)
+                item_num = self.app.session.current_item_number()
+
                 if sound_wav and sound_wav.exists():
-                    clean_target = target_item.rstrip(".!?")
-                    announcement = self.app.session.build_start_announcement()
-                    pattern = re.compile(rf'\b{re.escape(clean_target)}\b', re.IGNORECASE)
-                    parts = pattern.split(announcement, maxsplit=1)
-                    if len(parts) == 2:
-                        intro_part = parts[0].strip().rstrip(",").rstrip(".")
-                        if intro_part:
-                            if self._speak(intro_part, rate=NON_LEVEL1_PROMPT_RATE):
-                                return
-                        if self._wait_if_paused():
+                    pre_paths, post_paths, keys_used = build_level1_audio_sequence(
+                        level=level,
+                        item=target_item,
+                        item_number=item_num,
+                        recent_keys=self._recent_prompt_keys,
+                    )
+                    self._recent_prompt_keys.update(keys_used)
+                    if len(self._recent_prompt_keys) > 10:
+                        self._recent_prompt_keys = set(list(self._recent_prompt_keys)[-6:])
+
+                    # 1. Play pre-sound intro prompt WAV files (e.g. "Listen carefully", "Here is the sound")
+                    if pre_paths:
+                        if play_audio_sequence(pre_paths, is_paused=self._is_paused, app=self.app):
                             return
-                        if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+
+                    if self._wait_if_paused():
+                        return
+
+                    # 2. Play item sound WAV file
+                    if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                        return
+
+                    if self._wait_if_paused():
+                        return
+
+                    # 3. Play post-sound action prompt WAV files (e.g. "Now it's your turn!", "Can you say...")
+                    if post_paths:
+                        if play_audio_sequence(post_paths, is_paused=self._is_paused, app=self.app):
                             return
-                    else:
-                        if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
-                            return
-                else:
+                elif self.app.tts is not None:
                     announcement = self.app.session.build_start_announcement()
                     if self._speak(announcement, rate=NON_LEVEL1_PROMPT_RATE):
                         return
             except Exception as exc:
-                logger.debug("Intro TTS error: %s", exc)
+                logger.debug("Intro audio error: %s", exc)
                 self.app.event_queue.put(ErrorOccurred(str(exc)))
 
         if self._wait_if_paused():
