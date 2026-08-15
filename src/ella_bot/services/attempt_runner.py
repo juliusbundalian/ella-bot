@@ -107,7 +107,7 @@ class AttemptRunner:
 
     def run(self) -> None:
         level = self.app.session.current_level
-        if tier_of(level) == 1:
+        if tier_of(level) in (1, 2):
             self._run_level1_practice()
             return
 
@@ -370,8 +370,8 @@ class AttemptRunner:
             tier = session.tier_of(level)
             sub_result = self.app.evaluation.finish_sublevel(level)
 
-            if tier == 1:
-                # Level 1 is practice only — bypass completion screen.
+            if tier in (1, 2):
+                # Levels 1 and 2 are practice only — bypass completion screen.
                 # Speak level transition announcement and advance directly to the next level.
                 phrase = random.choice([
                     "You finished this activity! Now onto the next level.",
@@ -387,7 +387,7 @@ class AttemptRunner:
                 has_next = session.advance_to_higher_stage()
                 if has_next:
                     self.app.save_active_session("reading")
-                    if session.tier_of(session.current_level) == 1:
+                    if session.tier_of(session.current_level) in (1, 2):
                         self._run_level1_practice()
                     return True
                 return True
