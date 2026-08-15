@@ -147,7 +147,7 @@ class SessionManager:
 
     def _build_session_pool(self, level: str) -> List[str]:
         pool = self.level_pools.get(level, [])
-        if tier_of(level) in (1, 2):
+        if tier_of(level) == 1:
             return list(pool)
         if len(pool) <= TIER2_PLUS_SESSION_LIMIT:
             return list(pool)

@@ -334,6 +334,51 @@ def build_level1_audio_sequence(
     return pre_paths, post_paths, keys_used
 
 
+def resolve_random_praise_prompt(recent_keys: Optional[set[str]] = None) -> Optional[Path]:
+    """Return a random pre-recorded praise prompt WAV path."""
+    import random
+    candidates = [p for p in LEVEL1_PRAISE_PROMPTS if not recent_keys or p not in recent_keys]
+    if not candidates:
+        candidates = LEVEL1_PRAISE_PROMPTS
+    chosen = random.choice(candidates)
+    return resolve_level1_prompt(chosen)
+
+
+def build_level2_prompt_sequence(
+    item_number: int = 1,
+    recent_keys: Optional[set[str]] = None,
+) -> tuple[list[Path], list[str]]:
+    """Build pre-recorded prompt fillers for Level 2 reading items before listening."""
+    import random
+    recent_keys = recent_keys or set()
+    paths: list[Path] = []
+    keys_used: list[str] = []
+
+    def pick_prompt(pool: list[str]) -> Optional[str]:
+        candidates = [p for p in pool if p not in recent_keys and p not in keys_used]
+        if not candidates:
+            candidates = [p for p in pool if p not in keys_used]
+        if not candidates:
+            candidates = pool
+        chosen = random.choice(candidates)
+        path = resolve_level1_prompt(chosen)
+        if path and path.exists():
+            paths.append(path)
+            keys_used.append(chosen)
+            return chosen
+        return None
+
+    if item_number == 1:
+        pick_prompt(LEVEL1_START_PROMPTS)
+        pick_prompt(LEVEL1_ACTION_PROMPTS)
+    else:
+        pick_prompt(LEVEL1_TRANSITION_PROMPTS)
+        if random.random() < 0.6:
+            pick_prompt(LEVEL1_ACTION_PROMPTS)
+
+    return paths, keys_used
+
+
 def play_audio_sequence(
     wav_paths: list[Path],
     is_paused: Optional[Callable[[], bool]] = None,

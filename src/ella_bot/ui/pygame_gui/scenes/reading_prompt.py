@@ -126,9 +126,9 @@ class ReadingPromptScene(BaseScene):
         self.last_activity_monotonic = time.monotonic()
 
     def handle_event(self, event) -> None:
-        is_playback_level = False
+        is_level_1 = False
         if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
-            is_playback_level = (tier_of(self.app.session.current_level) in (1, 2))
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.modal.visible:
@@ -171,7 +171,7 @@ class ReadingPromptScene(BaseScene):
                 self._set_paused(True)
                 return
 
-            if is_playback_level:
+            if is_level_1:
                 if self.replay_button_rect and self.replay_button_rect.collidepoint(event.pos):
                     play_button_click()
                     self._replay_level1_audio()
@@ -189,23 +189,23 @@ class ReadingPromptScene(BaseScene):
                 self.app.switch_scene("main_menu")
             elif event.key == pygame.K_SPACE:
                 self._touch_activity()
-                if is_playback_level:
+                if is_level_1:
                     self._advance_level1_item()
                 else:
                     self._start_attempt()
             elif event.key in (pygame.K_n, pygame.K_RETURN):
-                if is_playback_level:
+                if is_level_1:
                     self._touch_activity()
                     self._advance_level1_item()
             elif event.key == pygame.K_r:
                 self._touch_activity()
-                if is_playback_level:
+                if is_level_1:
                     self._replay_level1_audio()
                 else:
                     self._speak_last_feedback()
             elif event.key == pygame.K_o:
                 self._touch_activity()
-                if not is_playback_level and self.app.asr is not None:
+                if not is_level_1 and self.app.asr is not None:
                     self.app.asr.bypass_transcription = self.app.expected_sentence
                     self._start_attempt()
 
@@ -251,10 +251,10 @@ class ReadingPromptScene(BaseScene):
                 self._auto_start_at = None
                 self._start_attempt()
             elif self._auto_start_at is None and self.app.state in ("listening", "idle", "success", "retry"):
-                is_playback_level = False
+                is_level_1 = False
                 if hasattr(self.app, "session") and hasattr(self.app.session, "current_level") and isinstance(self.app.session.current_level, str):
-                    is_playback_level = (tier_of(self.app.session.current_level) in (1, 2))
-                if not is_playback_level:
+                    is_level_1 = (tier_of(self.app.session.current_level) == 1)
+                if not is_level_1:
                     self._start_attempt()
 
         if self.app.state == "listening" and not self.app.prompt_active:
@@ -360,11 +360,11 @@ class ReadingPromptScene(BaseScene):
             font=self.app.font_body,
         )
 
-        is_playback_level = False
+        is_level_1 = False
         if hasattr(self.app, "session") and hasattr(self.app.session, "current_level"):
-            is_playback_level = (tier_of(self.app.session.current_level) in (1, 2))
+            is_level_1 = (tier_of(self.app.session.current_level) == 1)
 
-        if is_playback_level:
+        if is_level_1:
             btn_w, btn_h = 180, 56
             gap = 24
             center_x = width // 2
