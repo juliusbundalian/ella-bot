@@ -133,8 +133,9 @@ class AttemptRunner:
                 item_num = self.app.session.current_item_number()
 
                 if sound_wav and sound_wav.exists():
-                    # Level 2: Use pre-recorded human prompt fillers (NO TTS)
-                    pre_paths, keys_used = build_level2_prompt_sequence(
+                    pre_paths, post_paths, keys_used = build_level1_audio_sequence(
+                        level=level,
+                        item=target_item,
                         item_number=item_num,
                         recent_keys=self._recent_prompt_keys,
                     )
@@ -142,8 +143,24 @@ class AttemptRunner:
                     if len(self._recent_prompt_keys) > 10:
                         self._recent_prompt_keys = set(list(self._recent_prompt_keys)[-6:])
 
+                    # 1. Play pre-sound intro prompt WAV files (e.g. "Listen carefully", "Here is the sound")
                     if pre_paths:
                         if play_audio_sequence(pre_paths, is_paused=self._is_paused, app=self.app):
+                            return
+
+                    if self._wait_if_paused():
+                        return
+
+                    # 2. Play the actual item WAV audio (e.g. on.wav, people.wav, community.wav)
+                    if play_audio_file(sound_wav, is_paused=self._is_paused, app=self.app):
+                        return
+
+                    if self._wait_if_paused():
+                        return
+
+                    # 3. Play post-sound action prompt WAV files (e.g. "Now it's your turn!", "Can you say...")
+                    if post_paths:
+                        if play_audio_sequence(post_paths, is_paused=self._is_paused, app=self.app):
                             return
                 elif self.app.tts is not None:
                     announcement = self.app.session.build_start_announcement()
