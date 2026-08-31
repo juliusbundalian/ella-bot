@@ -49,7 +49,7 @@ do_git_pull() {
 
     # Check if working tree has local modifications
     local is_dirty=0
-    if [ -n "$(git status --porcelain -uno 2>/dev/null)" ]; then
+    if [ -n "$(git status --porcelain --ignore-submodules=dirty -uno 2>/dev/null)" ]; then
         is_dirty=1
         log_msg "Local uncommitted changes detected. Stashing changes..."
         git stash save "auto-pull-stash-$(date +%s)" >> "${LOG_FILE}" 2>&1
