@@ -84,20 +84,18 @@ class VoskASR(BaseASR):
 		sample_rate: int | None = None,
 		listen_seconds: int = 4,
 		input_device: int | None = None,
-		mic_gain: float = 1.0,
 	):
 		self.model_path = model_path
 		self.sample_rate = sample_rate
 		self.listen_seconds = listen_seconds
 		self.input_device = input_device
-		self.mic_gain = max(0.1, float(mic_gain))
 		self._model = None
 		self._recognizer = None
 		self._audio_queue = queue.Queue()
 		self._stream = None
 
 		# Force load model during initialization to avoid runtime lag
-		logger.info("Loading ASR Model from %s (mic_gain=%.1f)", self.model_path, self.mic_gain)
+		logger.info("Loading ASR Model from %s", self.model_path)
 		self._ensure_model_loaded()
 		logger.info("ASR Model Loaded Successfully")
 
@@ -126,7 +124,6 @@ class VoskASR(BaseASR):
 	def _start_background_stream(self):
 		try:
 			sd = importlib.import_module("sounddevice")
-			np = importlib.import_module("numpy")
 			if self.sample_rate is None:
 				try:
 					device_info = sd.query_devices(self.input_device, "input")
@@ -134,35 +131,10 @@ class VoskASR(BaseASR):
 				except Exception:
 					self.sample_rate = 16000
 
-			self._skip_pop_frames = int(self.sample_rate * 0.08)
-			self._frames_processed = 0
-			self._prev_x = 0.0
-			self._prev_y = 0.0
-
 			def callback(indata, frames, time, status):
 				if status:
 					logger.warning("[ASR Audio Status] %s", status)
-				pcm = np.frombuffer(indata, dtype=np.int16).astype(np.float32)
-				if self._frames_processed < self._skip_pop_frames:
-					pcm[:] = 0.0
-					self._frames_processed += frames
-
-				# 1st-order IIR DC-Blocker High-Pass Filter (strips DC offset & low frequency hum)
-				filtered = np.zeros_like(pcm)
-				prev_x = self._prev_x
-				prev_y = self._prev_y
-				for i in range(len(pcm)):
-					curr_x = pcm[i]
-					curr_y = curr_x - prev_x + 0.995 * prev_y
-					filtered[i] = curr_y
-					prev_x = curr_x
-					prev_y = curr_y
-				self._prev_x = prev_x
-				self._prev_y = prev_y
-
-				gain = max(1.0, self.mic_gain)
-				boosted = np.clip(filtered * gain, -32768, 32767).astype(np.int16)
-				self._audio_queue.put(boosted.tobytes())
+				self._audio_queue.put(bytes(indata))
 
 			self._stream = sd.RawInputStream(
 				samplerate=self.sample_rate,
