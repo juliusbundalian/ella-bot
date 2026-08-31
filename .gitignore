@@ -39,10 +39,8 @@ sounds/
 # Local Git worktrees
 .worktrees/
 
-# Runtime session checkpoints
-/data/active_session.json
-/data/active_session.json.invalid-*
-/data/.active_session.json.*.tmp
+# Data folder
+data/
 
 # Temporary audio recognition tools and environments
 .temp_audio_env/
