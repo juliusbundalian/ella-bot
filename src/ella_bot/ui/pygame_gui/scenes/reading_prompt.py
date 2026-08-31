@@ -47,16 +47,20 @@ class ReadingPromptScene(BaseScene):
 
     def _load_assets(self) -> None:
         if getattr(self, "_lottie_bg", None) is None:
-            try:
-                from ella_bot.utils.file_utils import resolve_config_path
-                from pathlib import Path
-                from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
-                lottie_file = resolve_config_path("assets/Reading_bg.lottie")
-                if not lottie_file.exists():
-                    lottie_file = Path("assets/Reading_bg.lottie")
-                self._lottie_bg = LottieBackground(lottie_file)
-            except Exception:
-                self._lottie_bg = None
+            from ella_bot.ui.pygame_gui.lottie_bg import load_animated_background
+
+            self._lottie_bg = load_animated_background(
+                [
+                    "assets/Reading_bg.lottie",
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._lottie_bg is None:
+                self._lottie_bg = False
 
         if getattr(self, "_settings_icon", None) is None:
             try:

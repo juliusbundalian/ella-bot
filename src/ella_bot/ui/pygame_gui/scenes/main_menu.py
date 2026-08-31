@@ -7,8 +7,7 @@ import pygame
 
 from ella_bot.ui.pygame_gui.scene import BaseScene
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
-from ella_bot.ui.pygame_gui.video_bg import VideoBackground
-from ella_bot.ui.pygame_gui.lottie_bg import LottieBackground
+from ella_bot.ui.pygame_gui.lottie_bg import load_animated_background
 from ella_bot.ui.pygame_gui.components.button import Button
 from ella_bot.utils.file_utils import resolve_asset_path
 from ella_bot.services.sound_effects import play_button_click
@@ -100,20 +99,16 @@ class MainMenuScene(BaseScene):
 
     def _load_assets(self) -> None:
         if self._video_bg is None:
-            try:
-                final_lightray_path = resolve_asset_path("assets/Final_Lightray.lottie")
-                lightray_path = resolve_asset_path("assets/Lightray.lottie")
-                lottie_path = resolve_asset_path("assets/shinebg.lottie")
-                if final_lightray_path.exists():
-                    self._video_bg = LottieBackground(final_lightray_path)
-                elif lightray_path.exists():
-                    self._video_bg = LottieBackground(lightray_path)
-                elif lottie_path.exists():
-                    self._video_bg = LottieBackground(lottie_path)
-                else:
-                    v_path = resolve_asset_path("assets/Comp 1_2.mp4")
-                    self._video_bg = VideoBackground(v_path)
-            except Exception:
+            self._video_bg = load_animated_background(
+                [
+                    "assets/Final_Lightray.lottie",
+                    "assets/Lightray.lottie",
+                    "assets/shinebg.lottie",
+                    "assets/shinebg.json",
+                ],
+                video_fallback="assets/Comp 1_2.mp4",
+            )
+            if self._video_bg is None:
                 self._video_bg = False
 
         if self._main_menu_svg is None:
