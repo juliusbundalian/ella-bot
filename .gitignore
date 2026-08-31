@@ -47,4 +47,5 @@ data/
 .temp_pip/
 .temp_*/
 scratch*
+seeed-voicecard/
 
