@@ -84,18 +84,20 @@ class VoskASR(BaseASR):
 		sample_rate: int | None = None,
 		listen_seconds: int = 4,
 		input_device: int | None = None,
+		mic_gain: float = 1.0,
 	):
 		self.model_path = model_path
 		self.sample_rate = sample_rate
 		self.listen_seconds = listen_seconds
 		self.input_device = input_device
+		self.mic_gain = max(0.1, float(mic_gain))
 		self._model = None
 		self._recognizer = None
 		self._audio_queue = queue.Queue()
 		self._stream = None
 
 		# Force load model during initialization to avoid runtime lag
-		logger.info("Loading ASR Model from %s", self.model_path)
+		logger.info("Loading ASR Model from %s (mic_gain=%.1f)", self.model_path, self.mic_gain)
 		self._ensure_model_loaded()
 		logger.info("ASR Model Loaded Successfully")
 
@@ -124,6 +126,7 @@ class VoskASR(BaseASR):
 	def _start_background_stream(self):
 		try:
 			sd = importlib.import_module("sounddevice")
+			np = importlib.import_module("numpy")
 			if self.sample_rate is None:
 				try:
 					device_info = sd.query_devices(self.input_device, "input")
@@ -134,7 +137,13 @@ class VoskASR(BaseASR):
 			def callback(indata, frames, time, status):
 				if status:
 					logger.warning("[ASR Audio Status] %s", status)
-				self._audio_queue.put(bytes(indata))
+				if self.mic_gain != 1.0:
+					# Soft-knee dynamic compression: boost whispers by mic_gain while preventing loud audio clipping
+					normalized = np.frombuffer(indata, dtype=np.int16).astype(np.float32) / 32767.0
+					boosted = np.tanh(normalized * self.mic_gain) * 32767.0
+					self._audio_queue.put(boosted.astype(np.int16).tobytes())
+				else:
+					self._audio_queue.put(bytes(indata))
 
 			self._stream = sd.RawInputStream(
 				samplerate=self.sample_rate,

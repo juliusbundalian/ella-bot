@@ -14,6 +14,7 @@ def build_asr(
     sample_rate: Optional[int] = None,
     listen_seconds: int = 4,
     input_device: Optional[int] = None,
+    mic_gain: float = 1.0,
 ):
     """Construct the ASR engine. Mirrors speech/tts/factory.build_tts.
 
@@ -26,5 +27,6 @@ def build_asr(
             sample_rate=sample_rate,
             listen_seconds=listen_seconds,
             input_device=input_device,
+            mic_gain=mic_gain,
         )
     return SimulatedASR(simulated_text=spoken)
