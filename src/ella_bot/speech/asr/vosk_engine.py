@@ -134,16 +134,22 @@ class VoskASR(BaseASR):
 				except Exception:
 					self.sample_rate = 16000
 
+			self._skip_pop_frames = int(self.sample_rate * 0.08)
+			self._frames_processed = 0
+
 			def callback(indata, frames, time, status):
 				if status:
 					logger.warning("[ASR Audio Status] %s", status)
+				pcm = np.frombuffer(indata, dtype=np.int16).copy()
+				if self._frames_processed < self._skip_pop_frames:
+					pcm[:] = 0
+					self._frames_processed += frames
 				if self.mic_gain != 1.0:
-					# Soft-knee dynamic compression: boost whispers by mic_gain while preventing loud audio clipping
-					normalized = np.frombuffer(indata, dtype=np.int16).astype(np.float32) / 32767.0
+					normalized = pcm.astype(np.float32) / 32767.0
 					boosted = np.tanh(normalized * self.mic_gain) * 32767.0
 					self._audio_queue.put(boosted.astype(np.int16).tobytes())
 				else:
-					self._audio_queue.put(bytes(indata))
+					self._audio_queue.put(pcm.tobytes())
 
 			self._stream = sd.RawInputStream(
 				samplerate=self.sample_rate,
