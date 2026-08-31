@@ -49,8 +49,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mic-gain",
         type=float,
-        default=8.0,
-        help="Digital amplification gain multiplier for microphone audio sensitivity (e.g., 4.0, 8.0, 10.0).",
+        default=2.0,
+        help="Digital amplification gain multiplier for microphone audio sensitivity (e.g., 1.5, 2.0, 3.0).",
     )
     parser.add_argument("--audio-feedback", action="store_true", help="Speak feedback aloud with offline TTS")
     parser.add_argument(

@@ -136,20 +136,33 @@ class VoskASR(BaseASR):
 
 			self._skip_pop_frames = int(self.sample_rate * 0.08)
 			self._frames_processed = 0
+			self._prev_x = 0.0
+			self._prev_y = 0.0
 
 			def callback(indata, frames, time, status):
 				if status:
 					logger.warning("[ASR Audio Status] %s", status)
-				pcm = np.frombuffer(indata, dtype=np.int16).copy()
+				pcm = np.frombuffer(indata, dtype=np.int16).astype(np.float32)
 				if self._frames_processed < self._skip_pop_frames:
-					pcm[:] = 0
+					pcm[:] = 0.0
 					self._frames_processed += frames
-				if self.mic_gain != 1.0:
-					normalized = pcm.astype(np.float32) / 32767.0
-					boosted = np.tanh(normalized * self.mic_gain) * 32767.0
-					self._audio_queue.put(boosted.astype(np.int16).tobytes())
-				else:
-					self._audio_queue.put(pcm.tobytes())
+
+				# 1st-order IIR DC-Blocker High-Pass Filter (strips DC offset & low frequency hum)
+				filtered = np.zeros_like(pcm)
+				prev_x = self._prev_x
+				prev_y = self._prev_y
+				for i in range(len(pcm)):
+					curr_x = pcm[i]
+					curr_y = curr_x - prev_x + 0.995 * prev_y
+					filtered[i] = curr_y
+					prev_x = curr_x
+					prev_y = curr_y
+				self._prev_x = prev_x
+				self._prev_y = prev_y
+
+				gain = max(1.0, self.mic_gain)
+				boosted = np.clip(filtered * gain, -32768, 32767).astype(np.int16)
+				self._audio_queue.put(boosted.tobytes())
 
 			self._stream = sd.RawInputStream(
 				samplerate=self.sample_rate,

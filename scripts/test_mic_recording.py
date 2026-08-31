@@ -70,21 +70,23 @@ def record_test_audio(duration: int = 5) -> None:
 
     raw_audio = raw_frames.flatten()
     
-    # Strip initial 100ms soundcard hardware initialization pop/click
-    pop_samples = int(sample_rate * 0.1)
-    clean_audio = raw_audio.copy()
+    # Strip initial 80ms hardware pop
+    pop_samples = int(sample_rate * 0.08)
+    clean_audio = raw_audio.astype(np.float32)
     if len(clean_audio) > pop_samples:
-        clean_audio[:pop_samples] = 0
+        clean_audio[:pop_samples] = 0.0
 
-    # Calculate speech peak amplitude ignoring hardware pop
-    speech_peak = np.max(np.abs(clean_audio[pop_samples:])) if len(clean_audio) > pop_samples else np.max(np.abs(clean_audio))
-    
-    # AGC (Automatic Gain Control) normalization: scale speech to ~28,000 peak (85% max volume)
-    agc_gain = max(mic_gain, min(25.0, 28000.0 / max(speech_peak, 100)))
-    
-    normalized = clean_audio.astype(np.float32) / 32767.0
-    boosted_float = np.tanh(normalized * agc_gain) * 32767.0
-    boosted_audio = boosted_float.astype(np.int16)
+    # 1st-order IIR DC-Blocker High-Pass Filter
+    filtered = np.zeros_like(clean_audio)
+    prev_x, prev_y = 0.0, 0.0
+    for i in range(len(clean_audio)):
+        curr_x = clean_audio[i]
+        curr_y = curr_x - prev_x + 0.995 * prev_y
+        filtered[i] = curr_y
+        prev_x, prev_y = curr_x, curr_y
+
+    gain = max(1.0, mic_gain)
+    boosted_audio = np.clip(filtered * gain, -32768, 32767).astype(np.int16)
 
     # Save raw WAV
     with wave.open(str(raw_wav_path), "wb") as wf:
