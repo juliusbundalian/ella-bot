@@ -20,6 +20,7 @@ from ella_bot.services.sound_effects import (
     resolve_level1_prompt,
     resolve_random_praise_prompt,
 )
+from ella_bot.utils.file_utils import resolve_asset_path
 from ella_bot.utils.logging import get_logger
 from ella_bot.validation.feedback import (
     FeedbackResult,
@@ -39,25 +40,13 @@ logger = get_logger(__name__)
 
 NON_LEVEL1_PROMPT_RATE = 100
 
-_EXHAUSTION_PHRASES = [
-    "That's okay! Keep going, you're doing great!",
-    "Nice try! Let's move to the next one.",
-    "Don't worry, we'll come back to tricky ones. Keep it up!",
-    "Good effort! Moving on.",
-    "That one was tough! You're still doing amazing.",
-]
+_EXHAUSTION_MESSAGE = "Don't worry, we'll come back to tricky ones. Keep it up!"
 
 _NO_INPUT_PHRASES = [
     "I didn't quite hear you. Let's try again!",
     "Hmm, I didn't hear anything. Give it a try!",
     "Let's try that again — I'm listening!",
     "Oops, I didn't catch that. Have another go!",
-]
-
-_NO_INPUT_MOVE_ON_PHRASES = [
-    "I didn't quite hear you that time. Let's try a new one!",
-    "That's okay! Let's move on to the next one.",
-    "No worries — let's try a different one!",
 ]
 
 
@@ -106,6 +95,15 @@ class AttemptRunner:
                 actual_rate = int(self.app.tts.config.rate * 0.7)
         self.app.tts.speak(text, rate=actual_rate)
         return self._abort_requested
+
+    def _play_exhaustion_feedback(self) -> bool:
+        self.app.event_queue.put(MessageChanged(_EXHAUSTION_MESSAGE))
+        prompt_path = resolve_asset_path("assets/audio/MicroDave Production/457.wav")
+        if prompt_path.exists():
+            return play_audio_file(prompt_path, is_paused=self._is_paused, app=self.app)
+        if self.app.tts is not None:
+            return self._speak(_EXHAUSTION_MESSAGE)
+        return False
 
     def run(self) -> None:
         level = self.app.session.current_level
@@ -254,14 +252,8 @@ class AttemptRunner:
                             if play_audio_file(praise_wav, is_paused=self._is_paused, app=self.app):
                                 return
                 elif exhausted:
-                    if sound_wav and sound_wav.exists():
-                        trans_path = resolve_level1_prompt("lets_move_on")
-                        if trans_path and trans_path.exists():
-                            if play_audio_file(trans_path, is_paused=self._is_paused, app=self.app):
-                                return
-                    elif self.app.tts is not None:
-                        if self._speak(random.choice(_EXHAUSTION_PHRASES)):
-                            return
+                    if self._play_exhaustion_feedback():
+                        return
                 else:
                     if sound_wav and sound_wav.exists():
                         try_path = resolve_level1_prompt("try_saying_it") or resolve_level1_prompt("can_you_say")
@@ -313,7 +305,7 @@ class AttemptRunner:
             if correct:
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             elif exhausted:
-                self.app.event_queue.put(MessageChanged("Let's move on."))
+                self.app.event_queue.put(MessageChanged(_EXHAUSTION_MESSAGE))
             else:
                 self.app.event_queue.put(MessageChanged("Give it another try!"))
 
@@ -470,24 +462,19 @@ class AttemptRunner:
         advancing = exhausted  # silence is never correct, so the item only moves on when exhausted
 
         if self.app.audio_feedback:
-            sound_wav = resolve_level1_playback(level, session.expected_sentence)
-            if sound_wav and sound_wav.exists():
-                if advancing:
-                    move_on = resolve_level1_prompt("lets_move_on")
-                    if move_on and move_on.exists():
-                        if play_audio_file(move_on, is_paused=self._is_paused, app=self.app):
-                            return
-                else:
+            if advancing:
+                if self._play_exhaustion_feedback():
+                    return
+            else:
+                sound_wav = resolve_level1_playback(level, session.expected_sentence)
+                if sound_wav and sound_wav.exists():
                     try_path = resolve_level1_prompt("you_try") or resolve_level1_prompt("try_saying_it")
                     if try_path and try_path.exists():
                         if play_audio_file(try_path, is_paused=self._is_paused, app=self.app):
                             return
-            elif self.app.tts is not None:
-                phrase = random.choice(
-                    _NO_INPUT_MOVE_ON_PHRASES if advancing else _NO_INPUT_PHRASES
-                )
-                if self._speak(phrase):
-                    return
+                elif self.app.tts is not None:
+                    if self._speak(random.choice(_NO_INPUT_PHRASES)):
+                        return
 
         if self._wait_if_paused():
             return
@@ -508,7 +495,7 @@ class AttemptRunner:
         self.app.save_active_session("reading")
 
         if advancing:
-            self.app.event_queue.put(MessageChanged("Let's move on."))
+            self.app.event_queue.put(MessageChanged(_EXHAUSTION_MESSAGE))
         else:
             self.app.event_queue.put(MessageChanged("I didn't hear you — let's try again!"))
 

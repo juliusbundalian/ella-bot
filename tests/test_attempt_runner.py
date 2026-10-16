@@ -2,10 +2,12 @@ import queue
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 from ella_bot.services.attempt_runner import AttemptRunner
 from ella_bot.services.session_manager import SessionManager
 from ella_bot.services.evaluation import EvaluationService
-from ella_bot.core.events import SubLevelCompleted, AttemptReady
+from ella_bot.core.events import MessageChanged, SubLevelCompleted, AttemptReady
 import ella_bot.services.attempt_runner as runner_mod
 
 
@@ -136,3 +138,40 @@ def test_full_completion_clears_checkpoint_instead_of_saving_results(tmp_path):
 
     app.clear_active_session.assert_called_once()
     app.save_active_session.assert_not_called()
+
+
+@pytest.mark.parametrize("transcript", ["wrong", ""])
+def test_exhausted_attempt_plays_wav_457_and_shows_matching_message(
+    tmp_path, monkeypatch, transcript
+):
+    app = _make_app_with_tts(tmp_path, {"2a": ["go", "next"]}, "2a")
+    app.asr.transcribe.return_value = _FakeASRResult(transcript)
+    app.session.last_announced_sentence = app.session.expected_sentence
+    for _ in range(2):
+        app.evaluation.record_attempt("2a", 1, "go", "wrong", 0.0, 1.0, False)
+
+    class IncorrectValidation:
+        accuracy = 0.0
+        wer = 1.0
+        alignment = []
+
+    monkeypatch.setattr(runner_mod, "validate_spoken_text", lambda *args, **kwargs: IncorrectValidation())
+    monkeypatch.setattr(runner_mod, "build_feedback", lambda **kwargs: _FakeFeedback())
+    monkeypatch.setattr(runner_mod, "build_highlighted_expected", lambda alignment: "")
+    monkeypatch.setattr(runner_mod, "normalize", lambda text: [text])
+    monkeypatch.setattr(runner_mod, "spoken_word_confidence_map", lambda tokens, confidences: {})
+    monkeypatch.setattr(runner_mod, "resolve_level1_playback", lambda level, item: None)
+    monkeypatch.setattr(runner_mod.time, "sleep", lambda seconds: None)
+    played_paths = []
+    monkeypatch.setattr(
+        runner_mod,
+        "play_audio_file",
+        lambda path, **kwargs: played_paths.append(path) or False,
+    )
+
+    AttemptRunner(app, is_paused=lambda: False).run()
+
+    assert [path.name for path in played_paths] == ["457.wav"]
+    messages = [event.message for event in _drain(app) if isinstance(event, MessageChanged)]
+    assert "Don't worry, we'll come back to tricky ones. Keep it up!" in messages
+    assert "Let's move on." not in messages
