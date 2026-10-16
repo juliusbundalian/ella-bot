@@ -4,6 +4,7 @@ import io
 import time
 import queue
 import threading
+from dataclasses import replace
 import pygame
 from typing import Optional
 
@@ -12,9 +13,10 @@ from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
 from ella_bot.ui.pygame_gui.components.button import Button
+from ella_bot.ui.pygame_gui.components.turn_status import draw_turn_status
 from ella_bot.services.sound_effects import play_button_click
 from ella_bot.core.constants import get_level1_sound_and_word, tier_of
-from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted
+from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted, TurnStatusChanged
 from ella_bot.services.attempt_runner import AttemptRunner, AttemptViewModel
 from ella_bot.validation.validators import (
     validate_spoken_text,
@@ -44,6 +46,8 @@ class ReadingPromptScene(BaseScene):
         self._auto_start_at: float | None = None
         self.pre_pause_state = "idle"
         self._lottie_bg = None
+        self._turn_status: TurnStatusChanged | None = None
+        self._pending_navigation = None
 
     def _load_assets(self) -> None:
         if getattr(self, "_lottie_bg", None) is None:
@@ -83,6 +87,8 @@ class ReadingPromptScene(BaseScene):
         self.app.state = "idle"
         self.app.message = ""
         self.app.prompt_active = False
+        self._turn_status = None
+        self._pending_navigation = None
         self.modal.close()
         self.is_paused = False
         self._touch_activity()
@@ -215,7 +221,15 @@ class ReadingPromptScene(BaseScene):
 
     def _abort_paused_attempt(self) -> bool:
         self._auto_start_at = None
-        return self._stop_attempt_worker()
+        stopped = self._stop_attempt_worker()
+        if stopped:
+            self._pending_navigation = None
+            while not self.app.event_queue.empty():
+                try:
+                    self.app.event_queue.get_nowait()
+                except queue.Empty:
+                    break
+        return stopped
 
     def _restart_level_from_pause(self) -> None:
         if not self._abort_paused_attempt():
@@ -233,7 +247,8 @@ class ReadingPromptScene(BaseScene):
     def _return_to_menu_from_pause(self) -> None:
         if not self._abort_paused_attempt():
             return
-        if not self.app.save_active_session("reading"):
+        saved_outcome = getattr(self.runner, "saved_outcome", False) is True
+        if not saved_outcome and not self.app.save_active_session("reading"):
             self.app.continue_saved_session()
             self.is_paused = True
             return
@@ -243,6 +258,12 @@ class ReadingPromptScene(BaseScene):
 
     def update(self, now_ms: int) -> None:
         self._drain_event_queue()
+        if not self.is_paused and getattr(self, "_pending_navigation", None) is not None:
+            pending = self._pending_navigation
+            self._pending_navigation = None
+            self.app.event_queue.put(pending)
+            self._drain_event_queue()
+            return
         if not self.modal.visible:
             tts_amp = getattr(self.app.tts, "current_amplitude", 0.0) if getattr(self.app, "tts", None) else 0.0
             self.bot.update(now_ms, self.app.state, tts_amplitude=tts_amp)
@@ -250,11 +271,12 @@ class ReadingPromptScene(BaseScene):
         if self.modal.visible:
             return
 
-        if not self.is_paused and not self.app.prompt_active:
+        worker_alive = self.worker_thread is not None and self.worker_thread.is_alive()
+        if not self.is_paused and not self.app.prompt_active and not worker_alive:
             if self._auto_start_at is not None and time.monotonic() >= self._auto_start_at:
                 self._auto_start_at = None
                 self._start_attempt()
-            elif self._auto_start_at is None and self.app.state in ("listening", "idle", "success", "retry"):
+            elif self._auto_start_at is None and self.app.state in ("idle", "success", "retry"):
                 is_level_1 = False
                 if hasattr(self.app, "session") and hasattr(self.app.session, "current_level") and isinstance(self.app.session.current_level, str):
                     is_level_1 = (tier_of(self.app.session.current_level) == 1)
@@ -295,8 +317,9 @@ class ReadingPromptScene(BaseScene):
         inner_border = (255, 185, 207)
 
         # 1. Level Indicator (Top-Centered Pill matching Figma spec)
-        level_str = str(self.app._display_level_name()).upper()
-        item_num = self.app._current_item_number()
+        status = self._current_turn_status()
+        level_str = status.level.upper()
+        item_num = status.item_number
         label_text = f"LEVEL {level_str} | Item {item_num}"
         label_bg = (216, 150, 216)   # Pink/violet pill fill
         label_fg = (87, 39, 108)     # Dark violet text
@@ -313,6 +336,10 @@ class ReadingPromptScene(BaseScene):
         pygame.draw.rect(screen, label_bg, pill_rect, border_radius=24)
         pygame.draw.rect(screen, (127, 63, 151), pill_rect, width=3, border_radius=24)
         screen.blit(label_surf, label_rect)
+        draw_turn_status(
+            screen, self._status_rect(inner_rect, pygame), status,
+            self.app._get_prompt_font(32), self.app._get_prompt_font(24),
+        )
 
         # 2. Settings / Pause Button (Left-Centered circular gear button matching Main Menu)
         gear_size = 80
@@ -334,7 +361,7 @@ class ReadingPromptScene(BaseScene):
         if prompt_font is not None:
             draw_wrapped_text(
                 screen,
-                self.app.expected_sentence,
+                self._display_prompt(),
                 prompt_font,
                 (56, 56, 56),
                 prompt_text_rect,
@@ -343,23 +370,10 @@ class ReadingPromptScene(BaseScene):
                 valign="center",
             )
 
-        tts_obj = getattr(self.app, "tts", None)
-        is_speaking = False
-        if tts_obj is not None:
-            val = getattr(tts_obj, "is_speaking", False)
-            is_speaking = bool(val() if callable(val) else val)
-            if not is_speaking and hasattr(tts_obj, "_active_stream"):
-                is_speaking = tts_obj._active_stream is not None
-
-        show_bubble = False
-        if not self.modal.visible and not is_speaking:
-            if self.app.state == "listening" and getattr(self.app, "prompt_active", False):
-                show_bubble = True
-
         self.bot.draw(
             screen,
             inner_rect,
-            show_thought_bubble=show_bubble,
+            show_thought_bubble=False,
             now_ms=now_ms,
             font=self.app.font_body,
         )
@@ -428,72 +442,45 @@ class ReadingPromptScene(BaseScene):
         """Center a text region vertically while keeping it above ELLA."""
         return max(inner_rect.top, inner_rect.centery * 2 - safe_bottom)
 
-    def _prompt_layout(self, inner_rect, pygame_module):
-        text = self.app.expected_sentence
-        session = getattr(self.app, "session", None)
-        current_level = getattr(session, "current_level", None)
-        if not isinstance(current_level, str):
-            current_level = getattr(self.app, "current_level", "")
-
-        current_tier = tier_of(current_level)
-
-        if current_tier in (3, 4):
-            safe_bottom = self._bot_safe_bottom(inner_rect)
-            text_top = self._centered_safe_top(inner_rect, safe_bottom)
-            width_ratio = 0.50 if current_tier == 4 else 0.64
-            text_width = max(1, int(inner_rect.width * width_ratio))
-            text_rect = pygame_module.Rect(
-                inner_rect.centerx - text_width // 2,
-                text_top,
-                text_width,
-                max(0, safe_bottom - text_top),
-            )
-            for font_size in range(80, 11, -2):
-                font = self.app._get_prompt_font(font_size)
-                if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
-                    return font, text_rect
-            return None, text_rect
-
-        if len(text.split()) <= 6:
-            if current_tier == 2:
-                safe_bottom = self._bot_safe_bottom(inner_rect)
-                text_top = self._centered_safe_top(inner_rect, safe_bottom)
-                text_rect = pygame_module.Rect(
-                    inner_rect.left + 40,
-                    text_top,
-                    inner_rect.width - 80,
-                    max(0, safe_bottom - text_top),
-                )
-                for font_size in range(72, 11, -2):
-                    font = self.app._get_prompt_font(font_size)
-                    if font.size(text)[0] <= text_rect.width:
-                        return font, text_rect
-                return None, text_rect
-
-            text_rect = pygame_module.Rect(
-                inner_rect.left + 40,
-                inner_rect.top + 120,
-                inner_rect.width - 80,
-                inner_rect.height - 160,
-            )
-            font = self.app._prompt_font(pygame_module)
-            return font, text_rect
-
-        safe_bottom = self._bot_safe_bottom(inner_rect)
-        if current_tier == 2:
-            text_top = self._centered_safe_top(inner_rect, safe_bottom)
-        else:
-            text_top = min(inner_rect.top + 88, safe_bottom)
-        text_rect = pygame_module.Rect(
-            inner_rect.left + 40,
-            text_top,
-            max(1, inner_rect.width - 80),
-            max(0, safe_bottom - text_top),
+    def _current_turn_status(self) -> TurnStatusChanged:
+        status = getattr(self, "_turn_status", None)
+        if isinstance(status, TurnStatusChanged):
+            return status
+        session = self.app.session
+        level = session.current_level
+        return TurnStatusChanged(
+            "prompting" if tier_of(level) == 1 else "preparing",
+            level, session.current_item_number(), self.app.expected_sentence,
         )
-        max_font_size = 72 if current_tier == 2 else 82
-        for font_size in range(max_font_size, 11, -2):
+
+    def _display_prompt(self) -> str:
+        status = getattr(self, "_turn_status", None)
+        return status.expected_sentence if isinstance(status, TurnStatusChanged) else self.app.expected_sentence
+
+    @staticmethod
+    def _status_rect(inner_rect, pygame_module):
+        return pygame_module.Rect(inner_rect.left + 104, inner_rect.top + 74, inner_rect.width - 208, 94)
+
+    def _prompt_layout(self, inner_rect, pygame_module):
+        text = self._display_prompt()
+        status = getattr(self, "_turn_status", None)
+        level = status.level if isinstance(status, TurnStatusChanged) else self.app.session.current_level
+        if not isinstance(level, str):
+            level = getattr(self.app, "current_level", "")
+        current_tier = tier_of(level)
+        safe_bottom = self._bot_safe_bottom(inner_rect)
+        text_top = self._status_rect(inner_rect, pygame_module).bottom + 16
+        width_ratio = 0.50 if current_tier == 4 else 0.64 if current_tier == 3 else 1.0
+        text_width = max(1, min(inner_rect.width - 288, int(inner_rect.width * width_ratio)))
+        text_rect = pygame_module.Rect(
+            inner_rect.centerx - text_width // 2, text_top,
+            text_width, max(0, safe_bottom - text_top),
+        )
+        maximum_size = 80 if current_tier in (3, 4) else 72
+        for font_size in range(maximum_size, 11, -2):
             font = self.app._get_prompt_font(font_size)
-            if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
+            words_fit = all(font.size(word)[0] <= text_rect.width for word in text.split())
+            if words_fit and self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
                 return font, text_rect
         return None, text_rect
 
@@ -502,6 +489,8 @@ class ReadingPromptScene(BaseScene):
         if self.worker_thread and self.worker_thread.is_alive():
             return
         if self.is_paused:
+            return
+        if self.app.session.current_sublevel_complete() is True:
             return
 
         self.app.prompt_active = True
@@ -725,16 +714,24 @@ class ReadingPromptScene(BaseScene):
                     self.app.animator.set_state(event.state, reset=True)
             elif isinstance(event, MessageChanged):
                 self.app.message = event.message
+            elif isinstance(event, TurnStatusChanged):
+                self._turn_status = event
             elif isinstance(event, ErrorOccurred):
                 pass
             elif isinstance(event, AttemptReady):
                 self.app.latest_attempt = event.view_model
             elif isinstance(event, SubLevelCompleted):
+                if self.is_paused:
+                    self._pending_navigation = event
+                    return
                 self.app.latest_result = event.result
                 self.app.latest_result_kind = event.kind
                 self.app.switch_scene("results")
                 return
             elif isinstance(event, SessionCompleted):
+                if self.is_paused:
+                    self._pending_navigation = event
+                    return
                 self.app.latest_result = event.result
                 self.app.latest_result_kind = "session"
                 self.app.switch_scene("results")
@@ -742,6 +739,7 @@ class ReadingPromptScene(BaseScene):
 
     def _set_paused(self, paused: bool) -> None:
         self.is_paused = paused
+        self.runner.pause_changed(paused)
         if paused:
             self.pre_pause_state = self.app.state
             self.modal.open()
@@ -756,6 +754,9 @@ class ReadingPromptScene(BaseScene):
             self.app.event_queue.put(MessageChanged(""))
         else:
             self.modal.close()
+            status = getattr(self, "_turn_status", None)
+            if isinstance(status, TurnStatusChanged) and status.phase in {"preparing", "listening"}:
+                self._turn_status = replace(status, phase="preparing")
             if self.app.tts is not None:
                 try:
                     self.app.tts.resume()

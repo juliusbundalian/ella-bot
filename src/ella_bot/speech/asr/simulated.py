@@ -31,7 +31,13 @@ class SimulatedASR(BaseASR):
 	def __init__(self, simulated_text: str):
 		self.simulated_text = simulated_text
 
-	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None, *, on_capture_started: Optional[Callable[[], None]] = None, on_capture_stopped: Optional[Callable[[], None]] = None) -> ASRResult:
+		if is_paused and is_paused():
+			return ASRResult(transcript="", words=[])
+		if on_capture_started:
+			on_capture_started()
+		if on_capture_stopped:
+			on_capture_stopped()
 		words = [WordScore(word=w, confidence=0.9) for w in self.simulated_text.split()]
 		return ASRResult(transcript=self.simulated_text, words=words)
 

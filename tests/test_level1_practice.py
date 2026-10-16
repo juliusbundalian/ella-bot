@@ -7,6 +7,7 @@ from ella_bot.services.attempt_runner import AttemptRunner
 from ella_bot.services.session_manager import SessionManager
 from ella_bot.services.evaluation import EvaluationService
 from ella_bot.core.events import SubLevelCompleted, StateChanged
+import ella_bot.services.attempt_runner as runner_mod
 
 
 def _make_app(tmp_path, level="1a"):
@@ -79,3 +80,43 @@ def test_level2_uses_asr_validation(tmp_path):
 
     # Level 2 must invoke ASR transcribe
     app.asr.transcribe.assert_called_once()
+
+
+def test_level1_completion_plays_human_recording_before_next_item(tmp_path, monkeypatch):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"1a": ["a"], "1b": ["b"]}, "1a")
+    app.evaluation.record_attempt("1a", 1, "a", "a", 1.0, 0.0, True)
+    played = []
+    monkeypatch.setattr(
+        runner_mod, "play_audio_file", lambda path, **kwargs: played.append(path) or False
+    )
+    monkeypatch.setattr(runner_mod, "play_audio_sequence", lambda *args, **kwargs: False)
+
+    runner = AttemptRunner(app, is_paused=lambda: False)
+    runner._advance_after_attempt("1a", app.session, correct=True, exhausted=False)
+
+    assert played[0].name in {"463.wav", "464.wav"}
+    assert played[-1].name == "b.wav"
+    assert app.session.current_level == "1b"
+    app.tts.speak.assert_not_called()
+
+
+def test_leaving_during_level1_completion_keeps_valid_next_stage(tmp_path, monkeypatch):
+    app = _make_app(tmp_path)
+    app.session = SessionManager({"1a": ["a"], "1b": ["b"]}, "1a")
+    runner = AttemptRunner(app, is_paused=lambda: False)
+
+    def leave_during_completion(path, **kwargs):
+        if path.name in {"463.wav", "464.wav"}:
+            runner.abort()
+            return True
+        return False
+
+    monkeypatch.setattr(runner_mod, "play_audio_file", leave_during_completion)
+    monkeypatch.setattr(runner_mod, "play_audio_sequence", lambda *args, **kwargs: False)
+    runner.advance_level1()
+
+    assert app.session.current_level == "1b"
+    assert app.session.current_sublevel_complete() is False
+    assert runner.saved_outcome is True
+    app.save_active_session.assert_called_with("reading")

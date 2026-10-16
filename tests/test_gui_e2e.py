@@ -37,7 +37,15 @@ class E2ETestASR(BaseASR):
         self,
         expected_sentence: str = None,
         is_paused=None,
+        on_capture_started=None,
+        on_capture_stopped=None,
     ) -> ASRResult:
+        if is_paused and is_paused():
+            return ASRResult(transcript="", words=[])
+        if on_capture_started:
+            on_capture_started()
+        if on_capture_stopped:
+            on_capture_stopped()
         if not expected_sentence:
             expected_sentence = self.app.expected_sentence
             

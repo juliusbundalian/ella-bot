@@ -32,7 +32,7 @@ def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
         assert text_rect.width < inner_rect.width - 80
         assert text_rect.right < inner_rect.right - 40
         assert abs(text_rect.centerx - inner_rect.centerx) <= 1
-        assert text_rect.centery == inner_rect.centery
+        assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
         assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
         assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 80
 
@@ -61,14 +61,9 @@ def test_level_2_uses_smaller_font_and_stays_above_ella():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert text_rect == pygame.Rect(
-        inner_rect.left + 40,
-        scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect)),
-        inner_rect.width - 80,
-        scene._bot_safe_bottom(inner_rect)
-        - scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect)),
-    )
-    assert text_rect.centery == inner_rect.centery
+    assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
+    assert text_rect.left > inner_rect.left + 120
+    assert text_rect.centerx == inner_rect.centerx
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 72
 
@@ -83,7 +78,8 @@ def test_level_2_shrinks_a_short_prompt_that_is_too_wide():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert font.size(scene.app.expected_sentence)[0] <= text_rect.width
+    assert all(font.size(word)[0] <= text_rect.width for word in scene.app.expected_sentence.split())
+    assert scene._wrapped_height(scene.app.expected_sentence, font, text_rect.width) <= text_rect.height
     scene.app._get_prompt_font.assert_called()
 
 
@@ -141,11 +137,10 @@ def test_timer_does_not_fire_before_expiry():
     scene._start_attempt.assert_not_called()
 
 
-def test_state_trigger_fires_when_listening_no_prompt():
-    """State trigger fires when state is listening and prompt is inactive."""
+def test_listening_label_does_not_start_another_capture():
     scene = _make_scene(state="listening", prompt_active=False, auto_start_at=None)
     scene.update(0)
-    scene._start_attempt.assert_called_once()
+    scene._start_attempt.assert_not_called()
 
 
 def test_state_trigger_does_not_fire_when_prompt_active():
@@ -196,7 +191,7 @@ def test_long_level_2_prompt_uses_smaller_font_and_centered_safe_area():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert text_rect.centery == inner_rect.centery
+    assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert scene._wrapped_height(
         scene.app.expected_sentence, font, text_rect.width
@@ -282,6 +277,17 @@ def test_pause_back_to_menu_aborts_saves_then_navigates():
     scene._return_to_menu_from_pause()
 
     assert actions == ["abort", "save", "navigate"]
+    scene.app.switch_scene.assert_called_once_with("main_menu")
+
+
+def test_pause_back_to_menu_preserves_already_saved_results_checkpoint():
+    scene = _make_scene(is_paused=True, modal_visible=True)
+    scene.runner.saved_outcome = True
+    scene.app.checkpoint_phase = "results"
+
+    scene._return_to_menu_from_pause()
+
+    scene.app.save_active_session.assert_not_called()
     scene.app.switch_scene.assert_called_once_with("main_menu")
 
 

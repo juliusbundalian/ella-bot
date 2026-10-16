@@ -53,7 +53,7 @@ def format_attempt_diagnostics(
 class BaseASR:
 	"""Abstract ASR adapter."""
 
-	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None, *, on_capture_started: Optional[Callable[[], None]] = None, on_capture_stopped: Optional[Callable[[], None]] = None) -> ASRResult:
 		bypass = getattr(self, "bypass_transcription", None)
 		if bypass is not None:
 			self.bypass_transcription = None  # Clear the bypass flag
@@ -68,7 +68,13 @@ class SimulatedASR(BaseASR):
 	def __init__(self, simulated_text: str):
 		self.simulated_text = simulated_text
 
-	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None, *, on_capture_started: Optional[Callable[[], None]] = None, on_capture_stopped: Optional[Callable[[], None]] = None) -> ASRResult:
+		if is_paused and is_paused():
+			return ASRResult(transcript="", words=[])
+		if on_capture_started:
+			on_capture_started()
+		if on_capture_stopped:
+			on_capture_stopped()
 		words = [WordScore(word=w, confidence=0.9) for w in self.simulated_text.split()]
 		return ASRResult(transcript=self.simulated_text, words=words)
 
@@ -149,10 +155,14 @@ class VoskASR(BaseASR):
 		except Exception as exc:
 			logger.error("[ASR] Could not start persistent background microphone stream: %s", exc)
 
-	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None) -> ASRResult:
+	def transcribe(self, expected_sentence: Optional[str] = None, is_paused: Optional[Callable[[], bool]] = None, *, on_capture_started: Optional[Callable[[], None]] = None, on_capture_stopped: Optional[Callable[[], None]] = None) -> ASRResult:
+		if is_paused and is_paused():
+			return ASRResult(transcript="", words=[])
 		bypass = getattr(self, "bypass_transcription", None)
 		if bypass is not None:
 			self.bypass_transcription = None  # Clear the bypass flag
+			if on_capture_stopped:
+				on_capture_stopped()
 			words = [WordScore(word=w, confidence=0.99) for w in bypass.split()]
 			return ASRResult(transcript=bypass, words=words)
 
@@ -168,6 +178,13 @@ class VoskASR(BaseASR):
 		# Ensure background stream is active (auto-recovery)
 		if self._stream is None or not getattr(self._stream, "active", False):
 			self._start_background_stream()
+		if self._stream is None or not getattr(self._stream, "active", False):
+			raise RuntimeError("The microphone is unavailable. Check the input device.")
+
+		recognizer = vosk.KaldiRecognizer(self._model, self.sample_rate)
+		recognizer.SetWords(True)
+		if is_paused and is_paused():
+			return ASRResult(transcript="", words=[])
 
 		# 1. Instantly clear any accumulated background audio from the queue
 		while not self._audio_queue.empty():
@@ -175,10 +192,6 @@ class VoskASR(BaseASR):
 				self._audio_queue.get_nowait()
 			except queue.Empty:
 				break
-
-		# 2. Recreate KaldiRecognizer for a clean slate
-		recognizer = vosk.KaldiRecognizer(self._model, self.sample_rate)
-		recognizer.SetWords(True)
 
 		logger.info("[ASR] Recording started instantly. Will listen for %d seconds", self.listen_seconds)
 
@@ -189,30 +202,31 @@ class VoskASR(BaseASR):
 		processed_blocks = 0
 		decoder_seconds = 0.0
 
-		while True:
-			if is_paused is not None and is_paused():
-				logger.info("[ASR] Transcription aborted due to pause/quit.")
-				return ASRResult(transcript="", words=[])
-
-			elapsed = time.monotonic() - start_time
-			if elapsed >= self.listen_seconds:
-				break
-
-			# Log every second
-			if time.monotonic() - last_log_time >= 1.0:
-				logger.debug("[ASR] Recording: %ds / %ds", int(elapsed), self.listen_seconds)
-				last_log_time = time.monotonic()
-
-			try:
-				# 3. Read incoming bytes instantly from the queue (zero start lag!)
-				data = self._audio_queue.get(timeout=0.1)
-				decode_start = time.monotonic()
-				recognizer.AcceptWaveform(data)
-				decoder_seconds += time.monotonic() - decode_start
-				processed_bytes += len(data)
-				processed_blocks += 1
-			except queue.Empty:
-				continue
+		if on_capture_started:
+			on_capture_started()
+		try:
+			while True:
+				if is_paused is not None and is_paused():
+					logger.info("[ASR] Transcription aborted due to pause/quit.")
+					return ASRResult(transcript="", words=[])
+				elapsed = time.monotonic() - start_time
+				if elapsed >= self.listen_seconds:
+					break
+				if time.monotonic() - last_log_time >= 1.0:
+					logger.debug("[ASR] Recording: %ds / %ds", int(elapsed), self.listen_seconds)
+					last_log_time = time.monotonic()
+				try:
+					data = self._audio_queue.get(timeout=0.1)
+					decode_start = time.monotonic()
+					recognizer.AcceptWaveform(data)
+					decoder_seconds += time.monotonic() - decode_start
+					processed_bytes += len(data)
+					processed_blocks += 1
+				except queue.Empty:
+					continue
+		finally:
+			if on_capture_stopped:
+				on_capture_stopped()
 
 		logger.debug("[ASR] Recording loop finished")
 

@@ -3,13 +3,14 @@ from __future__ import annotations
 import random
 import re
 import time
+import threading
 from dataclasses import asdict, dataclass
 from typing import Callable
 
 from ella_bot.core.constants import get_level1_sound_and_word, max_attempts_for_level, tier_of
 from ella_bot.core.events import (
     StateChanged, MessageChanged, ErrorOccurred, AttemptReady,
-    SubLevelCompleted, SessionCompleted,
+    SubLevelCompleted, SessionCompleted, TurnStatusChanged,
 )
 from ella_bot.services.sound_effects import (
     build_level1_audio_sequence,
@@ -39,6 +40,7 @@ from ella_bot.validation.validators import (
 logger = get_logger(__name__)
 
 NON_LEVEL1_PROMPT_RATE = 100
+OUTCOME_HOLD_SECONDS = 1.5
 
 _EXHAUSTION_MESSAGE = "Don't worry, we'll come back to tricky ones. Keep it up!"
 
@@ -71,17 +73,91 @@ class AttemptRunner:
         self._current_item_key: tuple = ("", 0)
         self._abort_requested = False
         self._recent_prompt_keys: set[str] = set()
+        self._paused_seconds = 0.0
+        self._pause_started_at: float | None = None
+        self._pause_lock = threading.Lock()
+        self._outcome_pause_baseline = 0.0
+        self._capture_interrupted = False
+        self._capture_started = False
+        self._capture_open = False
+        self._finalized = False
+        self.saved_outcome = False
+        self._turn_status: TurnStatusChanged | None = None
 
     def abort(self) -> None:
         self._abort_requested = True
 
+    def pause_changed(self, paused: bool) -> None:
+        with self._pause_lock:
+            if paused:
+                if self._pause_started_at is None:
+                    self._pause_started_at = time.monotonic()
+                if self._capture_open:
+                    self._capture_interrupted = True
+            elif self._pause_started_at is not None:
+                self._paused_seconds += time.monotonic() - self._pause_started_at
+                self._pause_started_at = None
+
     def _wait_if_paused(self) -> bool:
         """Wait if paused. Returns True if aborted, False otherwise."""
+        self.pause_changed(self._is_paused())
         while self._is_paused():
             if self._abort_requested:
                 return True
             time.sleep(0.1)
+        self.pause_changed(False)
         return self._abort_requested
+
+    def _publish_turn_status(self, phase: str) -> None:
+        session = self.app.session
+        level = session.current_level
+        practice = tier_of(level) == 1
+        recorded = sum(
+            attempt.item == session.current_item_number()
+            for attempt in self.app.evaluation._attempts.get(level, [])
+        )
+        self._turn_status = TurnStatusChanged(
+            phase, level, session.current_item_number(), session.expected_sentence,
+            None if practice else min(recorded + 1, max_attempts_for_level(level)),
+            None if practice else max_attempts_for_level(level),
+        )
+        animation = {
+            "prompting": "speaking", "preparing": "warmup", "listening": "listening",
+            "processing": "processing", "correct": "success", "retry": "retry",
+            "no_input": "retry", "exhausted": "retry", "practice": "idle", "error": "error",
+        }[phase]
+        self.app.event_queue.put(StateChanged(animation))
+        self.app.event_queue.put(self._turn_status)
+
+    def _on_capture_started(self) -> None:
+        self._capture_started = True
+        self._capture_open = True
+        if not self._abort_requested and not self._is_paused():
+            self._publish_turn_status("listening")
+
+    def _on_capture_stopped(self) -> None:
+        self._capture_open = False
+        self._capture_interrupted = self._capture_interrupted or self._abort_requested or self._is_paused()
+        if not self._capture_interrupted:
+            self._publish_turn_status("processing")
+
+    def _wait_for_outcome_hold(self, started_at: float) -> bool:
+        while True:
+            if self._wait_if_paused():
+                return True
+            paused = self._paused_seconds - self._outcome_pause_baseline
+            remaining = OUTCOME_HOLD_SECONDS - (time.monotonic() - started_at - paused)
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.05, remaining))
+
+    def _finish_scored_turn(self, pending, started_at: float) -> None:
+        if self._wait_for_outcome_hold(started_at):
+            return
+        if pending is not None:
+            self.app.event_queue.put(pending)
+        else:
+            self.app.event_queue.put(StateChanged("success" if self._turn_status.phase == "correct" else "retry"))
 
     def _speak(self, text: str, rate: Optional[int] = None) -> bool:
         """Speak text. Returns True if aborted."""
@@ -106,6 +182,17 @@ class AttemptRunner:
         return False
 
     def run(self) -> None:
+        self.app.prompt_active = True
+        self._finalized = False
+        self.saved_outcome = False
+        try:
+            self._run()
+        finally:
+            self.app.prompt_active = False
+            if not self._finalized:
+                self.app.session.last_announced_sentence = ""
+
+    def _run(self) -> None:
         level = self.app.session.current_level
         if tier_of(level) == 1:
             self._run_level1_practice()
@@ -113,6 +200,7 @@ class AttemptRunner:
 
         self.app.event_queue.put(StateChanged("speaking"))
         self.app.event_queue.put(MessageChanged(""))
+        self._publish_turn_status("prompting")
 
         is_retry = False
         target_item = self.app.session.expected_sentence.strip()
@@ -179,22 +267,29 @@ class AttemptRunner:
                 if self._abort_requested:
                     return
 
-                self.app.event_queue.put(StateChanged("listening"))
-                self.app.event_queue.put(MessageChanged(""))
-
-                asr_result = self.app.asr.transcribe(expected_sentence=target_sentence, is_paused=self._is_paused)
+                self._capture_interrupted = False
+                self._capture_started = False
+                self._publish_turn_status("preparing")
+                asr_result = self.app.asr.transcribe(
+                    expected_sentence=target_sentence,
+                    is_paused=lambda: self._abort_requested or self._is_paused() or self._capture_interrupted,
+                    on_capture_started=self._on_capture_started,
+                    on_capture_stopped=self._on_capture_stopped,
+                )
                 logger.debug("Transcription finished. Result: %r", asr_result.transcript)
 
-                if self._is_paused():
-                    if self._wait_if_paused():
-                        return
+                interrupted = self._capture_interrupted or (not self._capture_started and self._is_paused())
+                if self._wait_if_paused():
+                    return
+                if interrupted:
                     continue
                 break
 
-            self.app.prompt_active = False
-
             if self._wait_if_paused():
                 return
+
+            if self._turn_status.phase != "processing":
+                self._publish_turn_status("processing")
 
             if not asr_result.transcript.strip():
                 self._handle_no_input()
@@ -243,23 +338,30 @@ class AttemptRunner:
             correct = validation.accuracy >= 0.95
 
             exhausted = self._register_attempt(level, session, correct)
+            self._publish_turn_status("correct" if correct else "exhausted" if exhausted else "retry")
+            outcome_started = time.monotonic()
+            self._outcome_pause_baseline = self._paused_seconds
+            pending = self._finalize_scored_attempt(
+                level, session, heard=asr_result.transcript, accuracy=validation.accuracy,
+                wer=validation.wer, correct=correct, exhausted=exhausted,
+            )
 
             if self.app.audio_feedback:
                 if correct:
                     if sound_wav and sound_wav.exists():
                         praise_wav = resolve_random_praise_prompt(self._recent_prompt_keys)
                         if praise_wav and praise_wav.exists():
-                            if play_audio_file(praise_wav, is_paused=self._is_paused, app=self.app):
+                            if play_audio_file(praise_wav, is_paused=self._is_paused, app=self.app) and self._wait_if_paused():
                                 return
                 elif exhausted:
-                    if self._play_exhaustion_feedback():
+                    if self._play_exhaustion_feedback() and self._wait_if_paused():
                         return
                 else:
                     if sound_wav and sound_wav.exists():
                         try_path = resolve_level1_prompt("try_saying_it") or resolve_level1_prompt("can_you_say")
                         retry_seq = [p for p in [try_path, sound_wav] if p and p.exists()]
                         self.app.event_queue.put(MessageChanged("Listen to the word..."))
-                        if play_audio_sequence(retry_seq, is_paused=self._is_paused, app=self.app):
+                        if play_audio_sequence(retry_seq, is_paused=self._is_paused, app=self.app) and self._wait_if_paused():
                             return
                     elif self.app.tts is not None:
                         try:
@@ -268,7 +370,7 @@ class AttemptRunner:
                                 overrides=overrides_for_level(
                                     level, self.app.pronunciation_overrides
                                 ),
-                                expected_sentence=self.app.session.expected_sentence,
+                                expected_sentence=target_sentence,
                                 max_hints=2,
                                 validation=validation,
                             )
@@ -287,21 +389,6 @@ class AttemptRunner:
             if self._wait_if_paused():
                 return
 
-            self.app.evaluation.record_attempt(
-                level=level,
-                item=session.current_item_number(),
-                expected=session.expected_sentence,
-                heard=asr_result.transcript,
-                accuracy=validation.accuracy,
-                wer=validation.wer,
-                correct=correct,
-            )
-
-            if self._advance_after_attempt(level, session, correct, exhausted):
-                return
-
-            self.app.save_active_session("reading")
-
             if correct:
                 self.app.event_queue.put(MessageChanged("Nice work! Moving to the next one."))
             elif exhausted:
@@ -309,12 +396,7 @@ class AttemptRunner:
             else:
                 self.app.event_queue.put(MessageChanged("Give it another try!"))
 
-            if self._wait_if_paused():
-                return
-            time.sleep(0.6)
-            if self._wait_if_paused():
-                return
-            self.app.event_queue.put(MessageChanged(""))
+            self._finish_scored_turn(pending, outcome_started)
 
         except Exception as exc:
             logger.exception("Attempt worker crashed")
@@ -324,7 +406,7 @@ class AttemptRunner:
                 self.error_log.pop(0)
 
             self.app.prompt_active = False
-            self.app.event_queue.put(StateChanged("retry"))
+            self._publish_turn_status("error")
             self.app.event_queue.put(MessageChanged(f"Error: {error_msg}"))
             self.app.event_queue.put(ErrorOccurred(error_msg))
         finally:
@@ -347,6 +429,41 @@ class AttemptRunner:
 
         max_attempts = max_attempts_for_level(level)
         return not correct and self._item_attempt_count >= max_attempts
+
+    def _finalize_scored_attempt(
+        self, level: str, session, *, heard: str, accuracy: float, wer: float,
+        correct: bool, exhausted: bool,
+    ) -> SubLevelCompleted | SessionCompleted | None:
+        self.app.evaluation.record_attempt(
+            level=level, item=session.current_item_number(), expected=session.expected_sentence,
+            heard=heard, accuracy=accuracy, wer=wer, correct=correct,
+        )
+        self._finalized = True
+        if correct or exhausted:
+            session.completed_in_level = min(session.completed_in_level + 1, session.level_goal)
+            self._item_attempt_count = 0
+        if session.current_sublevel_complete():
+            sub_result = self.app.evaluation.finish_sublevel(level)
+            tier = session.tier_of(level)
+            if session.is_last_sublevel_of_tier(level):
+                tier_result = self.app.evaluation.finish_tier(tier)
+                if session.is_last_tier(tier):
+                    result = self.app.evaluation.finish_session()
+                    self.app.clear_active_session()
+                    self.saved_outcome = True
+                    return SessionCompleted(result)
+                self._save_result_checkpoint("tier", tier_result)
+                self.saved_outcome = True
+                return SubLevelCompleted(tier_result, "tier")
+            self._save_result_checkpoint("sublevel", sub_result)
+            self.saved_outcome = True
+            return SubLevelCompleted(sub_result, "sublevel")
+        if correct or exhausted:
+            session.advance_to_next_sentence()
+        if self.app.save_active_session("reading") is False:
+            raise RuntimeError("Progress could not be saved.")
+        self.saved_outcome = True
+        return None
 
     def _advance_after_attempt(
         self, level: str, session, correct: bool, exhausted: bool
@@ -387,20 +504,35 @@ class AttemptRunner:
             if tier == 1:
                 # Level 1 is practice only — bypass completion screen.
                 # Speak level transition announcement and advance directly to the next level.
+                self._publish_turn_status("prompting")
+                if session.is_last_sublevel_of_tier(level):
+                    self.app.evaluation.finish_tier(tier)
+                has_next = session.advance_to_higher_stage()
+                if has_next:
+                    if self.app.save_active_session("reading") is False:
+                        self._publish_turn_status("error")
+                        return True
+                    self.saved_outcome = True
                 phrase = random.choice([
                     "You finished this activity! Now onto the next level.",
                     "Well done! Let's move to the next level.",
                 ])
-                if self.app.audio_feedback and self.app.tts is not None:
-                    if self._speak(phrase):
-                        return True
+                if self.app.audio_feedback:
+                    completion_paths = [
+                        resolve_asset_path(f"assets/audio/MicroDave Production/{number}.wav")
+                        for number in (463, 464)
+                    ]
+                    completion_paths = [path for path in completion_paths if path.is_file()]
+                    if completion_paths:
+                        if play_audio_file(
+                            random.choice(completion_paths), is_paused=self._is_paused, app=self.app
+                        ) and self._wait_if_paused():
+                            return True
+                    elif self.app.tts is not None:
+                        if self._speak(phrase):
+                            return True
 
-                if session.is_last_sublevel_of_tier(level):
-                    self.app.evaluation.finish_tier(tier)
-
-                has_next = session.advance_to_higher_stage()
                 if has_next:
-                    self.app.save_active_session("reading")
                     if session.tier_of(session.current_level) == 1:
                         self._run_level1_practice()
                     return True
@@ -440,10 +572,12 @@ class AttemptRunner:
         return False
 
     def _save_result_checkpoint(self, kind: str, result) -> None:
-        self.app.save_active_session(
+        saved = self.app.save_active_session(
             "results",
             {"kind": kind, "payload": asdict(result)},
         )
+        if saved is False:
+            raise RuntimeError("Progress could not be saved.")
 
     def _handle_no_input(self) -> None:
         """Respond to a silent turn (empty transcript).
@@ -460,17 +594,24 @@ class AttemptRunner:
 
         exhausted = self._register_attempt(level, session, correct=False)
         advancing = exhausted  # silence is never correct, so the item only moves on when exhausted
+        expected_sentence = session.expected_sentence
+        self._publish_turn_status("exhausted" if exhausted else "no_input")
+        outcome_started = time.monotonic()
+        self._outcome_pause_baseline = self._paused_seconds
+        pending = self._finalize_scored_attempt(
+            level, session, heard="", accuracy=0.0, wer=1.0, correct=False, exhausted=exhausted,
+        )
 
         if self.app.audio_feedback:
             if advancing:
-                if self._play_exhaustion_feedback():
+                if self._play_exhaustion_feedback() and self._wait_if_paused():
                     return
             else:
-                sound_wav = resolve_level1_playback(level, session.expected_sentence)
+                sound_wav = resolve_level1_playback(level, expected_sentence)
                 if sound_wav and sound_wav.exists():
                     try_path = resolve_level1_prompt("you_try") or resolve_level1_prompt("try_saying_it")
                     if try_path and try_path.exists():
-                        if play_audio_file(try_path, is_paused=self._is_paused, app=self.app):
+                        if play_audio_file(try_path, is_paused=self._is_paused, app=self.app) and self._wait_if_paused():
                             return
                 elif self.app.tts is not None:
                     if self._speak(random.choice(_NO_INPUT_PHRASES)):
@@ -479,33 +620,12 @@ class AttemptRunner:
         if self._wait_if_paused():
             return
 
-        self.app.evaluation.record_attempt(
-            level=level,
-            item=session.current_item_number(),
-            expected=session.expected_sentence,
-            heard="",
-            accuracy=0.0,
-            wer=1.0,
-            correct=False,
-        )
-
-        if self._advance_after_attempt(level, session, correct=False, exhausted=exhausted):
-            return
-
-        self.app.save_active_session("reading")
-
         if advancing:
             self.app.event_queue.put(MessageChanged(_EXHAUSTION_MESSAGE))
         else:
             self.app.event_queue.put(MessageChanged("I didn't hear you — let's try again!"))
 
-        if self._wait_if_paused():
-            return
-        time.sleep(0.6)
-        if self._wait_if_paused():
-            return
-        self.app.event_queue.put(StateChanged("listening"))
-        self.app.event_queue.put(MessageChanged(""))
+        self._finish_scored_turn(pending, outcome_started)
 
     def replay(self) -> None:
         if (
@@ -571,6 +691,7 @@ class AttemptRunner:
             return self._speak(target_override)
 
     def _run_level1_practice(self) -> None:
+        self._publish_turn_status("prompting")
         self.app.event_queue.put(StateChanged("speaking"))
         self.app.event_queue.put(MessageChanged(""))
 
@@ -650,7 +771,10 @@ class AttemptRunner:
         self.app.event_queue.put(StateChanged("idle"))
         self.app.event_queue.put(MessageChanged(""))
 
+        self._publish_turn_status("practice")
+
     def replay_level1(self) -> None:
+        self._publish_turn_status("prompting")
         level = self.app.session.current_level
         target_item = self.app.session.expected_sentence.strip()
         if self.app.audio_feedback and self.app.tts is not None:
@@ -672,6 +796,8 @@ class AttemptRunner:
         self.app.prompt_active = False
         self.app.event_queue.put(StateChanged("idle"))
         self.app.event_queue.put(MessageChanged(""))
+
+        self._publish_turn_status("practice")
 
     def advance_level1(self) -> None:
         session = self.app.session

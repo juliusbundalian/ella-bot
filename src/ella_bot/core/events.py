@@ -15,6 +15,16 @@ class MessageChanged:
 
 
 @dataclass(frozen=True)
+class TurnStatusChanged:
+    phase: str
+    level: str
+    item_number: int
+    expected_sentence: str
+    attempt_number: int | None = None
+    attempt_limit: int | None = None
+
+
+@dataclass(frozen=True)
 class ErrorOccurred:
     error: str
 
