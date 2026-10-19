@@ -11,8 +11,8 @@ from ella_bot.ui.pygame_gui.scenes.reading_prompt import ReadingPromptScene
 @pytest.mark.parametrize(("phase", "title"), [
     ("prompting", "Listen to ELLA"), ("preparing", ""),
     ("listening", "Listening…"), ("processing", ""),
-    ("correct", "Correct!"), ("retry", "Try again"),
-    ("no_input", "Try again"), ("exhausted", "Moving on…"),
+    ("correct", "Correct!"), ("retry", "Listen carefully"),
+    ("no_input", "Listen carefully"), ("exhausted", "Moving on…"),
     ("practice", "Your turn"), ("error", "Please wait…"),
 ])
 def test_status_uses_short_labels_and_hides_transient_phases(phase, title):
