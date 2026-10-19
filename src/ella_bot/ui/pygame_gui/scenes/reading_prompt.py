@@ -13,7 +13,7 @@ from ella_bot.ui.pygame_gui.ui_helpers import draw_gradient, draw_wrapped_text
 from ella_bot.ui.pygame_gui.bot_sprite import BotSprite
 from ella_bot.ui.pygame_gui.components.pause_modal import PauseModal
 from ella_bot.ui.pygame_gui.components.button import Button
-from ella_bot.ui.pygame_gui.components.turn_status import draw_turn_status
+from ella_bot.ui.pygame_gui.components.turn_status import draw_turn_status, draw_turn_outcome
 from ella_bot.services.sound_effects import play_button_click
 from ella_bot.core.constants import get_level1_sound_and_word, tier_of
 from ella_bot.core.events import StateChanged, MessageChanged, ErrorOccurred, AttemptReady, SubLevelCompleted, SessionCompleted, TurnStatusChanged
@@ -336,10 +336,7 @@ class ReadingPromptScene(BaseScene):
         pygame.draw.rect(screen, label_bg, pill_rect, border_radius=24)
         pygame.draw.rect(screen, (127, 63, 151), pill_rect, width=3, border_radius=24)
         screen.blit(label_surf, label_rect)
-        draw_turn_status(
-            screen, self._status_rect(inner_rect, pygame), status,
-            self.app._get_prompt_font(32), self.app._get_prompt_font(24),
-        )
+        draw_turn_outcome(screen, pill_rect, status, self.app._get_prompt_font(24))
 
         # 2. Settings / Pause Button (Left-Centered circular gear button matching Main Menu)
         gear_size = 80
@@ -376,6 +373,9 @@ class ReadingPromptScene(BaseScene):
             show_thought_bubble=False,
             now_ms=now_ms,
             font=self.app.font_body,
+        )
+        draw_turn_status(
+            screen, inner_rect, status, self.app.font_body,
         )
 
         is_level_1 = False
@@ -457,30 +457,74 @@ class ReadingPromptScene(BaseScene):
         status = getattr(self, "_turn_status", None)
         return status.expected_sentence if isinstance(status, TurnStatusChanged) else self.app.expected_sentence
 
-    @staticmethod
-    def _status_rect(inner_rect, pygame_module):
-        return pygame_module.Rect(inner_rect.left + 104, inner_rect.top + 74, inner_rect.width - 208, 94)
-
     def _prompt_layout(self, inner_rect, pygame_module):
         text = self._display_prompt()
+        session = getattr(self.app, "session", None)
         status = getattr(self, "_turn_status", None)
-        level = status.level if isinstance(status, TurnStatusChanged) else self.app.session.current_level
-        if not isinstance(level, str):
-            level = getattr(self.app, "current_level", "")
-        current_tier = tier_of(level)
+        current_level = status.level if isinstance(status, TurnStatusChanged) else getattr(session, "current_level", None)
+        if not isinstance(current_level, str):
+            current_level = getattr(self.app, "current_level", "")
+
+        current_tier = tier_of(current_level)
+
+        if current_tier in (3, 4):
+            safe_bottom = self._bot_safe_bottom(inner_rect)
+            text_top = self._centered_safe_top(inner_rect, safe_bottom)
+            width_ratio = 0.50 if current_tier == 4 else 0.48
+            text_width = max(1, int(inner_rect.width * width_ratio))
+            text_rect = pygame_module.Rect(
+                inner_rect.centerx - text_width // 2,
+                text_top,
+                text_width,
+                max(0, safe_bottom - text_top),
+            )
+            for font_size in range(80, 11, -2):
+                font = self.app._get_prompt_font(font_size)
+                words_fit = current_tier != 3 or all(font.size(word)[0] <= text_rect.width for word in text.split())
+                if words_fit and self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
+                    return font, text_rect
+            return None, text_rect
+
+        if len(text.split()) <= 6:
+            if current_tier == 2:
+                safe_bottom = self._bot_safe_bottom(inner_rect)
+                text_top = self._centered_safe_top(inner_rect, safe_bottom)
+                text_rect = pygame_module.Rect(
+                    inner_rect.left + 40,
+                    text_top,
+                    inner_rect.width - 80,
+                    max(0, safe_bottom - text_top),
+                )
+                for font_size in range(72, 11, -2):
+                    font = self.app._get_prompt_font(font_size)
+                    if font.size(text)[0] <= text_rect.width:
+                        return font, text_rect
+                return None, text_rect
+
+            text_rect = pygame_module.Rect(
+                inner_rect.left + 40,
+                inner_rect.top + 120,
+                inner_rect.width - 80,
+                inner_rect.height - 160,
+            )
+            font = self.app._prompt_font(pygame_module)
+            return font, text_rect
+
         safe_bottom = self._bot_safe_bottom(inner_rect)
-        text_top = self._status_rect(inner_rect, pygame_module).bottom + 16
-        width_ratio = 0.50 if current_tier == 4 else 0.64 if current_tier == 3 else 1.0
-        text_width = max(1, min(inner_rect.width - 288, int(inner_rect.width * width_ratio)))
+        if current_tier == 2:
+            text_top = self._centered_safe_top(inner_rect, safe_bottom)
+        else:
+            text_top = min(inner_rect.top + 88, safe_bottom)
         text_rect = pygame_module.Rect(
-            inner_rect.centerx - text_width // 2, text_top,
-            text_width, max(0, safe_bottom - text_top),
+            inner_rect.left + 40,
+            text_top,
+            max(1, inner_rect.width - 80),
+            max(0, safe_bottom - text_top),
         )
-        maximum_size = 80 if current_tier in (3, 4) else 72
-        for font_size in range(maximum_size, 11, -2):
+        max_font_size = 72 if current_tier == 2 else 82
+        for font_size in range(max_font_size, 11, -2):
             font = self.app._get_prompt_font(font_size)
-            words_fit = all(font.size(word)[0] <= text_rect.width for word in text.split())
-            if words_fit and self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
+            if self._wrapped_height(text, font, text_rect.width) <= text_rect.height:
                 return font, text_rect
         return None, text_rect
 

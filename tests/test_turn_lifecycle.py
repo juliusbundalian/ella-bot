@@ -35,6 +35,68 @@ def _events(app):
     return list(app.event_queue.queue)
 
 
+@pytest.mark.parametrize("level", ["3", "4"])
+@pytest.mark.parametrize("final_item", [False, True])
+def test_correct_scored_items_speak_praise_before_navigation(tmp_path, monkeypatch, level, final_item):
+    from ella_bot.core.events import AttemptReady
+
+    target = "sounds of animals" if level == "3" else "The cat is on the mat."
+    app = _app(tmp_path, transcript=target, level=level, items=[target] if final_item else [target, "next item"])
+    app.audio_feedback = True
+    app.tts = SimpleNamespace(config=SimpleNamespace(rate=180), speak=MagicMock())
+    navigation_during_speech = []
+    app.tts.speak.side_effect = lambda *args, **kwargs: navigation_during_speech.extend(
+        event for event in _events(app) if isinstance(event, (SubLevelCompleted, SessionCompleted))
+    )
+    monkeypatch.setattr(runner_mod, "OUTCOME_HOLD_SECONDS", 0)
+    AttemptRunner(app, lambda: False).run()
+
+    attempt = next(event.view_model for event in _events(app) if isinstance(event, AttemptReady))
+    assert len(app.tts.speak.call_args_list) == 2
+    assert app.tts.speak.call_args.args == (attempt.feedback.level_message,)
+    assert app.tts.speak.call_args.kwargs == {"rate": 100}
+    assert navigation_during_speech == []
+    assert _statuses(app)[-1].phase == "correct"
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_level_three_coaching_matches_opening_pace(tmp_path, monkeypatch, replay):
+    app = _app(tmp_path, transcript="of animals", level="3", items=["sounds of animals", "next phrase"])
+    app.audio_feedback = True
+    app.tts = SimpleNamespace(config=SimpleNamespace(rate=180), speak=MagicMock())
+    monkeypatch.setattr(runner_mod, "OUTCOME_HOLD_SECONDS", 0)
+    runner = AttemptRunner(app, lambda: False)
+    runner.run()
+    assert app.tts.speak.call_args_list[0].kwargs["rate"] == 100
+    if replay:
+        from ella_bot.core.events import AttemptReady
+
+        app.latest_attempt = next(event.view_model for event in _events(app) if isinstance(event, AttemptReady))
+        app.tts.speak.reset_mock()
+        runner.replay()
+
+    spoken = app.tts.speak.call_args_list
+    assert len(spoken) > 4
+    if not replay:
+        assert "sounds of animals" in spoken[0].args[0]
+    assert any("Listen closely" in call.args[0] for call in spoken)
+    assert any(call.args[0] == "sounds." for call in spoken)
+    assert all(call.kwargs["rate"] == 100 for call in spoken)
+    assert all(not call.args[0].startswith("SLOW:") for call in spoken)
+
+
+@pytest.mark.parametrize(("level", "text", "rate", "expected_rate"), [
+    ("2a", "Now you try!", None, None),
+    ("4", "SLOW: model sentence.", None, 125),
+    ("3", "Now you try!", 110, 110),
+])
+def test_level_three_pace_keeps_other_levels_and_explicit_rates(tmp_path, level, text, rate, expected_rate):
+    app = _app(tmp_path, level=level)
+    app.tts = SimpleNamespace(config=SimpleNamespace(rate=180), speak=MagicMock())
+    AttemptRunner(app, lambda: False)._speak(text, rate=rate)
+    assert app.tts.speak.call_args.kwargs["rate"] == expected_rate
+
+
 def _statuses(app):
     return [event for event in _events(app) if type(event).__name__ == "TurnStatusChanged"]
 

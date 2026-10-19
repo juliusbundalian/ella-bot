@@ -169,6 +169,8 @@ class AttemptRunner:
             if text.startswith("SLOW: "):
                 text = text[6:].strip()
                 actual_rate = int(self.app.tts.config.rate * 0.7)
+            if tier_of(self.app.session.current_level) == 3:
+                actual_rate = NON_LEVEL1_PROMPT_RATE
         self.app.tts.speak(text, rate=actual_rate)
         return self._abort_requested
 
@@ -353,6 +355,10 @@ class AttemptRunner:
                         if praise_wav and praise_wav.exists():
                             if play_audio_file(praise_wav, is_paused=self._is_paused, app=self.app) and self._wait_if_paused():
                                 return
+                    elif tier_of(level) in (3, 4) and self.app.tts is not None:
+                        self.app.event_queue.put(MessageChanged("Speaking feedback..."))
+                        if self._speak(feedback.level_message, rate=NON_LEVEL1_PROMPT_RATE):
+                            return
                 elif exhausted:
                     if self._play_exhaustion_feedback() and self._wait_if_paused():
                         return

@@ -25,8 +25,10 @@ def draw_thought_bubble(
     prompt_rect: pygame.Rect,
     now_ms: int,
     font: pygame.font.Font | None = None,
+    *,
+    text: str | None = None,
 ) -> None:
-    """Draw speech bubble matching exact Main Menu design and placement displaying 'Waiting...'."""
+    """Draw ELLA's speech bubble, defaulting to animated waiting text."""
     if prompt_rect is None or prompt_rect.width <= 0:
         return
 
@@ -38,7 +40,7 @@ def draw_thought_bubble(
 
     # Animate dot count: "Waiting.", "Waiting..", "Waiting..."
     dot_count = (now_ms // 400) % 3 + 1
-    text_str = "Waiting" + "." * dot_count
+    text_str = text if text is not None else "Waiting" + "." * dot_count
     text_surf = font.render(text_str, True, (255, 250, 243))
 
     inner_rect = prompt_rect.inflate(-64, -64)

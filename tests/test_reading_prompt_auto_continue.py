@@ -31,13 +31,13 @@ def test_levels_3_and_4_use_smaller_font_and_narrower_prompt_area():
         assert text_rect.left > inner_rect.left + 40
         assert text_rect.width < inner_rect.width - 80
         assert text_rect.right < inner_rect.right - 40
-        assert abs(text_rect.centerx - inner_rect.centerx) <= 1
-        assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
+        assert text_rect.centerx == inner_rect.centerx
+        assert text_rect.top >= scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect))
         assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
         assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 80
 
 
-def test_level_4_prompt_is_narrower_to_clear_ella_on_the_right():
+def test_level_3_prompt_is_narrower_without_changing_level_4_width():
     sentence = "Please read this advanced sentence aloud"
     level_3_scene, pygame = _make_scene_for_layout(sentence, current_level="3")
     level_4_scene, _ = _make_scene_for_layout(sentence, current_level="4")
@@ -47,8 +47,8 @@ def test_level_4_prompt_is_narrower_to_clear_ella_on_the_right():
     _, level_4_rect = level_4_scene._prompt_layout(inner_rect, pygame)
 
     assert level_4_rect.width == int(inner_rect.width * 0.50)
-    assert level_4_rect.width < level_3_rect.width
-    assert level_4_rect.right < level_3_rect.right
+    assert level_3_rect.width < level_4_rect.width
+    assert level_3_rect.right < level_4_rect.right
 
 
 def test_level_2_uses_smaller_font_and_stays_above_ella():
@@ -61,8 +61,8 @@ def test_level_2_uses_smaller_font_and_stays_above_ella():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
-    assert text_rect.left > inner_rect.left + 120
+    assert text_rect.top >= scene._centered_safe_top(inner_rect, scene._bot_safe_bottom(inner_rect))
+    assert text_rect.left == inner_rect.left + 40
     assert text_rect.centerx == inner_rect.centerx
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert max(call.args[0] for call in scene.app._get_prompt_font.call_args_list) <= 72
@@ -191,7 +191,7 @@ def test_long_level_2_prompt_uses_smaller_font_and_centered_safe_area():
     font, text_rect = scene._prompt_layout(inner_rect, pygame)
 
     assert font.get_height() < scene.app.font_prompt_small.get_height()
-    assert text_rect.top >= scene._status_rect(inner_rect, pygame).bottom + 12
+    assert text_rect.centerx == inner_rect.centerx
     assert text_rect.bottom <= scene._bot_safe_bottom(inner_rect)
     assert scene._wrapped_height(
         scene.app.expected_sentence, font, text_rect.width
